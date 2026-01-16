@@ -12,5 +12,7 @@ networking.elf: $(OBJ_FILES)
 $(BUILD_DIR)/%.o : $(SRC_DIR)/%.c
 	gcc -c $< -o $@ -MMD
 
+-include $(OBJ_FILES:.o=.d)
+
 clean :
 	rm -rf $(BUILD_DIR)/*.o $(BUILD_DIR)/*.d networking.elf
