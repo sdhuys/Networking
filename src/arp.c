@@ -1,11 +1,11 @@
 #include "arp.h"
 
-int read_arp(struct nw_layer *self, const struct nw_layer_data *payload)
+int receive_arp_up(struct nw_layer *self, const struct pkt *data)
 {
     return 0;
 }
 
-int create_arp(struct nw_layer *self, struct nw_layer_data *payload)
+int send_arp_down(struct nw_layer *self, const struct pkt *data)
 {
     return 0;
 }

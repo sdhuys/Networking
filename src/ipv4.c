@@ -1,6 +1,11 @@
-#include "layer.h"
+#include "ipv4.h"
 
-// TAP's IPV4 set to 192.168.100.1 by set_ipv4_addr()
-// subnet mask defaulted to 255.255.255.0
-// dummy must be on same subnet
-#define DUMMY_IPV4 (unsigned char[4]){192, 168, 100, 2}
+int receive_ipv4_up(struct nw_layer *self, const struct pkt *data)
+{
+    return 0;
+}
+
+int send_ipv4_down(struct nw_layer *self, const struct pkt *data)
+{
+    return 0;
+}

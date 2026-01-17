@@ -2,34 +2,36 @@
 
 int start_listening(int fd, struct nw_layer *tap)
 {
+    const int MAX_ETH_FRAME_SIZE = 1518;
     tap->context = (void *)(intptr_t)fd;
     for (;;)
     {
-        unsigned char buffer[1518];
-        ssize_t nread = read(fd, &buffer, sizeof(buffer));
+        unsigned char *buffer = malloc(MAX_ETH_FRAME_SIZE);
+        ssize_t nread = read(fd, buffer, MAX_ETH_FRAME_SIZE);
         if (nread < 0)
         {
             perror("Reading from TAP interface");
             close(fd);
             return -1;
         }
-        struct nw_layer_data data =
+        struct pkt data =
         {
             .data = buffer,
+            .offset = 0,
             .len = (size_t)nread
         };
 
-        tap->process_for_up(tap, &data);
+        tap->rcv_up(tap, &data);
     }
 }
 
-int send_to_ethernet(struct nw_layer *tap, struct nw_layer_data *data)
+int send_up_to_ethernet(struct nw_layer *tap, const struct pkt *data)
 {
-    tap->ups[0]->process_for_up(tap->ups[0], data);
+    tap->ups[0]->rcv_up(tap->ups[0], data);
     return 0;
 }
 
-int write_to_tap(struct nw_layer *tap, struct nw_layer_data *data)
+int write_to_tap(struct nw_layer *tap, const struct pkt *data)
 {
     int fd = (int)(intptr_t)tap->context;
     ssize_t nwrite = write(fd, data->data, data->len);

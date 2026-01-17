@@ -2,13 +2,14 @@
 #include <arpa/inet.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include "layer.h"
+#include "types.h"
 
-#define DUMMY_MAC (unsigned char[6]){0x02, 0x00, 0x00, 0x00, 0x00, 0x01}
-#define IPV4_BROADCAST_MAC (unsigned char[6]){0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
-
-typedef unsigned char mac_address[6];
+struct ethernet_context
+{
+    mac_address mac;
+};
 
 struct ethernet_header
 {
@@ -17,12 +18,6 @@ struct ethernet_header
     unsigned short ethertype;
 } __attribute__((packed));
 
-struct ethernet_frame
-{
-    struct ethernet_header header;
-    unsigned char payload[1500];
-    unsigned char frame_check_sequence[4];
-} __attribute__((packed));
 
 enum ether_type
 {
@@ -32,7 +27,7 @@ enum ether_type
     VLAN = 0x8100
 };
 
-int read_frame(struct nw_layer *self, struct nw_layer_data *data);
-int create_frame(struct nw_layer *self, struct nw_layer_data *data);
+int receive_frame_up(struct nw_layer *self, const struct pkt *data);
+int send_frame_down(struct nw_layer *self, const struct pkt *data);
 void print_incoming(const struct ethernet_header *header);
-bool relevant_destination_mac(const mac_address dest_mac);
+bool relevant_destination_mac(const mac_address dest_mac, struct nw_layer *self);
