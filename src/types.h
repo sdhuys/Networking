@@ -31,12 +31,11 @@ struct pkt_metadata
 
     ipv4_address src_ip;
     ipv4_address dest_ip;
-
 };
 
 struct pkt
 {
-    unsigned char *data;    //Should only be modified in certain cases, e.g. when modifying ARP request to response
+    unsigned char *data;    //Should only be modified once we go back down the stack
     size_t len; 
     size_t offset;          //Offset to the start of the current layer's header within data, no need to strip headers and copy
     struct pkt_metadata *metadata;
