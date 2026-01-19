@@ -60,7 +60,7 @@ int send_to_ipv4(struct nw_layer *self, struct pkt *packet)
         .offset = packet->offset + sizeof(struct ethernet_header),
         .metadata = packet->metadata};
 
-    for (int i = 0; i < self->ups_count; i++)
+    for (size_t i = 0; i < self->ups_count; i++)
         if (strcmp(self->ups[i]->name, "ipv4") == 0)
             self->ups[i]->rcv_up(self->ups[i], &ipv4_pkt);
 
@@ -71,7 +71,7 @@ int send_to_arp(struct nw_layer *self, struct pkt *packet)
 {
     packet->offset += sizeof(struct ethernet_header);
 
-    for (int i = 0; i < self->ups_count; i++)
+    for (size_t i = 0; i < self->ups_count; i++)
         if (strcmp(self->ups[i]->name, "arp") == 0)
             self->ups[i]->rcv_up(self->ups[i], packet);
 

@@ -3,7 +3,6 @@
 int receive_arp_up(struct nw_layer *self, struct pkt *packet)
 {
     struct arp_header *arp_header = (struct arp_header *)&packet->data[packet->offset];
-    //print_arp_header(arp_header);
 
     uint16_t hw_type = ntohs(arp_header->hw_type);
 
@@ -18,7 +17,6 @@ int receive_arp_up(struct nw_layer *self, struct pkt *packet)
     uint16_t proto_type = ntohs(arp_header->proto_type);
     
     unsigned char proto_addr_len = arp_header->proto_addr_len;
-    unsigned char hw_addr_len = arp_header->hw_addr_len;
 
     if (op == ARP_REQUEST)
     {
@@ -41,22 +39,24 @@ int receive_arp_up(struct nw_layer *self, struct pkt *packet)
         }
 
         printf("Received ARP REQUEST\n");
-        struct pkt *arp_response = create_arp_response(self, packet, arp_header, ((struct arp_context *)self->context)->mac_address);
+        struct pkt *arp_response = create_arp_response(packet, arp_header, ((struct arp_context *)self->context)->mac_address);
         send_arp_down(self, arp_response);
     }
 
     else if (op == ARP_REPLY)
     {
         printf("Received ARP REPLY\n");
+        return 0;
     }
 
     else
     {
         printf("Unknown ARP operation: %u\n", op);
+        return -1;
     }
 }
 
-struct pkt *create_arp_response(struct nw_layer *self, struct pkt *packet, struct arp_header *header, unsigned char *requested_address)
+struct pkt *create_arp_response(struct pkt *packet, struct arp_header *header, unsigned char *requested_address)
 {
     header->operation = htons(ARP_REPLY);
     memcpy(header->dest_mac, header->src_mac, header->hw_addr_len);
@@ -71,7 +71,6 @@ struct pkt *create_arp_response(struct nw_layer *self, struct pkt *packet, struc
 
 void print_arp_header(struct arp_header *arp_header)
 {
-
     printf("ARP Header:\n");
     printf("  Hardware Type: %u\n", ntohs(arp_header->hw_type));
     printf("  Protocol Type: 0x%04x\n", ntohs(arp_header->proto_type));
