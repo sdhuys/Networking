@@ -17,6 +17,8 @@
 #define VLAN 0x8100
 
 extern const unsigned char IPV4_BROADCAST_MAC[MAC_ADDR_LEN];
+extern const unsigned char DUMMY_IPV4[4];
+extern const unsigned char DUMMY_MAC_ADDR[6];
 
 // ===== Common Types =====
 typedef unsigned char mac_address[MAC_ADDR_LEN];
@@ -97,8 +99,27 @@ struct arp_header
     unsigned char hw_addr_len;
     unsigned char proto_addr_len;
     uint16_t operation;
-    mac_address sender_mac;
-    ipv4_address sender_ip;
-    mac_address target_mac;
-    ipv4_address target_ip;
+    mac_address src_mac;
+    ipv4_address src_ip;
+    mac_address dest_mac;
+    ipv4_address dest_ip;
+} __attribute__((packed));
+
+// ===== IPv4 Layer =====
+struct ipv4_context
+{
+    ipv4_address ipv4_address;
+};
+struct ipv4_header
+{
+    unsigned char version_ihl;
+    unsigned char tos;
+    uint16_t total_length;
+    uint16_t identification;
+    uint16_t flags_fragment_offset;
+    unsigned char ttl;
+    unsigned char protocol;
+    uint16_t header_checksum;
+    ipv4_address src_ip;
+    ipv4_address dest_ip;
 } __attribute__((packed));

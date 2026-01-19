@@ -34,7 +34,7 @@ int receive_arp_up(struct nw_layer *self, struct pkt *packet)
                 return -1;
         }
 
-        if (memcmp(arp_header->target_ip, proto_my_address, proto_addr_len) != 0)
+        if (memcmp(arp_header->dest_ip, proto_my_address, proto_addr_len) != 0)
         {
             printf("ARP request not for us. Ignoring.\n\n");
             return -1;
@@ -59,12 +59,12 @@ int receive_arp_up(struct nw_layer *self, struct pkt *packet)
 struct pkt *create_arp_response(struct nw_layer *self, struct pkt *packet, struct arp_header *header, unsigned char *requested_address)
 {
     header->operation = htons(ARP_REPLY);
-    memcpy(header->target_mac, header->sender_mac, header->hw_addr_len);
-    memcpy(header->sender_mac, requested_address, header->hw_addr_len);
+    memcpy(header->dest_mac, header->src_mac, header->hw_addr_len);
+    memcpy(header->src_mac, requested_address, header->hw_addr_len);
     ipv4_address temp_ip;
-    memcpy(temp_ip, header->target_ip, header->proto_addr_len);
-    memcpy(header->target_ip, header->sender_ip, header->proto_addr_len);
-    memcpy(header->sender_ip, temp_ip, header->proto_addr_len);
+    memcpy(temp_ip, header->dest_ip, header->proto_addr_len);
+    memcpy(header->dest_ip, header->src_ip, header->proto_addr_len);
+    memcpy(header->src_ip, temp_ip, header->proto_addr_len);
     
     return packet;
 }
@@ -80,22 +80,22 @@ void print_arp_header(struct arp_header *arp_header)
     printf("  Operation: %u\n", ntohs(arp_header->operation));
 
     printf("  Sender MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
-           arp_header->sender_mac[0], arp_header->sender_mac[1],
-           arp_header->sender_mac[2], arp_header->sender_mac[3],
-           arp_header->sender_mac[4], arp_header->sender_mac[5]);
+           arp_header->src_mac[0], arp_header->src_mac[1],
+           arp_header->src_mac[2], arp_header->src_mac[3],
+           arp_header->src_mac[4], arp_header->src_mac[5]);
 
     printf("  Sender IP: %u.%u.%u.%u\n",
-           arp_header->sender_ip[0], arp_header->sender_ip[1],
-           arp_header->sender_ip[2], arp_header->sender_ip[3]);
+           arp_header->src_ip[0], arp_header->src_ip[1],
+           arp_header->src_ip[2], arp_header->src_ip[3]);
 
     printf("  Target MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
-           arp_header->target_mac[0], arp_header->target_mac[1],
-           arp_header->target_mac[2], arp_header->target_mac[3],
-           arp_header->target_mac[4], arp_header->target_mac[5]);
+           arp_header->dest_mac[0], arp_header->dest_mac[1],
+           arp_header->dest_mac[2], arp_header->dest_mac[3],
+           arp_header->dest_mac[4], arp_header->dest_mac[5]);
 
     printf("  Target IP: %u.%u.%u.%u\n\n",
-           arp_header->target_ip[0], arp_header->target_ip[1],
-           arp_header->target_ip[2], arp_header->target_ip[3]);
+           arp_header->dest_ip[0], arp_header->dest_ip[1],
+           arp_header->dest_ip[2], arp_header->dest_ip[3]);
 }
 
 int send_arp_down(struct nw_layer *self, struct pkt *packet)

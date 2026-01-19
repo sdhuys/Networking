@@ -16,6 +16,8 @@ int activate_tap(char *if_name);
 int set_ipv4_addr(char *name, char *address);
 
 const unsigned char IPV4_BROADCAST_MAC[MAC_ADDR_LEN] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+const unsigned char DUMMY_IPV4[4] = {192, 168, 100, 2};
+const unsigned char DUMMY_MAC_ADDR[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
 
 int main()
 {

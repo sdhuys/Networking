@@ -4,9 +4,6 @@
 // subnet mask defaulted to 255.255.255.0
 // dummy must be on same subnet
 
-static unsigned char DUMMY_IPV4[4] = {192, 168, 100, 2};
-static unsigned char DUMMY_MAC_ADDR[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-
 struct nw_layer *construct_stack(int fd)
 {
 
@@ -17,8 +14,6 @@ struct nw_layer *construct_stack(int fd)
     struct nw_layer *icmp = malloc(sizeof(struct nw_layer));
     struct nw_layer *udp = malloc(sizeof(struct nw_layer));
     struct nw_layer *tcp = malloc(sizeof(struct nw_layer));
-
-    char *ipv4_addr = DUMMY_IPV4;
 
     tap->name = "tap";
     tap->send_down = &write_to_tap;
@@ -54,7 +49,6 @@ struct nw_layer *construct_stack(int fd)
     arp->downs_count = 1;
     arp->downs = malloc(arp->downs_count * sizeof(struct nw_layer *));
     arp->downs[0] = eth;
-    arp->context = ipv4_addr;
     struct arp_context *arp_ctx = malloc(sizeof(struct arp_context));
     struct arp_table *arp_table_head = NULL;
     arp_ctx->arp_table_head = arp_table_head;
@@ -73,7 +67,9 @@ struct nw_layer *construct_stack(int fd)
     ip->ups[2] = tcp;
     ip->downs = malloc(ip->downs_count * sizeof(struct nw_layer *));
     ip->downs[0] = eth;
-    ip->context = ipv4_addr;
+    struct ipv4_context *ipv4_ctx = malloc(sizeof(struct ipv4_context));
+    memcpy(ipv4_ctx->ipv4_address, DUMMY_IPV4, IPV4_ADDR_LEN);
+    ip->context = ipv4_ctx;
 
     icmp->name = "icmp";
     icmp->send_down = &send_icmp_down;
