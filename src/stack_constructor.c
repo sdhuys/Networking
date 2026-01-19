@@ -1,12 +1,7 @@
 #include "stack_constructor.h"
 
-// TAP's IPV4 set to 192.168.100.1 by set_ipv4_addr()
-// subnet mask defaulted to 255.255.255.0
-// dummy must be on same subnet
-
 struct nw_layer *construct_stack(int fd)
 {
-
     struct nw_layer *tap = malloc(sizeof(struct nw_layer));
     struct nw_layer *eth = malloc(sizeof(struct nw_layer));
     struct nw_layer *arp = malloc(sizeof(struct nw_layer));
