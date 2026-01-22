@@ -1,11 +1,11 @@
 #include "udp.h"
 
-int send_udp_down(struct nw_layer *self, struct pkt *data)
-{  
-    return 0;
+pkt_result send_udp_down(struct nw_layer *self, struct pkt *packet)
+{
+    return NOT_IMPLEMENTED_YET;
 }
 
-int receive_udp_up(struct nw_layer *self, struct pkt *data)
+pkt_result receive_udp_up(struct nw_layer *self, struct pkt *packet)
 {
-    return 0;
+    return NOT_IMPLEMENTED_YET;
 }

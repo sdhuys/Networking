@@ -2,72 +2,52 @@
 
 int start_listening(int fd, struct nw_layer *tap)
 {
+    init_buffer_pool();
     for (;;)
     {
-        unsigned char *buffer = malloc(MAX_ETH_FRAME_SIZE);
-        if (buffer == NULL)
-        {
-            perror("Allocating buffer for TAP read");
-            close(fd);
-            return -1;
-        }
-        
-        ssize_t nread = read(fd, buffer, MAX_ETH_FRAME_SIZE);
+        struct pkt *packet = allocate_pkt();
+        ssize_t nread = read(fd, packet->data, MAX_ETH_FRAME_SIZE);
         if (nread < 0)
-        {
-            perror("Reading from TAP interface");
-            close(fd);
-            free(buffer);
-            return -1;
-        }
+            continue;
 
-        struct pkt *packet = malloc(sizeof(struct pkt));
-        if (packet == NULL)
-        {
-            perror("Allocating packet structure");
-            close(fd);
-            free(buffer);
-            return -1;
-        }
-        
-        *packet = (struct pkt){
-            .data = buffer,
-            .len = (size_t)nread,
-            .offset = 0,
-            .metadata = malloc(sizeof(struct pkt_metadata))
-        };
+        packet->len = (size_t)nread;
+        packet->offset = 0;
 
-        if (packet->metadata == NULL)
-        {
-            perror("Allocating packet metadata");
-            close(fd);
-            free(buffer);
-            free(packet);
-            return -1;
-        }
-
-        tap->rcv_up(tap, packet);
-        free(buffer);
+        pkt_result result = tap->rcv_up(tap, packet);
+        printf("%d \n\n", result);
+        if (result != SENT)
+            release_pkt(packet);
     }
 }
 
-int send_up_to_ethernet(struct nw_layer *tap, struct pkt *data)
+pkt_result send_up_to_ethernet(struct nw_layer *tap, struct pkt *packet)
 {
-    tap->ups[0]->rcv_up(tap->ups[0], data);
-    return 0;
+    return tap->ups[0]->rcv_up(tap->ups[0], packet);
 }
 
-int write_to_tap(struct nw_layer *tap, struct pkt *data)
+pkt_result write_to_tap(struct nw_layer *tap, struct pkt *packet)
 {
     struct tap_context *tap_ctx = (struct tap_context *)tap->context;
     int fd = tap_ctx->fd;
-    ssize_t nwrite = write(fd, data->data, data->len);
+    ssize_t nwrite = write(fd, packet->data, packet->len);
 
     if (nwrite < 0)
     {
         perror("Writing to TAP interface");
         close(fd);
-        return -1;
+
+        return WRITE_ERROR;
     }
-    return 0;
+/*
+    FILE *log = fopen("out.txt", "a");
+    if (log)
+    {
+        for (size_t i = 0; i < packet->len; i++)
+            fprintf(log, "%02X", packet->data[i]);
+        fprintf(log, "\n");
+        fclose(log);
+    }
+*/
+    release_pkt(packet);
+    return SENT;
 }

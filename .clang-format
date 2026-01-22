@@ -1,0 +1,30 @@
+BasedOnStyle: LLVM
+
+# Indentation Settings
+IndentWidth: 4
+UseTab: Never
+IndentCaseLabels: true
+
+# Brace Placement (Allman Style)
+BreakBeforeBraces: Allman
+# Note: BreakBeforeBraces: Allman is a shorthand that sets most 
+# BraceWrapping flags (AfterControlStatement, AfterFunction, etc.) to true.
+
+# Spacing and Alignment
+SpaceBeforeParens: ControlStatements
+SpacesInParentheses: false
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+
+# Include Management
+SortIncludes: true
+IncludeCategories:
+  - Regex: '^<(.*)>'
+    Priority: 1
+  - Regex: '^"(.*)"'
+    Priority: 2
+
+# General Formatting
+ColumnLimit: 80
+AllowShortIfStatementsOnASingleLine: false

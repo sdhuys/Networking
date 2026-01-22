@@ -1,21 +1,26 @@
 SRC_DIR = src
 BUILD_DIR = build
 
+CC = gcc
+CFLAGS = -Wall -Wextra -MMD -MP
+
 C_FILES = $(wildcard $(SRC_DIR)/*.c)
 OBJ_FILES = $(C_FILES:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 
-all : $(BUILD_DIR)/networking.elf
+.PHONY: all clean
+
+all: networking.elf
+
+networking.elf: $(OBJ_FILES)
+	$(CC) -o $@ $^
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-$(BUILD_DIR)/networking.elf: $(OBJ_FILES) | $(BUILD_DIR)
-	gcc -o $(BUILD_DIR)/networking.elf $(OBJ_FILES)
-
-$(BUILD_DIR)/%.o : $(SRC_DIR)/%.c | $(BUILD_DIR)
-	gcc -c $< -o $@ -MMD
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
 
 -include $(OBJ_FILES:.o=.d)
 
-clean :
-	rm -rf $(BUILD_DIR)/*.o $(BUILD_DIR)/*.d $(BUILD_DIR)/networking.elf
+clean:
+	rm -f $(BUILD_DIR)/*.o $(BUILD_DIR)/*.d networking.elf
