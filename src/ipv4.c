@@ -1,5 +1,4 @@
 #include "ipv4.h"
-#include <stdio.h>
 
 pkt_result receive_ipv4_up(struct nw_layer *self, struct pkt *packet)
 {

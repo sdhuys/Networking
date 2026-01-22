@@ -1,5 +1,4 @@
 #include "icmp.h"
-#include <stdio.h>
 
 pkt_result send_icmp_down(struct nw_layer *self, struct pkt *packet)
 {
