@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <net/if.h>
@@ -15,11 +16,13 @@
 #elif defined(__APPLE__) || defined(__MACH__)
 #include <sys/socket.h>
 #include <sys/kern_control.h>
+#include <sys/sys_domain.h>
 #include <net/if_utun.h>
 #define TUNSETIFF _IOW('T', 202, int)
 #define IFF_TUN 0x0001
 #define IFF_TAP 0x0002
 #define IFF_NO_PI 0x1000
+#define UTUN_CONTROL_NAME "com.apple.net.utun_control"
 #endif
 
 int tap_setup();
@@ -127,6 +130,7 @@ int activate_tap(char *name)
 
 int get_tap(char *name, int flags)
 {
+#ifdef __linux__
     struct ifreq ifr;
     int fd, error;
 
@@ -150,4 +154,75 @@ int get_tap(char *name, int flags)
     }
     strcpy(name, ifr.ifr_name);
     return fd;
+#elif defined(__APPLE__) || defined(__MACH__)
+    // On macOS, try TAP first (if tuntaposx is installed), then fall back to utun (TUN)
+    int fd;
+    struct ctl_info ctl_info;
+    struct sockaddr_ctl sc;
+    
+    // First, try to open /dev/tap0, /dev/tap1, etc. (if tuntaposx is installed)
+    for (int i = 0; i < 10; i++)
+    {
+        char tap_path[32];
+        snprintf(tap_path, sizeof(tap_path), "/dev/tap%d", i);
+        fd = open(tap_path, O_RDWR);
+        if (fd >= 0)
+        {
+            // Successfully opened TAP device
+            snprintf(name, IFNAMSIZ, "tap%d", i);
+            return fd;
+        }
+    }
+    
+    // If TAP devices not available, use built-in utun (TUN interface)
+    // Note: utun is TUN (layer 3), not TAP (layer 2), but it's the best we can do
+    fd = socket(PF_SYSTEM, SOCK_DGRAM, SYSPROTO_CONTROL);
+    if (fd < 0)
+    {
+        perror("socket PF_SYSTEM");
+        return fd;
+    }
+    
+    memset(&ctl_info, 0, sizeof(ctl_info));
+    strncpy(ctl_info.ctl_name, UTUN_CONTROL_NAME, sizeof(ctl_info.ctl_name));
+    
+    if (ioctl(fd, CTLIOCGINFO, &ctl_info) < 0)
+    {
+        perror("ioctl CTLIOCGINFO");
+        close(fd);
+        return -1;
+    }
+    
+    memset(&sc, 0, sizeof(sc));
+    sc.sc_id = ctl_info.ctl_id;
+    sc.sc_len = sizeof(sc);
+    sc.sc_family = AF_SYSTEM;
+    sc.ss_sysaddr = AF_SYS_CONTROL;
+    sc.sc_unit = 0; // Let the system assign a unit number
+    
+    if (connect(fd, (struct sockaddr *)&sc, sizeof(sc)) < 0)
+    {
+        if (errno == EPERM || errno == EACCES)
+        {
+            fprintf(stderr, "Error: Creating utun interface requires root privileges.\n");
+            fprintf(stderr, "Please run with: sudo ./build/networking.elf\n");
+        }
+        perror("connect utun");
+        close(fd);
+        return -1;
+    }
+    
+    // Get the interface name that was assigned
+    socklen_t len = IFNAMSIZ;
+    if (getsockopt(fd, SYSPROTO_CONTROL, UTUN_OPT_IFNAME, name, &len) < 0)
+    {
+        perror("getsockopt UTUN_OPT_IFNAME");
+        // Continue anyway, the interface should still work
+        strncpy(name, "utun0", IFNAMSIZ);
+    }
+    
+    return fd;
+#else
+    #error "Unsupported platform"
+#endif
 }
