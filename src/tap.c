@@ -38,7 +38,7 @@ pkt_result write_to_tap(struct nw_layer *tap, struct pkt *packet)
 
         return WRITE_ERROR;
     }
-/*
+
     FILE *log = fopen("out.txt", "a");
     if (log)
     {
@@ -47,7 +47,6 @@ pkt_result write_to_tap(struct nw_layer *tap, struct pkt *packet)
         fprintf(log, "\n");
         fclose(log);
     }
-*/
     release_pkt(packet);
     return SENT;
 }
