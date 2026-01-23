@@ -12,6 +12,7 @@ pkt_result receive_frame_up(struct nw_layer *self, struct pkt *packet)
     }
 
     packet->offset += sizeof(struct ethernet_header);
+    packet->len -= sizeof(struct ethernet_header);
 
     unsigned short ethertype = ntohs(header->ethertype);
     switch (ethertype)
@@ -48,6 +49,9 @@ pkt_result send_frame_down(struct nw_layer *self, struct pkt *packet)
     header->ethertype = packet->metadata.ethertype;
     memcpy(header->dest_mac, packet->metadata.dest_mac, MAC_ADDR_LEN);
     memcpy(header->src_mac, context->mac_address, MAC_ADDR_LEN);
+
+    packet->len += sizeof(struct ethernet_header);
+    packet->offset -= sizeof(struct ethernet_header);
     return self->downs[0]->send_down(self->downs[0], packet);
 }
 

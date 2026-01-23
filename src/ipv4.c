@@ -30,7 +30,7 @@ pkt_result receive_ipv4_up(struct nw_layer *self, struct pkt *packet)
 
     packet->offset += header_len * 4; // == sizeof(struct ipv4_header) since we
                                       // enforece NO OPTIONS in header
-
+    packet->len -= header_len * 4;
     switch (header->protocol)
     {
         case ICMP:
@@ -75,6 +75,7 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
     memcpy(header->dest_ip, packet->metadata.src_ip, IPV4_ADDR_LEN);
     memcpy(header->src_ip, ipv4_context->ipv4_address, IPV4_ADDR_LEN);
     packet->offset -= sizeof(struct ethernet_header);
+    packet->len += sizeof(struct ethernet_header);
 
     ipv4_address next_hop;
     get_next_hop(self, header, &next_hop);

@@ -95,7 +95,7 @@ struct pkt_metadata
 struct pkt
 {
     unsigned char *data; // Only modified once we go back down the stack
-    size_t len;
+    size_t len; // Packet length from current offset (current layer's length)
     size_t offset; // Offset to the start of the current layer's header within
                    // data, no need to strip headers and copy
     uint8_t ref_count;

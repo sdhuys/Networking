@@ -4,6 +4,7 @@
 pkt_result send_icmp_down(struct nw_layer *self, struct pkt *packet)
 {
     packet->offset -= sizeof(struct ipv4_header);
+    packet->len += sizeof(struct ipv4_header);
     return self->downs[0]->send_down(self->downs[0], packet);
 }
 
@@ -11,11 +12,10 @@ pkt_result receive_icmp_up(struct nw_layer *self, struct pkt *packet)
 {
     struct icmp_header *header =
         (struct icmp_header *)(packet->data + packet->offset);
-    size_t icmp_len = packet->len - packet->offset;
 
-    if (calc_packet_checksum(header, icmp_len) != 0)
+    if (calc_packet_checksum(header, packet->len) != 0)
         return ICMP_CHECKSUM_ERROR;
-        
+
     switch (header->type)
     {
         case ECHO_REPLY:
@@ -23,8 +23,7 @@ pkt_result receive_icmp_up(struct nw_layer *self, struct pkt *packet)
         case ECHO_REQUEST:
             memcpy(packet->metadata.dest_ip, packet->metadata.src_ip,
                    IPV4_ADDR_LEN);
-
-            echo_request_to_reply(packet, header, icmp_len);
+            echo_request_to_reply(packet, header, packet->len);
             return send_icmp_down(self, packet);
         default:
             return ICMP_TYPE_NOT_SUPPORTED;
