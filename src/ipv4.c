@@ -63,7 +63,6 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
     packet->metadata.ethertype = htons(IPV4);
 
     struct ipv4_context *ipv4_context = (struct ipv4_context *)self->context;
-    struct route *routing_table = ipv4_context->routing_table;
     struct nw_layer *arp_layer = ipv4_context->arp_layer;
     struct arp_context *arp_context = arp_layer->context;
 
@@ -76,18 +75,15 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
     memcpy(header->dest_ip, packet->metadata.src_ip, IPV4_ADDR_LEN);
     memcpy(header->src_ip, ipv4_context->ipv4_address, IPV4_ADDR_LEN);
     packet->offset -= sizeof(struct ethernet_header);
-    
-    // TO DO: get next_hop based on metadata.dest_ip and routing table
-    ipv4_address next_hop = {192, 168, 100, 1};
+
+    ipv4_address next_hop;
+    get_next_hop(self, header, &next_hop);
 
     struct arp_table_node *dest_ip_node = query_arp_table(arp_table, next_hop);
-
     if (dest_ip_node == NULL)
     {
-        dest_ip_node =
-            insert_incomplete_for_ip(arp_table, packet->metadata.dest_ip);
-        struct pkt *arp_request =
-            create_arp_request_for(arp_layer, packet->metadata.dest_ip);
+        dest_ip_node = insert_incomplete_for_ip(arp_table, next_hop);
+        struct pkt *arp_request = create_arp_request_for(arp_layer, next_hop);
         send_arp_down(arp_layer, arp_request);
     }
     if (dest_ip_node->status == ARP_INCOMPLETE)
@@ -108,8 +104,40 @@ bool relevant_destination_ip(ipv4_address dest_ip, struct nw_layer *self)
     return false;
 }
 
+void get_next_hop(struct nw_layer *self, struct ipv4_header *header,
+                  ipv4_address *out_next_hop)
+{
+    struct ipv4_context *context = (struct ipv4_context *)self->context;
+    struct route *routes = context->routing_table;
+    ipv4_address *best_route_ip_ptr = NULL;
+
+    int longest_prefix = -1;
+
+    uint32_t int_ip;
+    memcpy(&int_ip, header->dest_ip, IPV4_ADDR_LEN);
+
+    for (size_t i = 0; i < context->routes_amount; i++)
+    {
+        struct route *route = &routes[i];
+        uint32_t mask = route->prefix_len != 0
+                            ? (0xFFFFFFFF << (32 - route->prefix_len))
+                            : 0;
+
+        if (route->prefix_len > longest_prefix &&
+            ((int_ip & htonl(mask))) == route->prefix)
+        {
+            longest_prefix = route->prefix_len;
+            if (route->type == ROUTE_VIA)
+                best_route_ip_ptr = (ipv4_address *)(&(route->gateway));
+            else
+                best_route_ip_ptr = &header->dest_ip;
+        }
+    }
+    memcpy(out_next_hop, best_route_ip_ptr, IPV4_ADDR_LEN);
+}
+
 // calculate one's complement of 16bit one's complement sum of all 16bit units
-// in header header 
+// in header header
 // length in 32bit units => no odd trailing byte possible
 uint16_t calc_header_checksum(struct ipv4_header *header, size_t header_len)
 {

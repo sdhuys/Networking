@@ -1,8 +1,15 @@
 #include "routing_table.h"
+static size_t init_routes_amount = 2;
+
+size_t get_init_routes_amount()
+{
+    return init_routes_amount;
+}
 
 struct route *create_routing_table()
 {
-    struct route *routes = malloc(sizeof(struct route) * 2);
+    //avoid garbage when routes_amount is changed but extra routes not set
+    struct route *routes = calloc(init_routes_amount, sizeof(struct route));
     if (routes == NULL)
         return NULL;
 

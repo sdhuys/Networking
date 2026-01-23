@@ -196,11 +196,9 @@ struct route
 {
     uint32_t prefix;    // network byte order
     uint8_t prefix_len; // CIDR mask (0–32)
-
+    uint8_t mtu;        // max transmission unit
     route_type type;
-
     uint32_t gateway; // valid only if type == ROUTE_VIA
-
     uint32_t iface_id; // which interface to send on (NOT IMPLEMENTED, HARDCODED
                        // ONLY 1 INTERFACE)
 };
@@ -211,6 +209,7 @@ struct ipv4_context
     ipv4_address ipv4_address;
     ipv4_address subnet_mask;
     struct route *routing_table;
+    size_t routes_amount;
 };
 
 struct ipv4_header

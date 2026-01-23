@@ -67,6 +67,7 @@ struct nw_layer *construct_stack(int fd)
     memcpy(ipv4_context->ipv4_address, DUMMY_IPV4, IPV4_ADDR_LEN);
     ipv4_context->arp_layer = arp;
     ipv4_context->routing_table = create_routing_table();
+    ipv4_context->routes_amount = get_init_routes_amount();
     ip->context = ipv4_context;
 
     icmp->name = "icmp";

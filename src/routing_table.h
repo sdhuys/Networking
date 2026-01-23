@@ -4,3 +4,4 @@
 #include "types.h"
 
 struct route *create_routing_table();
+size_t get_init_routes_amount();
