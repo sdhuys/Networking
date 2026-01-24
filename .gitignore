@@ -1,6 +1,6 @@
 # File created using '.gitignore Generator' for Visual Studio Code: https://bit.ly/vscode-gig
-# Created by https://www.toptal.com/developers/gitignore/api/visualstudiocode,linux,c
-# Edit at https://www.toptal.com/developers/gitignore?templates=visualstudiocode,linux,c
+# Created by https://www.toptal.com/developers/gitignore/api/visualstudiocode,linux,c,c++,cmake
+# Edit at https://www.toptal.com/developers/gitignore?templates=visualstudiocode,linux,c,c++,cmake
 
 ### C ###
 # Prerequisites
@@ -56,6 +56,44 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
+### C++ ###
+# Prerequisites
+
+# Compiled Object files
+*.slo
+
+# Precompiled Headers
+
+# Compiled Dynamic libraries
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+
+# Executables
+
+### CMake ###
+CMakeLists.txt.user
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+Testing
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps
+
+### CMake Patch ###
+CMakeUserPresets.json
+
+# External projects
+*-prefix/
+
 ### Linux ###
 *~
 
@@ -90,12 +128,12 @@ dkms.conf
 .history
 .ionide
 
-# End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,linux,c
+# End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,linux,c,c++,cmake
 
 # Custom rules (everything added below won't be overriden by 'Generate .gitignore File' if you use 'Update' option)
+
 notes.txt
 out.txt
 packetdrill.txt
 tools/
 build/
-Testing/Temporary/

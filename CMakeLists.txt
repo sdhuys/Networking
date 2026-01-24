@@ -58,8 +58,8 @@ if(BUILD_TESTING)
 
   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(googletest)
-
-  add_executable(networking_tests tests/hello_test.cpp ${TEST_SOURCES})
+  file(GLOB TEST_FILES "tests/*.cpp")
+  add_executable(networking_tests ${TEST_FILES} ${TEST_SOURCES})
   target_include_directories(networking_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
   target_compile_options(networking_tests PRIVATE -Wall -Wextra)
 
