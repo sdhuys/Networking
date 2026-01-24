@@ -34,7 +34,7 @@ struct nw_layer *construct_stack(int fd)
     eth->downs[0] = tap;
     struct ethernet_context *eth_context =
         malloc(sizeof(struct ethernet_context));
-    memcpy(eth_context->mac_address, DUMMY_MAC_ADDR, MAC_ADDR_LEN);
+    memcpy(eth_context->mac_addr, DUMMY_MAC_ADDR, MAC_ADDR_LEN);
     eth->context = eth_context;
 
     arp->name = "arp";
@@ -48,8 +48,8 @@ struct nw_layer *construct_stack(int fd)
     struct arp_context *arp_ctx = malloc(sizeof(struct arp_context));
     struct arp_table *arp_table_head = malloc(sizeof(struct arp_table));
     arp_ctx->arp_table = arp_table_head;
-    memcpy(arp_ctx->ipv4_address, DUMMY_IPV4, IPV4_ADDR_LEN);
-    memcpy(arp_ctx->mac_address, DUMMY_MAC_ADDR, MAC_ADDR_LEN);
+    memcpy(arp_ctx->ipv4_addr, DUMMY_IPV4, IPV4_ADDR_LEN);
+    memcpy(arp_ctx->mac_addr, DUMMY_MAC_ADDR, MAC_ADDR_LEN);
     arp->context = arp_ctx;
 
     ip->name = "ipv4";

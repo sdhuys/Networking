@@ -25,11 +25,11 @@ pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet)
 
     if (op == ARP_REQUEST)
     {
-        if (memcmp(arp_data->target_ip, cntx->ipv4_address, proto_addr_len) !=
+        if (memcmp(arp_data->target_ip, cntx->ipv4_addr, proto_addr_len) !=
             0)
             return ARP_RQST_TARGET_NOT_RELEVANT;
 
-        inc_arp_request_to_reply(packet, arp_data, cntx->mac_address);
+        inc_arp_request_to_reply(packet, arp_data, cntx->mac_addr);
         return send_arp_down(self, packet);
     }
 
@@ -58,7 +58,7 @@ void flush_q(struct nw_layer *self, struct arp_table_node *arp_entry)
     while (current != NULL)
     {
         next = current->next;
-        memcpy(current->packet->metadata.dest_mac, arp_entry->mac_address,
+        memcpy(current->packet->metadata.dest_mac, arp_entry->mac_addr,
                MAC_ADDR_LEN);
         current->packet->metadata.ethertype = htons(IPV4);
 
@@ -77,7 +77,7 @@ struct arp_table_node *insert_incomplete_for_ip(struct arp_table *table,
     if (new == NULL)
         return NULL;
 
-    memcpy(new->ipv4_address, dest_ip, IPV4_ADDR_LEN);
+    memcpy(new->ipv4_addr, dest_ip, IPV4_ADDR_LEN);
     new->status = ARP_INCOMPLETE;
     new->pending_packets = NULL;
     new->pending_tail = NULL;
@@ -109,7 +109,7 @@ struct arp_table_node *query_arp_table(struct arp_table *table, ipv4_address ip)
 {
     struct arp_table_node *node = table->head;
     for (; node != NULL; node = node->next)
-        if (memcmp(ip, node->ipv4_address, IPV4_ADDR_LEN) == 0)
+        if (memcmp(ip, node->ipv4_addr, IPV4_ADDR_LEN) == 0)
             return node;
 
     return NULL;
@@ -117,7 +117,7 @@ struct arp_table_node *query_arp_table(struct arp_table *table, ipv4_address ip)
 
 void complete_arp_table_node(struct arp_table_node *entry, mac_address src_mac)
 {
-    memcpy(entry->mac_address, src_mac, MAC_ADDR_LEN);
+    memcpy(entry->mac_addr, src_mac, MAC_ADDR_LEN);
     entry->last_updated = time(NULL);
     entry->status = ARP_REACHABLE;
 }
@@ -194,8 +194,8 @@ struct pkt *create_arp_request_for(struct nw_layer *self,
     arp->proto_addr_len = IPV4_ADDR_LEN;
     arp->operation = htons(ARP_REQUEST);
 
-    memcpy(arp->src_mac, arp_context->mac_address, MAC_ADDR_LEN);
-    memcpy(arp->src_ip, arp_context->ipv4_address, IPV4_ADDR_LEN);
+    memcpy(arp->src_mac, arp_context->mac_addr, MAC_ADDR_LEN);
+    memcpy(arp->src_ip, arp_context->ipv4_addr, IPV4_ADDR_LEN);
     memcpy(arp->target_ip, target_ip, IPV4_ADDR_LEN);
     memset(arp->target_mac, 0x00, MAC_ADDR_LEN);
 

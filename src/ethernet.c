@@ -48,7 +48,7 @@ pkt_result send_frame_down(struct nw_layer *self, struct pkt *packet)
 
     header->ethertype = packet->metadata.ethertype;
     memcpy(header->dest_mac, packet->metadata.dest_mac, MAC_ADDR_LEN);
-    memcpy(header->src_mac, context->mac_address, MAC_ADDR_LEN);
+    memcpy(header->src_mac, context->mac_addr, MAC_ADDR_LEN);
 
     packet->len += sizeof(struct ethernet_header);
     packet->offset -= sizeof(struct ethernet_header);
@@ -80,7 +80,7 @@ bool relevant_destination_mac(mac_address dest_mac, struct nw_layer *self)
     struct ethernet_context *context = (struct ethernet_context *)self->context;
 
     if (memcmp(dest_mac, IPV4_BROADCAST_MAC, MAC_ADDR_LEN) == 0 ||
-        memcmp(dest_mac, context->mac_address, MAC_ADDR_LEN) == 0)
+        memcmp(dest_mac, context->mac_addr, MAC_ADDR_LEN) == 0)
         return true;
     return false;
 }

@@ -90,7 +90,7 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
     if (dest_ip_node->status == ARP_INCOMPLETE)
         return add_pkt_to_q(dest_ip_node, packet);
 
-    memcpy(packet->metadata.dest_mac, dest_ip_node->mac_address, MAC_ADDR_LEN);
+    memcpy(packet->metadata.dest_mac, dest_ip_node->mac_addr, MAC_ADDR_LEN);
 
     return self->downs[0]->send_down(self->downs[0], packet);
 }

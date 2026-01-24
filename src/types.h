@@ -123,7 +123,7 @@ struct tap_context
 // ===== Ethernet Layer =====
 struct ethernet_context
 {
-    mac_address mac_address;
+    mac_address mac_addr;
 };
 
 struct ethernet_header
@@ -148,8 +148,8 @@ struct arp_table
 
 struct arp_table_node
 {
-    ipv4_address ipv4_address;
-    mac_address mac_address;
+    ipv4_address ipv4_addr;
+    mac_address mac_addr;
     enum arp_node_status status;
     time_t last_updated;
     struct queue_entry *pending_packets;
@@ -165,8 +165,8 @@ struct queue_entry
 
 struct arp_context
 {
-    ipv4_address ipv4_address;
-    mac_address mac_address;
+    ipv4_address ipv4_addr;
+    mac_address mac_addr;
     struct arp_table *arp_table;
 };
 
