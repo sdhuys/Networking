@@ -39,3 +39,26 @@ if(BUILD_TESTING)
   include(GoogleTest)
   gtest_discover_tests(networking_tests)
 endif()
+
+# ---- Formatting ----
+find_program(CLANG_FORMAT clang-format)
+if(CLANG_FORMAT)
+  file(GLOB_RECURSE ALL_SOURCE_FILES
+    src/*.c
+    src/*.h
+  )
+  
+  add_custom_target(format
+    COMMAND ${CLANG_FORMAT} -i ${ALL_SOURCE_FILES}
+    COMMENT "Running clang-format on all source files"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  )
+  
+  add_custom_target(check-format
+    COMMAND ${CLANG_FORMAT} --dry-run --Werror ${ALL_SOURCE_FILES}
+    COMMENT "Checking if source files are formatted correctly"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  )
+else()
+  message(WARNING "clang-format not found. Format targets will not be available.")
+endif()

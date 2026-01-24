@@ -95,7 +95,7 @@ struct pkt_metadata
 struct pkt
 {
     unsigned char *data; // Only modified once we go back down the stack
-    size_t len; // Packet length from current offset (current layer's length)
+    size_t len;    // Packet length from current offset (current layer's length)
     size_t offset; // Offset to the start of the current layer's header within
                    // data, no need to strip headers and copy
     uint8_t ref_count;
@@ -198,7 +198,7 @@ struct route
     uint8_t prefix_len; // CIDR mask (0–32)
     uint8_t mtu;        // max transmission unit
     route_type type;
-    uint32_t gateway; // valid only if type == ROUTE_VIA
+    uint32_t gateway;  // valid only if type == ROUTE_VIA
     uint32_t iface_id; // which interface to send on (NOT IMPLEMENTED, HARDCODED
                        // ONLY 1 INTERFACE)
 };

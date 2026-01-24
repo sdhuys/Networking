@@ -36,7 +36,4 @@ void release_pkt(struct pkt *pkt)
 
 // called in any layer that needs to keep the packet
 // e.g. for queuing
-void retain_pkt(struct pkt *pkt)
-{
-    pkt->ref_count++;
-}
+void retain_pkt(struct pkt *pkt) { pkt->ref_count++; }
