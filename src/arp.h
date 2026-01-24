@@ -5,6 +5,11 @@
 #include "buffer_pool.h"
 #include "types.h"
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet);
 pkt_result send_arp_down(struct nw_layer *self, struct pkt *packet);
 void print_arp_header(struct arp_data *arp_header);
@@ -19,3 +24,7 @@ struct arp_table_node *insert_incomplete_for_ip(struct arp_table *table,
                                                 ipv4_address dest_ip);
 pkt_result add_pkt_to_q(struct arp_table_node *node, struct pkt *packet);
 void flush_q(struct nw_layer *self, struct arp_table_node *arp_entry);
+
+#ifdef __cplusplus
+}
+#endif

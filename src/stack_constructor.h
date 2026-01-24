@@ -9,4 +9,13 @@
 #include "tcp.h"
 #include "udp.h"
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 struct nw_layer *construct_stack(int fd);
+
+#ifdef __cplusplus
+}
+#endif
