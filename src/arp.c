@@ -25,8 +25,7 @@ pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet)
 
     if (op == ARP_REQUEST)
     {
-        if (memcmp(arp_data->target_ip, cntx->ipv4_addr, proto_addr_len) !=
-            0)
+        if (memcmp(arp_data->target_ip, cntx->ipv4_addr, proto_addr_len) != 0)
             return ARP_RQST_TARGET_NOT_RELEVANT;
 
         inc_arp_request_to_reply(packet, arp_data, cntx->mac_addr);
