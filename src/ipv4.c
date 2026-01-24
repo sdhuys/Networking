@@ -73,7 +73,7 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
     struct ipv4_header *header =
         (struct ipv4_header *)(packet->data + packet->offset);
     memcpy(header->dest_ip, packet->metadata.src_ip, IPV4_ADDR_LEN);
-    memcpy(header->src_ip, ipv4_context->ipv4_address, IPV4_ADDR_LEN);
+    memcpy(header->src_ip, ipv4_context->ipv4_addr, IPV4_ADDR_LEN);
     packet->offset -= sizeof(struct ethernet_header);
     packet->len += sizeof(struct ethernet_header);
 
@@ -100,7 +100,7 @@ bool relevant_destination_ip(ipv4_address dest_ip, struct nw_layer *self)
     struct ipv4_context *context = (struct ipv4_context *)self->context;
 
     if (memcmp(dest_ip, IPV4_BROADCAST_MAC, IPV4_ADDR_LEN) == 0 ||
-        memcmp(dest_ip, context->ipv4_address, IPV4_ADDR_LEN) == 0)
+        memcmp(dest_ip, context->ipv4_addr, IPV4_ADDR_LEN) == 0)
         return true;
     return false;
 }

@@ -64,7 +64,7 @@ struct nw_layer *construct_stack(int fd)
     ip->downs = malloc(ip->downs_count * sizeof(struct nw_layer *));
     ip->downs[0] = eth;
     struct ipv4_context *ipv4_context = malloc(sizeof(struct ipv4_context));
-    memcpy(ipv4_context->ipv4_address, DUMMY_IPV4, IPV4_ADDR_LEN);
+    memcpy(ipv4_context->ipv4_addr, DUMMY_IPV4, IPV4_ADDR_LEN);
     ipv4_context->arp_layer = arp;
     ipv4_context->routing_table = create_routing_table();
     ipv4_context->routes_amount = get_init_routes_amount();

@@ -43,10 +43,9 @@ extern const unsigned char DUMMY_MAC_ADDR[6];
 typedef unsigned char mac_address[MAC_ADDR_LEN];
 typedef unsigned char ipv4_address[IPV4_ADDR_LEN];
 typedef uint16_t protocol_type;
-typedef enum pkt_result pkt_result;
 
 // ===== Result Codes ====
-enum pkt_result
+typedef enum
 {
     SENT = 10,
     ARP_TABLE_UPDATED_Q_FLUSHED = 25,
@@ -75,7 +74,7 @@ enum pkt_result
 
     LAYER_NAME_NOT_FOUND = -2,
     NOT_IMPLEMENTED_YET = -1
-};
+} pkt_result;
 
 // ===== Packet Structures =====
 struct pkt_metadata
@@ -106,8 +105,8 @@ struct pkt
 struct nw_layer
 {
     char *name;
-    enum pkt_result (*send_down)(struct nw_layer *self, struct pkt *packet);
-    enum pkt_result (*rcv_up)(struct nw_layer *self, struct pkt *packet);
+    pkt_result (*send_down)(struct nw_layer *self, struct pkt *packet);
+    pkt_result (*rcv_up)(struct nw_layer *self, struct pkt *packet);
     struct nw_layer **ups;
     struct nw_layer **downs;
     size_t ups_count;
@@ -206,7 +205,7 @@ struct route
 struct ipv4_context
 {
     struct nw_layer *arp_layer;
-    ipv4_address ipv4_address;
+    ipv4_address ipv4_addr;
     ipv4_address subnet_mask;
     struct route *routing_table;
     size_t routes_amount;

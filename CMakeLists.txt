@@ -30,6 +30,7 @@ if(BUILD_TESTING)
   FetchContent_MakeAvailable(googletest)
 
   add_executable(networking_tests tests/hello_test.cpp ${SRC_FILES})
+  target_include_directories(networking_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
   target_compile_options(networking_tests PRIVATE -Wall -Wextra)
 
   target_link_libraries(networking_tests
@@ -47,13 +48,13 @@ if(CLANG_FORMAT)
     src/*.c
     src/*.h
   )
-  
+
   add_custom_target(format
     COMMAND ${CLANG_FORMAT} -i ${ALL_SOURCE_FILES}
     COMMENT "Running clang-format on all source files"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   )
-  
+
   add_custom_target(check-format
     COMMAND ${CLANG_FORMAT} --dry-run --Werror ${ALL_SOURCE_FILES}
     COMMENT "Checking if source files are formatted correctly"
