@@ -1,6 +1,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <netinet/in.h>
 #include <net/if.h>
 #include <netinet/in.h>
 #include <stdio.h>
@@ -13,10 +14,10 @@
 #include <linux/if_tun.h>
 #include <linux/rtnetlink.h>
 #elif defined(__APPLE__) || defined(__MACH__)
-#include <net/if_utun.h>
-#include <sys/kern_control.h>
 #include <sys/socket.h>
+#include <sys/kern_control.h>
 #include <sys/sys_domain.h>
+#include <net/if_utun.h>
 #define TUNSETIFF _IOW('T', 202, int)
 #define IFF_TUN 0x0001
 #define IFF_TAP 0x0002
@@ -28,14 +29,6 @@ int tap_setup();
 int get_tap(char *name, int flags);
 int activate_tap(char *if_name);
 int set_ipv4_addr(char *name, char *address);
-
-const unsigned char IPV4_BROADCAST_MAC[MAC_ADDR_LEN] = {0xFF, 0xFF, 0xFF,
-                                                        0xFF, 0xFF, 0xFF};
-// TAP's IPV4 set to 192.168.100.1 by set_ipv4_addr()
-// subnet mask defaulted to 255.255.255.0
-// dummy must be on same subnet
-const unsigned char DUMMY_IPV4[4] = {192, 168, 100, 2};
-const unsigned char DUMMY_MAC_ADDR[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
 
 int main()
 {
@@ -154,12 +147,11 @@ int get_tap(char *name, int flags)
     strcpy(name, ifr.ifr_name);
     return fd;
 #elif defined(__APPLE__) || defined(__MACH__)
-    // On macOS, try TAP first (if tuntaposx is installed), then fall back to
-    // utun (TUN)
+    // On macOS, try TAP first (if tuntaposx is installed), then fall back to utun (TUN)
     int fd;
     struct ctl_info ctl_info;
     struct sockaddr_ctl sc;
-
+    
     // First, try to open /dev/tap0, /dev/tap1, etc. (if tuntaposx is installed)
     for (int i = 0; i < 10; i++)
     {
@@ -173,48 +165,45 @@ int get_tap(char *name, int flags)
             return fd;
         }
     }
-
+    
     // If TAP devices not available, use built-in utun (TUN interface)
-    // Note: utun is TUN (layer 3), not TAP (layer 2), but it's the best we can
-    // do
+    // Note: utun is TUN (layer 3), not TAP (layer 2), but it's the best we can do
     fd = socket(PF_SYSTEM, SOCK_DGRAM, SYSPROTO_CONTROL);
     if (fd < 0)
     {
         perror("socket PF_SYSTEM");
         return fd;
     }
-
+    
     memset(&ctl_info, 0, sizeof(ctl_info));
     strncpy(ctl_info.ctl_name, UTUN_CONTROL_NAME, sizeof(ctl_info.ctl_name));
-
+    
     if (ioctl(fd, CTLIOCGINFO, &ctl_info) < 0)
     {
         perror("ioctl CTLIOCGINFO");
         close(fd);
         return -1;
     }
-
+    
     memset(&sc, 0, sizeof(sc));
     sc.sc_id = ctl_info.ctl_id;
     sc.sc_len = sizeof(sc);
     sc.sc_family = AF_SYSTEM;
     sc.ss_sysaddr = AF_SYS_CONTROL;
     sc.sc_unit = 0; // Let the system assign a unit number
-
+    
     if (connect(fd, (struct sockaddr *)&sc, sizeof(sc)) < 0)
     {
         if (errno == EPERM || errno == EACCES)
         {
-            fprintf(
-                stderr,
-                "Error: Creating utun interface requires root privileges.\n");
+            fprintf(stderr, "Error: Creating utun interface requires root privileges.\n");
             fprintf(stderr, "Please run with: sudo ./build/networking.elf\n");
         }
         perror("connect utun");
         close(fd);
         return -1;
     }
-
+    
     // Get the interface name that was assigned
     socklen_t len = IFNAMSIZ;
     if (getsockopt(fd, SYSPROTO_CONTROL, UTUN_OPT_IFNAME, name, &len) < 0)
@@ -223,9 +212,9 @@ int get_tap(char *name, int flags)
         // Continue anyway, the interface should still work
         strncpy(name, "utun0", IFNAMSIZ);
     }
-
+    
     return fd;
 #else
-#error "Unsupported platform"
+    #error "Unsupported platform"
 #endif
 }

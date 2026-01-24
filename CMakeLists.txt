@@ -11,9 +11,35 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # ---- Options ----
 option(BUILD_TESTING "Build tests" ON)
 
+# ---- Source files ----
+# Library source files (shared between main executable and tests)
+set(LIB_SOURCES
+  src/arp.c
+  src/buffer_pool.c
+  src/constants.c
+  src/ethernet.c
+  src/icmp.c
+  src/ipv4.c
+  src/routing_table.c
+  src/stack_constructor.c
+  src/tap.c
+  src/tcp.c
+  src/udp.c
+)
+
+# Main executable source files
+set(MAIN_SOURCES
+  ${LIB_SOURCES}
+  src/main.c
+)
+
+# Test source files (excludes main.c to avoid conflict with gtest_main)
+set(TEST_SOURCES
+  ${LIB_SOURCES}
+)
+
 # ---- Main executable ----
-file(GLOB SRC_FILES CONFIGURE_DEPENDS src/*.c)
-add_executable(networking.elf ${SRC_FILES})
+add_executable(networking.elf ${MAIN_SOURCES})
 target_compile_options(networking.elf PRIVATE -Wall -Wextra)
 
 # ---- Tests ----
@@ -29,7 +55,7 @@ if(BUILD_TESTING)
   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(googletest)
 
-  add_executable(networking_tests tests/hello_test.cpp ${SRC_FILES})
+  add_executable(networking_tests tests/hello_test.cpp ${TEST_SOURCES})
   target_include_directories(networking_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
   target_compile_options(networking_tests PRIVATE -Wall -Wextra)
 
@@ -48,13 +74,11 @@ if(CLANG_FORMAT)
     src/*.c
     src/*.h
   )
-
   add_custom_target(format
     COMMAND ${CLANG_FORMAT} -i ${ALL_SOURCE_FILES}
     COMMENT "Running clang-format on all source files"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   )
-
   add_custom_target(check-format
     COMMAND ${CLANG_FORMAT} --dry-run --Werror ${ALL_SOURCE_FILES}
     COMMENT "Checking if source files are formatted correctly"
