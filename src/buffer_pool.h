@@ -4,8 +4,7 @@
 #define POOL_SIZE 100
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 struct pkt *allocate_pkt();

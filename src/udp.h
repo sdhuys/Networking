@@ -2,8 +2,7 @@
 #include "types.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 pkt_result send_udp_down(struct nw_layer *self, struct pkt *packet);

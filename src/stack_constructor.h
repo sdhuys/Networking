@@ -1,5 +1,4 @@
 #pragma once
-#include <stdlib.h>
 #include "arp.h"
 #include "ethernet.h"
 #include "icmp.h"
@@ -8,10 +7,10 @@
 #include "tap.h"
 #include "tcp.h"
 #include "udp.h"
+#include <stdlib.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 struct nw_layer *construct_stack(int fd);

@@ -1,13 +1,12 @@
 #pragma once
+#include "buffer_pool.h"
+#include "types.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include "buffer_pool.h"
-#include "types.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 int start_listening(int fd, struct nw_layer *tap);

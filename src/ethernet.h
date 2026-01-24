@@ -1,13 +1,12 @@
 #pragma once
+#include "types.h"
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "types.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 pkt_result receive_frame_up(struct nw_layer *self, struct pkt *packet);

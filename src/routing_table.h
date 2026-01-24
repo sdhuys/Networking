@@ -1,11 +1,10 @@
 #pragma once
+#include "types.h"
 #include <arpa/inet.h>
 #include <stdlib.h>
-#include "types.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
 struct route *create_routing_table();
