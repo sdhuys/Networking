@@ -10,6 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ---- Options ----
 option(BUILD_TESTING "Build tests" ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ---- Source files ----
 # Library source files (shared between main executable and tests)
