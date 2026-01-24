@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.14)
 project(networking LANGUAGES C CXX)
 
+# ---- Policy ----
+cmake_policy(SET CMP0135 NEW)
+
 # ---- Language standards ----
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
