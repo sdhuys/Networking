@@ -10,7 +10,7 @@ struct nw_layer *construct_stack(int fd)
 	struct nw_layer *udp = malloc(sizeof(struct nw_layer));
 	struct nw_layer *tcp = malloc(sizeof(struct nw_layer));
 
-	tap->name = "tap";
+	tap->name = TAP_NAME;
 	tap->send_down = &write_to_tap;
 	tap->rcv_up = &send_up_to_ethernet;
 	tap->ups_count = 1;
@@ -22,7 +22,7 @@ struct nw_layer *construct_stack(int fd)
 	tap_ctx->fd = fd;
 	tap->context = tap_ctx;
 
-	eth->name = "ethernet";
+	eth->name = ETH_NAME;
 	eth->send_down = &send_frame_down;
 	eth->rcv_up = &receive_frame_up;
 	eth->ups_count = 2;
@@ -36,7 +36,7 @@ struct nw_layer *construct_stack(int fd)
 	memcpy(eth_context->mac_addr, DUMMY_MAC_ADDR, MAC_ADDR_LEN);
 	eth->context = eth_context;
 
-	arp->name = "arp";
+	arp->name = ARP_NAME;
 	arp->send_down = &send_arp_down;
 	arp->rcv_up = &receive_arp_up;
 	arp->ups = NULL;
@@ -51,7 +51,7 @@ struct nw_layer *construct_stack(int fd)
 	memcpy(arp_ctx->mac_addr, DUMMY_MAC_ADDR, MAC_ADDR_LEN);
 	arp->context = arp_ctx;
 
-	ip->name = "ipv4";
+	ip->name = IPV4_NAME;
 	ip->send_down = &send_ipv4_down;
 	ip->rcv_up = &receive_ipv4_up;
 	ip->ups_count = 3;
@@ -69,7 +69,7 @@ struct nw_layer *construct_stack(int fd)
 	ipv4_context->routes_amount = get_init_routes_amount();
 	ip->context = ipv4_context;
 
-	icmp->name = "icmp";
+	icmp->name = ICMP_NAME;
 	icmp->send_down = &send_icmp_down;
 	icmp->rcv_up = &receive_icmp_up;
 	icmp->ups = NULL;
@@ -78,7 +78,7 @@ struct nw_layer *construct_stack(int fd)
 	icmp->downs = malloc(icmp->downs_count * sizeof(struct nw_layer *));
 	icmp->downs[0] = ip;
 
-	udp->name = "udp";
+	udp->name = UDP_NAME;
 	udp->send_down = &send_udp_down;
 	udp->rcv_up = &receive_udp_up;
 	udp->ups = NULL;
@@ -87,7 +87,7 @@ struct nw_layer *construct_stack(int fd)
 	udp->downs = malloc(udp->downs_count * sizeof(struct nw_layer *));
 	udp->downs[0] = ip;
 
-	tcp->name = "tcp";
+	tcp->name = TCP_NAME;
 	tcp->send_down = &send_tcp_down;
 	tcp->rcv_up = &receive_tcp_up;
 	tcp->ups = NULL;

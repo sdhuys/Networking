@@ -32,11 +32,11 @@ pkt_result receive_ipv4_up(struct nw_layer *self, struct pkt *packet)
 	packet->len -= header_len * 4;
 	switch (header->protocol) {
 	case ICMP:
-		return send_to_icmp(self, packet);
+		return pass_up_to_layer(self, ICMP_NAME, packet);
 	case TCP:
-		return NOT_IMPLEMENTED_YET;
+		return pass_up_to_layer(self, TCP_NAME, packet);
 	case UDP:
-		return NOT_IMPLEMENTED_YET;
+		return pass_up_to_layer(self, UDP_NAME, packet);
 	case IGMP:
 	case ENCAP:
 	case OSPF:
@@ -45,15 +45,6 @@ pkt_result receive_ipv4_up(struct nw_layer *self, struct pkt *packet)
 	default:
 		return IP_HDR_UNKNOWN_TRANSPORT_PROT;
 	};
-}
-
-pkt_result send_to_icmp(struct nw_layer *self, struct pkt *packet)
-{
-	for (size_t i = 0; i < self->ups_count; i++)
-		if (strcmp(self->ups[i]->name, "icmp") == 0)
-			return self->ups[i]->rcv_up(self->ups[i], packet);
-
-	return LAYER_NAME_NOT_FOUND;
 }
 
 pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)

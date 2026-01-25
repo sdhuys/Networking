@@ -24,6 +24,7 @@ set(LIB_SOURCES
   src/ethernet.c
   src/icmp.c
   src/ipv4.c
+  src/layer_router.c
   src/routing_table.c
   src/stack_constructor.c
   src/tap.c

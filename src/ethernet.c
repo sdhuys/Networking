@@ -17,11 +17,11 @@ pkt_result receive_frame_up(struct nw_layer *self, struct pkt *packet)
 	switch (ethertype) {
 	case IPV4:
 		printf("This is an IPv4 packet.\n");
-		return send_to_ipv4(self, packet);
+		return pass_up_to_layer(self, IPV4_NAME, packet);
 		break;
 	case ARP:
 		printf("This is an ARP packet.\n");
-		return send_to_arp(self, packet);
+		return pass_up_to_layer(self, ARP_NAME, packet);
 		break;
 	case IPV6:
 		return ETHERTYPE_NOT_SUPPORTED;
@@ -50,24 +50,6 @@ pkt_result send_frame_down(struct nw_layer *self, struct pkt *packet)
 	packet->len += sizeof(struct ethernet_header);
 	packet->offset -= sizeof(struct ethernet_header);
 	return self->downs[0]->send_down(self->downs[0], packet);
-}
-
-pkt_result send_to_ipv4(struct nw_layer *self, struct pkt *packet)
-{
-	for (size_t i = 0; i < self->ups_count; i++)
-		if (strcmp(self->ups[i]->name, "ipv4") == 0)
-			return self->ups[i]->rcv_up(self->ups[i], packet);
-
-	return LAYER_NAME_NOT_FOUND;
-}
-
-pkt_result send_to_arp(struct nw_layer *self, struct pkt *packet)
-{
-	for (size_t i = 0; i < self->ups_count; i++)
-		if (strcmp(self->ups[i]->name, "arp") == 0)
-			return self->ups[i]->rcv_up(self->ups[i], packet);
-
-	return LAYER_NAME_NOT_FOUND;
 }
 
 // Only procees frames sent to stack's MAC or ipv4 broadcast

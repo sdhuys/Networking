@@ -19,6 +19,7 @@ int start_listening(int fd, struct nw_layer *tap)
 	}
 }
 
+// No demuxing at this layer, no need for "pass_up_to_layer" usage
 pkt_result send_up_to_ethernet(struct nw_layer *tap, struct pkt *packet)
 {
 	return tap->ups[0]->rcv_up(tap->ups[0], packet);

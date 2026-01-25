@@ -35,6 +35,14 @@
 #define DESTINATION_UNREACHABLE 3
 #define ECHO_REQUEST 8
 
+#define TAP_NAME "tap"
+#define ETH_NAME "ethernet"
+#define ARP_NAME "arp"
+#define ICMP_NAME "icmp"
+#define IPV4_NAME "ipv4"
+#define UDP_NAME "udp"
+#define TCP_NAME "tcp"
+
 extern const unsigned char IPV4_BROADCAST_MAC[MAC_ADDR_LEN];
 extern const unsigned char DUMMY_IPV4[4];
 extern const unsigned char DUMMY_MAC_ADDR[6];
