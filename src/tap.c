@@ -27,8 +27,8 @@ pkt_result send_up_to_ethernet(struct nw_layer *tap, struct pkt *packet)
 
 pkt_result write_to_tap(struct nw_layer *tap, struct pkt *packet)
 {
-	struct tap_context *tap_ctx = (struct tap_context *)tap->context;
-	int fd = tap_ctx->fd;
+	struct interface_context *tap_ctx = (struct interface_context *)tap->context;
+	int fd = tap_ctx->n_if.fd;
 	ssize_t nwrite = write(fd, packet->data, packet->len);
 
 	if (nwrite < 0) {

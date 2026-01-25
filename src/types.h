@@ -8,8 +8,10 @@
 // ===== Definitions & Constants =====
 #define MAC_ADDR_LEN 6
 #define IPV4_ADDR_LEN 4
-#define IPV4_HEADER_NO_OPTIONS_LEN 5
+
 #define IPV4_V 4
+#define IPV4_HEADER_NO_OPTIONS_LEN 5 // means 5 * 32 bits header length
+#define IPV4_TTL 64
 
 #define ETHERNET 1
 
@@ -44,7 +46,7 @@
 #define TCP_NAME "tcp"
 
 extern const unsigned char IPV4_BROADCAST_MAC[MAC_ADDR_LEN];
-extern const unsigned char DUMMY_IPV4[4];
+extern const unsigned char STACK_IPV4_ADRR[4];
 extern const unsigned char DUMMY_MAC_ADDR[6];
 
 // ===== Common Types =====
@@ -85,14 +87,11 @@ typedef enum {
 
 // ===== Packet Structures =====
 struct pkt_metadata {
-	protocol_type ethertype;
 
-	// ARP requests -> reply: set dest_mac to arp_header src_mac
-	// Otherwise ip layer: ARP res
+	protocol_type ethertype;
 	mac_address dest_mac;
 
 	ipv4_address src_ip;
-
 	// stack's API for applications to send packets out should set this
 	ipv4_address dest_ip;
 };
@@ -118,9 +117,19 @@ struct nw_layer {
 	void *context;
 };
 
-// ===== TAP Interface =====
-struct tap_context {
+// ===== Network Interface =====
+struct net_if {
+	char *name;
 	int fd;
+	ipv4_address ip_addr;
+	ipv4_address netmask;
+	mac_address mac_addr;
+	uint8_t mtu;
+};
+
+// ===== Interface Layer =====
+struct interface_context {
+	struct net_if n_if;
 };
 
 // ===== Ethernet Layer =====

@@ -18,7 +18,7 @@ struct nw_layer *construct_stack(int fd)
 	tap->ups[0] = eth;
 	tap->downs = NULL;
 	tap->downs_count = 0;
-	struct tap_context *tap_ctx = malloc(sizeof(struct tap_context));
+	struct interface_context *tap_ctx = malloc(sizeof(struct interface_context));
 	tap_ctx->fd = fd;
 	tap->context = tap_ctx;
 
@@ -47,7 +47,7 @@ struct nw_layer *construct_stack(int fd)
 	struct arp_context *arp_ctx = malloc(sizeof(struct arp_context));
 	struct arp_table *arp_table_head = malloc(sizeof(struct arp_table));
 	arp_ctx->arp_table = arp_table_head;
-	memcpy(arp_ctx->ipv4_addr, DUMMY_IPV4, IPV4_ADDR_LEN);
+	memcpy(arp_ctx->ipv4_addr, STACK_IPV4_ADRR, IPV4_ADDR_LEN);
 	memcpy(arp_ctx->mac_addr, DUMMY_MAC_ADDR, MAC_ADDR_LEN);
 	arp->context = arp_ctx;
 
@@ -63,7 +63,7 @@ struct nw_layer *construct_stack(int fd)
 	ip->downs = malloc(ip->downs_count * sizeof(struct nw_layer *));
 	ip->downs[0] = eth;
 	struct ipv4_context *ipv4_context = malloc(sizeof(struct ipv4_context));
-	memcpy(ipv4_context->ipv4_addr, DUMMY_IPV4, IPV4_ADDR_LEN);
+	memcpy(ipv4_context->ipv4_addr, STACK_IPV4_ADRR, IPV4_ADDR_LEN);
 	ipv4_context->arp_layer = arp;
 	ipv4_context->routing_table = create_routing_table();
 	ipv4_context->routes_amount = get_init_routes_amount();
