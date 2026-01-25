@@ -1,4 +1,5 @@
 #pragma once
+#include <net/if.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -10,8 +11,8 @@
 #define IPV4_ADDR_LEN 4
 
 #define IPV4_V 4
-#define IPV4_HEADER_NO_OPTIONS_LEN 5 // means 5 * 32 bits header length
-#define IPV4_TTL 64
+#define IPV4_HEADER_NO_OPTIONS_LEN 5 // length in 32bits (5 = 5 * 32 bits)
+#define IPV4_TTL_DEFAULT 64
 
 #define ETHERNET 1
 
@@ -46,13 +47,12 @@
 #define TCP_NAME "tcp"
 
 extern const unsigned char IPV4_BROADCAST_MAC[MAC_ADDR_LEN];
-extern const unsigned char STACK_IPV4_ADRR[4];
-extern const unsigned char DUMMY_MAC_ADDR[6];
+extern const unsigned char IPV4_BROADCAST_IP[IPV4_ADDR_LEN];
 
 // ===== Common Types =====
 typedef unsigned char mac_address[MAC_ADDR_LEN];
 typedef unsigned char ipv4_address[IPV4_ADDR_LEN];
-typedef uint16_t protocol_type;
+typedef uint16_t ether_type;
 
 // ===== Result Codes ====
 typedef enum {
@@ -78,6 +78,7 @@ typedef enum {
 	IP_DEST_NOT_RELEVANT = -305,
 	IP_HDR_TRANSPORT_PROT_NOT_SUPPORTED = -306,
 	IP_HDR_UNKNOWN_TRANSPORT_PROT = -307,
+	IP_NO_ROUTE_FOUND = -308,
 	ICMP_CHECKSUM_ERROR = -351,
 	ICMP_TYPE_NOT_SUPPORTED = -352,
 
@@ -88,7 +89,9 @@ typedef enum {
 // ===== Packet Structures =====
 struct pkt_metadata {
 
-	protocol_type ethertype;
+	int interface_fd;
+	uint8_t protocol;
+	ether_type ethertype;
 	mac_address dest_mac;
 
 	ipv4_address src_ip;
@@ -118,18 +121,14 @@ struct nw_layer {
 };
 
 // ===== Network Interface =====
-struct net_if {
-	char *name;
+// set as the context of interface nw_layer
+struct nw_interface {
+	char name[IFNAMSIZ];
 	int fd;
-	ipv4_address ip_addr;
-	ipv4_address netmask;
+	uint32_t ipv4_addr;   // network byte order
+	uint32_t subnet_mask; // network byte order
 	mac_address mac_addr;
 	uint8_t mtu;
-};
-
-// ===== Interface Layer =====
-struct interface_context {
-	struct net_if n_if;
 };
 
 // ===== Ethernet Layer =====
@@ -140,7 +139,7 @@ struct ethernet_context {
 struct ethernet_header {
 	mac_address dest_mac;
 	mac_address src_mac;
-	protocol_type ethertype;
+	ether_type ethertype;
 } __attribute__((packed));
 
 // ===== ARP Layer =====
@@ -195,9 +194,10 @@ typedef enum {
 } route_type;
 
 struct route {
-	uint32_t prefix;    // network byte order
-	uint8_t prefix_len; // CIDR mask (0–32)
-	uint8_t mtu;	    // max transmission unit
+	uint32_t prefix;      // network byte order
+	uint32_t subnet_mask; // network byte order
+	uint8_t prefix_len;   // CIDR mask (0–32)
+	uint8_t mtu;	      // max transmission unit
 	route_type type;
 	uint32_t gateway;  // valid only if type == ROUTE_VIA
 	uint32_t iface_id; // which interface to send on (NOT IMPLEMENTED, HARDCODED
@@ -206,8 +206,8 @@ struct route {
 
 struct ipv4_context {
 	struct nw_layer *arp_layer;
-	ipv4_address ipv4_addr;
-	ipv4_address subnet_mask;
+	ipv4_address stack_ipv4_addr;
+	struct nw_interface *nw_if;
 	struct route *routing_table;
 	size_t routes_amount;
 };

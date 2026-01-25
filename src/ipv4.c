@@ -51,26 +51,31 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 {
 	packet->metadata.ethertype = htons(IPV4);
 
-	struct ipv4_context *ipv4_context = (struct ipv4_context *)self->context;
-	struct nw_layer *arp_layer = ipv4_context->arp_layer;
-	struct arp_context *arp_context = arp_layer->context;
+	struct ipv4_context *ipv4_cntxt = (struct ipv4_context *)self->context;
+	struct nw_layer *arp_layer = ipv4_cntxt->arp_layer;
+	struct arp_context *arp_cntxt = arp_layer->context;
+	struct arp_table *arp_tbl = arp_cntxt->arp_table;
 
-	struct arp_table *arp_table = arp_context->arp_table;
+	// Find route
+	struct route *next_hop_route = NULL;
+	get_route(self, packet->metadata.dest_ip, &next_hop_route);
 
-	// CREATE IP HEADER, CURRENTLY ONLY WORKS FOR REPLIES
-	// reusing incoming header
+	if (next_hop_route == NULL)
+		return IP_NO_ROUTE_FOUND; // should relay ICMP Destination Unreachable to UDP or TCP
+	packet->metadata.interface_fd = next_hop_route->iface_id;
+
+	// Write header
 	struct ipv4_header *header = (struct ipv4_header *)(packet->data + packet->offset);
-	memcpy(header->dest_ip, packet->metadata.src_ip, IPV4_ADDR_LEN);
-	memcpy(header->src_ip, ipv4_context->ipv4_addr, IPV4_ADDR_LEN);
-	packet->offset -= sizeof(struct ethernet_header);
-	packet->len += sizeof(struct ethernet_header);
+	write_ipv4_header(ipv4_cntxt, header, packet);
 
-	ipv4_address next_hop;
-	get_next_hop(self, header, &next_hop);
+	// Prepare MAC metadata for lower layer
+	const uint8_t *next_hop = (next_hop_route->type == ROUTE_VIA) ? next_hop_route->gateway
+								      : packet->metadata.dest_ip;
 
-	struct arp_table_node *dest_ip_node = query_arp_table(arp_table, next_hop);
+	struct arp_table_node *dest_ip_node = query_arp_table(arp_tbl, next_hop);
+
 	if (dest_ip_node == NULL) {
-		dest_ip_node = insert_incomplete_for_ip(arp_table, next_hop);
+		dest_ip_node = insert_incomplete_for_ip(arp_tbl, next_hop);
 		struct pkt *arp_request = create_arp_request_for(arp_layer, next_hop);
 		send_arp_down(arp_layer, arp_request);
 	}
@@ -79,45 +84,59 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 
 	memcpy(packet->metadata.dest_mac, dest_ip_node->mac_addr, MAC_ADDR_LEN);
 
+	packet->offset -= sizeof(struct ethernet_header);
+	packet->len += sizeof(struct ethernet_header);
+
 	return self->downs[0]->send_down(self->downs[0], packet);
+}
+
+void write_ipv4_header(struct ipv4_context *context, struct ipv4_header *header, struct pkt *packet)
+{
+	header->version_ihl = (IPV4_V << 4) + IPV4_HEADER_NO_OPTIONS_LEN;
+	header->dscp_ecn = 0; // could be set by metadata provided by application socket call
+	header->total_length = htons(packet->len);
+	header->id = 0; // can be 0 since we don't allow fragmentation
+	header->flags_fragment_offset = htons(1 << 14); // DO NOT FRAGMENT
+	header->ttl = IPV4_TTL_DEFAULT;
+	header->protocol = packet->metadata.protocol;
+	header->header_checksum = 0;
+	header->header_checksum = calc_header_checksum(header, IPV4_HEADER_NO_OPTIONS_LEN);
+	// Because we're using a TAP device, we set source as stack's ip instead of interface's
+	// ip
+	// otherwise the stack never receives any replies
+	memcpy(header->src_ip, context->stack_ipv4_addr, IPV4_ADDR_LEN);
+	memcpy(header->dest_ip, packet->metadata.dest_ip, IPV4_ADDR_LEN);
 }
 
 bool relevant_destination_ip(ipv4_address dest_ip, struct nw_layer *self)
 {
 	struct ipv4_context *context = (struct ipv4_context *)self->context;
 
-	if (memcmp(dest_ip, IPV4_BROADCAST_MAC, IPV4_ADDR_LEN) == 0 ||
-	    memcmp(dest_ip, context->ipv4_addr, IPV4_ADDR_LEN) == 0)
+	if (memcmp(dest_ip, IPV4_BROADCAST_IP, IPV4_ADDR_LEN) == 0 ||
+	    memcmp(dest_ip, context->stack_ipv4_addr, IPV4_ADDR_LEN) == 0)
 		return true;
 	return false;
 }
 
-void get_next_hop(struct nw_layer *self, struct ipv4_header *header, ipv4_address *out_next_hop)
+void get_route(struct nw_layer *self, ipv4_address dest_ip, struct route **route_out)
 {
 	struct ipv4_context *context = (struct ipv4_context *)self->context;
 	struct route *routes = context->routing_table;
-	ipv4_address *best_route_ip_ptr = NULL;
 
 	int longest_prefix = -1;
 
 	uint32_t int_ip;
-	memcpy(&int_ip, header->dest_ip, IPV4_ADDR_LEN);
+	memcpy(&int_ip, dest_ip, IPV4_ADDR_LEN);
 
 	for (size_t i = 0; i < context->routes_amount; i++) {
 		struct route *route = &routes[i];
-		uint32_t mask =
-		    route->prefix_len != 0 ? (0xFFFFFFFF << (32 - route->prefix_len)) : 0;
 
 		if (route->prefix_len > longest_prefix &&
-		    ((int_ip & htonl(mask))) == route->prefix) {
+		    ((int_ip & route->subnet_mask)) == route->prefix) {
 			longest_prefix = route->prefix_len;
-			if (route->type == ROUTE_VIA)
-				best_route_ip_ptr = (ipv4_address *)(&(route->gateway));
-			else
-				best_route_ip_ptr = &header->dest_ip;
+			*route_out = route;
 		}
 	}
-	memcpy(out_next_hop, best_route_ip_ptr, IPV4_ADDR_LEN);
 }
 
 // calculate one's complement of 16bit one's complement sum of all 16bit units

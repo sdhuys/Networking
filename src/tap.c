@@ -1,6 +1,6 @@
 #include "tap.h"
 
-int start_listening(int fd, struct nw_layer *tap)
+int start_listening(int fd, struct nw_layer *interface)
 {
 	init_buffer_pool();
 	for (;;) {
@@ -12,7 +12,7 @@ int start_listening(int fd, struct nw_layer *tap)
 		packet->len = (size_t)nread;
 		packet->offset = 0;
 
-		pkt_result result = tap->rcv_up(tap, packet);
+		pkt_result result = interface->rcv_up(interface, packet);
 		printf("%d \n\n", result);
 		if (result != SENT)
 			release_pkt(packet);
@@ -20,15 +20,17 @@ int start_listening(int fd, struct nw_layer *tap)
 }
 
 // No demuxing at this layer, no need for "pass_up_to_layer" usage
-pkt_result send_up_to_ethernet(struct nw_layer *tap, struct pkt *packet)
+pkt_result send_up_to_ethernet(struct nw_layer *interface, struct pkt *packet)
 {
-	return tap->ups[0]->rcv_up(tap->ups[0], packet);
+	return interface->ups[0]->rcv_up(interface->ups[0], packet);
 }
 
-pkt_result write_to_tap(struct nw_layer *tap, struct pkt *packet)
+pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
 {
-	struct interface_context *tap_ctx = (struct interface_context *)tap->context;
-	int fd = tap_ctx->n_if.fd;
+	struct nw_interface *nw_if =
+	    (struct nw_interface *)interface->context +
+	    packet->metadata.interface_fd; // prepare support for multiple interfaces
+	int fd = nw_if->fd;
 	ssize_t nwrite = write(fd, packet->data, packet->len);
 
 	if (nwrite < 0) {
