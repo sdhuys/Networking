@@ -69,8 +69,9 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 	write_ipv4_header(ipv4_cntxt, header, packet);
 
 	// Prepare MAC metadata for lower layer
-	unsigned char *next_hop = (next_hop_route->type == ROUTE_VIA) ? (unsigned char *)&next_hop_route->gateway
-								      : packet->metadata.dest_ip;
+	unsigned char *next_hop = (next_hop_route->type == ROUTE_VIA)
+				      ? (unsigned char *)&next_hop_route->gateway
+				      : packet->metadata.dest_ip;
 
 	struct arp_table_node *dest_ip_node = query_arp_table(arp_tbl, next_hop);
 
