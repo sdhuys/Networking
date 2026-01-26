@@ -68,6 +68,10 @@ pkt_result send_ipv4_down(struct nw_layer_t *self, struct pkt_t *packet)
 	struct ipv4_header_t *header = (struct ipv4_header_t *)(packet->data + packet->offset);
 	write_ipv4_header(ipv4_cntxt, header, packet);
 
+	// Prepare offset/length for lower layer (HAS TO HAPPEN BEFORE QUEUING!)
+	packet->offset -= sizeof(struct ethernet_header_t);
+	packet->len += sizeof(struct ethernet_header_t);
+	
 	// Prepare MAC metadata for lower layer
 	unsigned char *next_hop = (next_hop_route->type == ROUTE_VIA)
 				      ? (unsigned char *)&next_hop_route->gateway
@@ -84,10 +88,6 @@ pkt_result send_ipv4_down(struct nw_layer_t *self, struct pkt_t *packet)
 		return add_pkt_to_q(dest_ip_node, packet);
 
 	memcpy(packet->metadata.dest_mac, dest_ip_node->mac_addr, MAC_ADDR_LEN);
-
-	packet->offset -= sizeof(struct ethernet_header_t);
-	packet->len += sizeof(struct ethernet_header_t);
-
 	return self->downs[0]->send_down(self->downs[0], packet);
 }
 
