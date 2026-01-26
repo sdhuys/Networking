@@ -169,23 +169,16 @@ void print_arp_header(struct arp_data_t *arp_header)
 
 struct pkt_t *create_arp_request_for(struct nw_layer_t *self, ipv4_address target_ip)
 {
-	struct pkt_t *pkt = malloc(sizeof(struct pkt_t));
+	struct pkt_t *pkt = allocate_pkt();
 	if (pkt == NULL)
 		return NULL;
 
 	size_t eth_sz = sizeof(struct ethernet_header_t);
 	size_t arp_sz = sizeof(struct arp_data_t);
-
-	pkt->data = malloc(eth_sz + arp_sz);
-	if (pkt->data == NULL) {
-		free(pkt);
-		return NULL;
-	}
-
-	memcpy(pkt->metadata.dest_mac, IPV4_BROADCAST_MAC, MAC_ADDR_LEN);
-
 	pkt->offset = eth_sz;
 	pkt->len = eth_sz + arp_sz;
+
+	memcpy(pkt->metadata.dest_mac, IPV4_BROADCAST_MAC, MAC_ADDR_LEN);
 
 	struct arp_context_t *arp_context = (struct arp_context_t *)self->context;
 	struct arp_data_t *arp = (struct arp_data_t *)(pkt->data + pkt->offset);
