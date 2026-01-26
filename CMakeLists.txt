@@ -20,6 +20,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(LIB_SOURCES
   src/arp.c
   src/buffer_pool.c
+  src/checksum.c
   src/constants.c
   src/ethernet.c
   src/icmp.c
@@ -60,7 +61,7 @@ if(BUILD_TESTING)
   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(googletest)
   file(GLOB TEST_FILES "tests/*.cpp")
-  add_executable(networking_tests ${TEST_FILES} ${TEST_SOURCES})
+  add_executable(networking_tests EXCLUDE_FROM_ALL ${TEST_FILES} ${TEST_SOURCES})
   target_include_directories(networking_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
   target_compile_options(networking_tests PRIVATE -Wall -Wextra)
 

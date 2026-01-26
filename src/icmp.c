@@ -12,7 +12,7 @@ pkt_result receive_icmp_up(struct nw_layer_t *self, struct pkt_t *packet)
 {
 	struct icmp_header_t *header = (struct icmp_header_t *)(packet->data + packet->offset);
 
-	if (calc_packet_checksum(header, packet->len) != 0)
+	if (calc_checksum(header, packet->len) != 0)
 		return ICMP_CHECKSUM_ERROR;
 
 	switch (header->type) {
@@ -34,28 +34,5 @@ void echo_request_to_reply(struct pkt_t *packet, struct icmp_header_t *header, s
 	header->type = 0;
 	header->code = 0;
 	header->checksum = 0;
-	header->checksum = htons(calc_packet_checksum(header, len));
-}
-
-uint16_t calc_packet_checksum(void *data, size_t len)
-{
-	const uint8_t *bytes = data;
-	uint32_t sum = 0;
-
-	// Sum 16-bit words
-	while (len >= 2) {
-		sum += (bytes[0] << 8) | bytes[1];
-		bytes += 2;
-		len -= 2;
-	}
-
-	// Handle odd trailing byte
-	if (len == 1)
-		sum += bytes[0] << 8;
-
-	// Fold carries
-	while (sum >> 16)
-		sum = (sum & 0xFFFF) + (sum >> 16);
-
-	return (uint16_t)~sum;
+	header->checksum = htons(calc_checksum(header, len));
 }
