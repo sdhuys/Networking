@@ -53,7 +53,8 @@ void flush_q(struct nw_layer_t *self, struct arp_table_node_t *arp_entry)
 	struct queue_entry_t *next;
 	while (current != NULL) {
 		next = current->next;
-		memcpy(current->packet->metadata.dest_mac, arp_entry->mac_addr, MAC_ADDR_LEN);
+		memcpy(current->packet->dest_mac, arp_entry->mac_addr, MAC_ADDR_LEN);
+		current->packet->ethertype = htons(IPV4);
 
 		self->downs[0]->send_down(self->downs[0], current->packet);
 		free(current);
@@ -118,7 +119,7 @@ void inc_arp_request_to_reply(struct pkt_t *packet,
 			      struct arp_data_t *header,
 			      mac_address requested_address)
 {
-	memcpy(packet->metadata.dest_mac, header->src_mac, header->hw_addr_len);
+	memcpy(packet->dest_mac, header->src_mac, header->hw_addr_len);
 
 	header->operation = htons(ARP_REPLY);
 	memcpy(header->target_mac, header->src_mac, header->hw_addr_len);
@@ -178,7 +179,7 @@ struct pkt_t *create_arp_request_for(struct nw_layer_t *self, ipv4_address targe
 	pkt->offset = eth_sz;
 	pkt->len = eth_sz + arp_sz;
 
-	memcpy(pkt->metadata.dest_mac, IPV4_BROADCAST_MAC, MAC_ADDR_LEN);
+	memcpy(pkt->dest_mac, IPV4_BROADCAST_MAC, MAC_ADDR_LEN);
 
 	struct arp_context_t *arp_context = (struct arp_context_t *)self->context;
 	struct arp_data_t *arp = (struct arp_data_t *)(pkt->data + pkt->offset);
@@ -201,7 +202,7 @@ pkt_result send_arp_down(struct nw_layer_t *self, struct pkt_t *packet)
 {
 	printf("SENDING ARP DOWN \n");
 	print_arp_header((struct arp_data_t *)&packet->data[packet->offset]);
-	packet->metadata.ethertype = htons(ARP);
+	packet->ethertype = htons(ARP);
 	packet->offset -= sizeof(struct ethernet_header_t);
 	return self->downs[0]->send_down(self->downs[0], packet);
 }

@@ -43,8 +43,8 @@ pkt_result send_frame_down(struct nw_layer_t *self, struct pkt_t *packet)
 	struct ethernet_header_t *header = (struct ethernet_header_t *)(packet->data + packet->offset);
 	struct ethernet_context_t *context = (struct ethernet_context_t *)self->context;
 
-	header->ethertype = packet->metadata.ethertype;
-	memcpy(header->dest_mac, packet->metadata.dest_mac, MAC_ADDR_LEN);
+	header->ethertype = packet->ethertype;
+	memcpy(header->dest_mac, packet->dest_mac, MAC_ADDR_LEN);
 	memcpy(header->src_mac, context->mac_addr, MAC_ADDR_LEN);
 
 	packet->len += sizeof(struct ethernet_header_t);
