@@ -24,7 +24,6 @@ uint16_t calc_checksum(void *data, size_t len)
 	return (uint16_t)~sum;
 }
 
-
 // length as given in ipv4 header = in 32bit units => no odd trailing byte possible
 uint16_t calc_ipv4_checksum(struct ipv4_header_t *header, size_t header_len)
 {

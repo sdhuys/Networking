@@ -103,26 +103,22 @@ typedef enum {
 	TCP_TIME_WAIT	  // Waiting for 2*MSL (maximum segment lifetime) before releasing
 } tcp_state_t;
 
-// ===== Packet Structures =====
-struct pkt_metadata_t {
-
-	int interface_fd;
-	uint8_t protocol;
+// ===== Packet Structure =====
+struct pkt_t {
+	unsigned char *data; // Only modified once we go back down the stack
+	size_t offset;	     // Offset to the start of the current layer's header
+	uint8_t ref_count;
+	int intrfc_indx;
 	ether_type ethertype;
 	mac_address dest_mac;
 
+	// START OF IPV4 PSEUDOHEADER // DO NOT PUT EXTRA FIELDS IN HERE!! WILL BREAK CHECKSUM
 	ipv4_address src_ip;
-	// stack's API for applications to send packets out should set this
 	ipv4_address dest_ip;
-};
-
-struct pkt_t {
-	unsigned char *data; // Only modified once we go back down the stack
-	size_t len;	     // Packet length from current offset (current layer's length)
-	size_t offset;	     // Offset to the start of the current layer's header within
-			     // data, no need to strip headers and copy
-	uint8_t ref_count;
-	struct pkt_metadata_t metadata;
+	uint8_t padding; // set to 0 by allocate_pkt()
+	uint8_t protocol;
+	uint16_t len; // Packet length from current offset (current layer's length)
+		      // END OF IPV4 PSEUDOHEADER  // DO NOT REMOVE ANYTHING EITHER!!
 };
 
 // ===== General Network Layer Structure =====
