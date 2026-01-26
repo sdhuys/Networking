@@ -6,8 +6,8 @@
 extern "C" {
 #endif
 
-pkt_result send_tcp_down(struct nw_layer *self, struct pkt *packet);
-pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet);
+pkt_result send_tcp_down(struct nw_layer_t *self, struct pkt_t *packet);
+pkt_result receive_tcp_up(struct nw_layer_t *self, struct pkt_t *packet);
 
 #ifdef __cplusplus
 }

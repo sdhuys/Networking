@@ -8,14 +8,14 @@
 extern "C" {
 #endif
 
-pkt_result receive_ipv4_up(struct nw_layer *self, struct pkt *packet);
-pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet);
-uint16_t calc_header_checksum(struct ipv4_header *header, size_t header_len);
-bool relevant_destination_ip(ipv4_address dest_ip, struct nw_layer *self);
-void get_route(struct nw_layer *self, ipv4_address dest_ip, struct route **route_out);
-void write_ipv4_header(struct ipv4_context *context,
-		       struct ipv4_header *header,
-		       struct pkt *packet);
+pkt_result receive_ipv4_up(struct nw_layer_t *self, struct pkt_t *packet);
+pkt_result send_ipv4_down(struct nw_layer_t *self, struct pkt_t *packet);
+uint16_t calc_header_checksum(struct ipv4_header_t *header, size_t header_len);
+bool relevant_destination_ip(ipv4_address dest_ip, struct nw_layer_t *self);
+void get_route(struct nw_layer_t *self, ipv4_address dest_ip, struct route_t **route_out);
+void write_ipv4_header(struct ipv4_context_t *context,
+		       struct ipv4_header_t *header,
+		       struct pkt_t *packet);
 
 #ifdef __cplusplus
 }

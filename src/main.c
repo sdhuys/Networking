@@ -35,7 +35,7 @@ int main()
 	if ((tap_fd = tap_setup()) < 0)
 		return 1;
 
-	struct nw_layer *tap = construct_stack(tap_fd, TAP_NAME);
+	struct nw_layer_t *tap = construct_stack(tap_fd, TAP_NAME);
 	start_listening(tap_fd, tap);
 	return 0;
 }

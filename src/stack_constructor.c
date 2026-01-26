@@ -1,31 +1,33 @@
 #include "stack_constructor.h"
 
-struct nw_layer *construct_stack(int fd, char *if_name)
+struct nw_layer_t *construct_stack(int fd, char *if_name)
 {
-	struct nw_layer *interface = malloc(sizeof(struct nw_layer));
-	struct nw_layer *eth = malloc(sizeof(struct nw_layer));
-	struct nw_layer *arp = malloc(sizeof(struct nw_layer));
-	struct nw_layer *ip = malloc(sizeof(struct nw_layer));
-	struct nw_layer *icmp = malloc(sizeof(struct nw_layer));
-	struct nw_layer *udp = malloc(sizeof(struct nw_layer));
-	struct nw_layer *tcp = malloc(sizeof(struct nw_layer));
+	struct nw_layer_t *interface = malloc(sizeof(struct nw_layer_t));
+	struct nw_layer_t *eth = malloc(sizeof(struct nw_layer_t));
+	struct nw_layer_t *arp = malloc(sizeof(struct nw_layer_t));
+	struct nw_layer_t *ip = malloc(sizeof(struct nw_layer_t));
+	struct nw_layer_t *icmp = malloc(sizeof(struct nw_layer_t));
+	struct nw_layer_t *udp = malloc(sizeof(struct nw_layer_t));
+	struct nw_layer_t *tcp = malloc(sizeof(struct nw_layer_t));
+
+	static struct socket_manager_t socket_manager;
 
 	interface->name = if_name;
 	interface->send_down = &write_to_interface;
 	interface->rcv_up = &send_up_to_ethernet;
 	interface->ups_count = 1;
-	interface->ups = malloc(interface->ups_count * sizeof(struct nw_layer *));
+	interface->ups = malloc(interface->ups_count * sizeof(struct nw_layer_t *));
 	interface->ups[0] = eth;
 	interface->downs = NULL;
 	interface->downs_count = 0;
-	struct nw_interface *nw_if = malloc(sizeof(struct nw_interface));
+	struct nw_interface_t *nw_if = malloc(sizeof(struct nw_interface_t));
 	set_net_if_struct(fd, if_name, nw_if);
 	interface->context = nw_if;
 
 	// assign stack mac address and ip address on same subnet as interface
 	static unsigned char stack_mac_addr[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
 	static unsigned char stack_ipv4_addr[4];
-	void set_net_if_struct(int fd, char *if_name, struct nw_interface *n_if);
+	void set_net_if_struct(int fd, char *if_name, struct nw_interface_t *n_if);
 	set_stack_ipv4_addr(nw_if, stack_ipv4_addr);
 
 	eth->name = ETH_NAME;
@@ -33,12 +35,12 @@ struct nw_layer *construct_stack(int fd, char *if_name)
 	eth->rcv_up = &receive_frame_up;
 	eth->ups_count = 2;
 	eth->downs_count = 1;
-	eth->ups = malloc(eth->ups_count * sizeof(struct nw_layer *));
+	eth->ups = malloc(eth->ups_count * sizeof(struct nw_layer_t *));
 	eth->ups[0] = arp;
 	eth->ups[1] = ip;
-	eth->downs = malloc(eth->downs_count * sizeof(struct nw_layer *));
+	eth->downs = malloc(eth->downs_count * sizeof(struct nw_layer_t *));
 	eth->downs[0] = interface;
-	struct ethernet_context *eth_context = malloc(sizeof(struct ethernet_context));
+	struct ethernet_context_t *eth_context = malloc(sizeof(struct ethernet_context_t));
 	memcpy(eth_context->mac_addr, stack_mac_addr, MAC_ADDR_LEN);
 	eth->context = eth_context;
 
@@ -48,10 +50,10 @@ struct nw_layer *construct_stack(int fd, char *if_name)
 	arp->ups = NULL;
 	arp->ups_count = 0;
 	arp->downs_count = 1;
-	arp->downs = malloc(arp->downs_count * sizeof(struct nw_layer *));
+	arp->downs = malloc(arp->downs_count * sizeof(struct nw_layer_t *));
 	arp->downs[0] = eth;
-	struct arp_context *arp_ctx = malloc(sizeof(struct arp_context));
-	struct arp_table *arp_table_head = malloc(sizeof(struct arp_table));
+	struct arp_context_t *arp_ctx = malloc(sizeof(struct arp_context_t));
+	struct arp_table_t *arp_table_head = malloc(sizeof(struct arp_table_t));
 	arp_ctx->arp_table = arp_table_head;
 	memcpy(arp_ctx->ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
 	memcpy(arp_ctx->mac_addr, stack_mac_addr, MAC_ADDR_LEN);
@@ -62,13 +64,13 @@ struct nw_layer *construct_stack(int fd, char *if_name)
 	ip->rcv_up = &receive_ipv4_up;
 	ip->ups_count = 3;
 	ip->downs_count = 1;
-	ip->ups = malloc(ip->ups_count * sizeof(struct nw_layer *));
+	ip->ups = malloc(ip->ups_count * sizeof(struct nw_layer_t *));
 	ip->ups[0] = icmp;
 	ip->ups[1] = udp;
 	ip->ups[2] = tcp;
-	ip->downs = malloc(ip->downs_count * sizeof(struct nw_layer *));
+	ip->downs = malloc(ip->downs_count * sizeof(struct nw_layer_t *));
 	ip->downs[0] = eth;
-	struct ipv4_context *ipv4_context = malloc(sizeof(struct ipv4_context));
+	struct ipv4_context_t *ipv4_context = malloc(sizeof(struct ipv4_context_t));
 	ipv4_context->arp_layer = arp;
 	ipv4_context->routing_table = create_routing_table(nw_if);
 	ipv4_context->routes_amount = get_init_routes_amount();
@@ -82,7 +84,7 @@ struct nw_layer *construct_stack(int fd, char *if_name)
 	icmp->ups = NULL;
 	icmp->ups_count = 0;
 	icmp->downs_count = 1;
-	icmp->downs = malloc(icmp->downs_count * sizeof(struct nw_layer *));
+	icmp->downs = malloc(icmp->downs_count * sizeof(struct nw_layer_t *));
 	icmp->downs[0] = ip;
 
 	udp->name = UDP_NAME;
@@ -91,7 +93,7 @@ struct nw_layer *construct_stack(int fd, char *if_name)
 	udp->ups = NULL;
 	udp->ups_count = 0;
 	udp->downs_count = 1;
-	udp->downs = malloc(udp->downs_count * sizeof(struct nw_layer *));
+	udp->downs = malloc(udp->downs_count * sizeof(struct nw_layer_t *));
 	udp->downs[0] = ip;
 
 	tcp->name = TCP_NAME;
@@ -100,13 +102,13 @@ struct nw_layer *construct_stack(int fd, char *if_name)
 	tcp->ups = NULL;
 	tcp->ups_count = 0;
 	tcp->downs_count = 1;
-	tcp->downs = malloc(tcp->downs_count * sizeof(struct nw_layer *));
+	tcp->downs = malloc(tcp->downs_count * sizeof(struct nw_layer_t *));
 	tcp->downs[0] = ip;
 
 	return interface;
 }
 
-void set_net_if_struct(int fd, char *if_name, struct nw_interface *n_if)
+void set_net_if_struct(int fd, char *if_name, struct nw_interface_t *n_if)
 {
 	int sock;
 	struct ifreq ifr;
@@ -148,7 +150,7 @@ void set_net_if_struct(int fd, char *if_name, struct nw_interface *n_if)
 // Sets stack ip address on same subnet as the interface, with host bits set to 2
 // after set_ipv4_addr() call => interface at 192.168.100.1/24
 // after this call => stack at 192.168.100.2/24
-void set_stack_ipv4_addr(struct nw_interface *n_if, ipv4_address stack_ip_addr)
+void set_stack_ipv4_addr(struct nw_interface_t *n_if, ipv4_address stack_ip_addr)
 {
 	uint32_t ip = ntohl(n_if->ipv4_addr);
 	uint32_t mask = ntohl(n_if->subnet_mask);

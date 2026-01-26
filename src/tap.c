@@ -1,10 +1,10 @@
 #include "tap.h"
 
-int start_listening(int fd, struct nw_layer *interface)
+int start_listening(int fd, struct nw_layer_t *interface)
 {
 	init_buffer_pool();
 	for (;;) {
-		struct pkt *packet = allocate_pkt();
+		struct pkt_t *packet = allocate_pkt();
 		ssize_t nread = read(fd, packet->data, MAX_ETH_FRAME_SIZE);
 		if (nread < 0)
 			continue;
@@ -20,15 +20,15 @@ int start_listening(int fd, struct nw_layer *interface)
 }
 
 // No demuxing at this layer, no need for "pass_up_to_layer" usage
-pkt_result send_up_to_ethernet(struct nw_layer *interface, struct pkt *packet)
+pkt_result send_up_to_ethernet(struct nw_layer_t *interface, struct pkt_t *packet)
 {
 	return interface->ups[0]->rcv_up(interface->ups[0], packet);
 }
 
-pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
+pkt_result write_to_interface(struct nw_layer_t *interface, struct pkt_t *packet)
 {
-	struct nw_interface *nw_if =
-	    (struct nw_interface *)interface->context +
+	struct nw_interface_t *nw_if =
+	    (struct nw_interface_t *)interface->context +
 	    packet->metadata.interface_fd; // prepare support for multiple interfaces
 	int fd = nw_if->fd;
 	ssize_t nwrite = write(fd, packet->data, packet->len);

@@ -6,9 +6,9 @@ size_t get_init_routes_amount()
 	return init_routes_amount;
 }
 
-struct route *create_routing_table(struct nw_interface *nw_if)
+struct route_t *create_routing_table(struct nw_interface_t *nw_if)
 {
-	struct route *routes = malloc(init_routes_amount * sizeof(struct route));
+	struct route_t *routes = malloc(init_routes_amount * sizeof(struct route_t));
 	if (!routes)
 		return NULL;
 

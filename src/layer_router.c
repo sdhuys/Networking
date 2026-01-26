@@ -1,6 +1,6 @@
 #include "layer_router.h"
 
-pkt_result pass_up_to_layer(struct nw_layer *self, char *up_name, struct pkt *packet)
+pkt_result pass_up_to_layer(struct nw_layer_t *self, char *up_name, struct pkt_t *packet)
 {
 	for (size_t i = 0; i < self->ups_count; i++)
 		if (strcmp(self->ups[i]->name, up_name) == 0)

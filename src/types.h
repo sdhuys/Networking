@@ -46,6 +46,9 @@
 #define UDP_NAME "udp"
 #define TCP_NAME "tcp"
 
+#define SCKT_HTBL_BCKT_SIZE 1024
+#define RING_BUFF_SIZE
+
 extern const unsigned char IPV4_BROADCAST_MAC[MAC_ADDR_LEN];
 extern const unsigned char IPV4_BROADCAST_IP[IPV4_ADDR_LEN];
 
@@ -86,8 +89,22 @@ typedef enum {
 	NOT_IMPLEMENTED_YET = -1
 } pkt_result;
 
+typedef enum {
+	TCP_CLOSED = 0,	  // No connection state
+	TCP_LISTEN,	  // Waiting for a connection request from any remote TCP
+	TCP_SYN_SENT,	  // Sent SYN, waiting for SYN+ACK
+	TCP_SYN_RECEIVED, // Received SYN, sent SYN+ACK
+	TCP_ESTABLISHED,  // Connection established
+	TCP_FIN_WAIT_1,	  // Application closed, sent FIN, waiting for ACK
+	TCP_FIN_WAIT_2,	  // Received ACK of FIN, waiting for remote FIN
+	TCP_CLOSE_WAIT,	  // Received FIN from remote, waiting for application close
+	TCP_CLOSING,	  // Simultaneous close, sent FIN, waiting for ACK of FIN
+	TCP_LAST_ACK,	  // Waiting for ACK of our FIN after close
+	TCP_TIME_WAIT	  // Waiting for 2*MSL (maximum segment lifetime) before releasing
+} tcp_state_t;
+
 // ===== Packet Structures =====
-struct pkt_metadata {
+struct pkt_metadata_t {
 
 	int interface_fd;
 	uint8_t protocol;
@@ -99,22 +116,22 @@ struct pkt_metadata {
 	ipv4_address dest_ip;
 };
 
-struct pkt {
+struct pkt_t {
 	unsigned char *data; // Only modified once we go back down the stack
 	size_t len;	     // Packet length from current offset (current layer's length)
 	size_t offset;	     // Offset to the start of the current layer's header within
 			     // data, no need to strip headers and copy
 	uint8_t ref_count;
-	struct pkt_metadata metadata;
+	struct pkt_metadata_t metadata;
 };
 
 // ===== General Network Layer Structure =====
-struct nw_layer {
+struct nw_layer_t {
 	char *name;
-	pkt_result (*send_down)(struct nw_layer *self, struct pkt *packet);
-	pkt_result (*rcv_up)(struct nw_layer *self, struct pkt *packet);
-	struct nw_layer **ups;
-	struct nw_layer **downs;
+	pkt_result (*send_down)(struct nw_layer_t *self, struct pkt_t *packet);
+	pkt_result (*rcv_up)(struct nw_layer_t *self, struct pkt_t *packet);
+	struct nw_layer_t **ups;
+	struct nw_layer_t **downs;
 	size_t ups_count;
 	size_t downs_count;
 	void *context;
@@ -122,7 +139,7 @@ struct nw_layer {
 
 // ===== Network Interface =====
 // set as the context of interface nw_layer
-struct nw_interface {
+struct nw_interface_t {
 	char name[IFNAMSIZ];
 	int fd;
 	uint32_t ipv4_addr;   // network byte order
@@ -132,49 +149,49 @@ struct nw_interface {
 };
 
 // ===== Ethernet Layer =====
-struct ethernet_context {
+struct ethernet_context_t {
 	mac_address mac_addr;
 };
 
-struct ethernet_header {
+struct ethernet_header_t {
 	mac_address dest_mac;
 	mac_address src_mac;
 	ether_type ethertype;
 } __attribute__((packed));
 
 // ===== ARP Layer =====
-enum arp_node_status {
+typedef enum {
 	ARP_INCOMPLETE,
 	ARP_REACHABLE,
 	ARP_STALE, // not implemented, node's last_updated property unused
+} arp_node_status_t;
+
+struct arp_table_t {
+	struct arp_table_node_t *head;
 };
 
-struct arp_table {
-	struct arp_table_node *head;
-};
-
-struct arp_table_node {
+struct arp_table_node_t {
 	ipv4_address ipv4_addr;
 	mac_address mac_addr;
-	enum arp_node_status status;
+	arp_node_status_t status;
 	time_t last_updated;
-	struct queue_entry *pending_packets;
-	struct queue_entry *pending_tail;
-	struct arp_table_node *next;
+	struct queue_entry_t *pending_packets;
+	struct queue_entry_t *pending_tail;
+	struct arp_table_node_t *next;
 };
 
-struct queue_entry {
-	struct pkt *packet;
-	struct queue_entry *next;
+struct queue_entry_t {
+	struct pkt_t *packet;
+	struct queue_entry_t *next;
 };
 
-struct arp_context {
+struct arp_context_t {
 	ipv4_address ipv4_addr;
 	mac_address mac_addr;
-	struct arp_table *arp_table;
+	struct arp_table_t *arp_table;
 };
 
-struct arp_data {
+struct arp_data_t {
 	uint16_t hw_type;
 	uint16_t proto_type;
 	unsigned char hw_addr_len;
@@ -191,28 +208,28 @@ struct arp_data {
 typedef enum {
 	ROUTE_ONLINK, // destination is directly reachable
 	ROUTE_VIA     // send via gateway
-} route_type;
+} route_type_t;
 
-struct route {
+struct route_t {
 	uint32_t prefix;      // network byte order
 	uint32_t subnet_mask; // network byte order
 	uint8_t prefix_len;   // CIDR mask (0–32)
 	uint8_t mtu;	      // max transmission unit
-	route_type type;
+	route_type_t type;
 	uint32_t gateway;  // valid only if type == ROUTE_VIA
 	uint32_t iface_id; // which interface to send on (NOT IMPLEMENTED, HARDCODED
 			   // ONLY 1 INTERFACE)
 };
 
-struct ipv4_context {
-	struct nw_layer *arp_layer;
+struct ipv4_context_t {
+	struct nw_layer_t *arp_layer;
 	ipv4_address stack_ipv4_addr;
-	struct nw_interface *nw_if;
-	struct route *routing_table;
+	struct nw_interface_t *nw_if;
+	struct route_t *routing_table;
 	size_t routes_amount;
 };
 
-struct ipv4_header {
+struct ipv4_header_t {
 	// upper 4 bits = version (4 for ipv4)
 	// lower 4 bits = internet header-length (unit = 32bits, min value = 5)
 	unsigned char version_ihl;
@@ -231,12 +248,95 @@ struct ipv4_header {
 } __attribute__((packed));
 
 // ICMP LAYER
-struct icmp_context {
+struct icmp_context_t {
 };
 
-struct icmp_header {
+struct icmp_header_t {
 	unsigned char type;
 	unsigned char code;
 	uint16_t checksum;
 	uint32_t var_rest_of_header;
 } __attribute__((packed));
+
+//// TRANSPORT LAYERS ////
+// RING BUFFER
+struct ring_buffer_t {
+	// implement ring buffer
+};
+
+// UDP LAYER
+struct udp_context_t {
+	ipv4_address stack_ipv4_addr;
+	struct socket_manager_t *socket_manager;
+};
+
+struct udp_header_t {
+	uint16_t src_port;
+	uint16_t dest_port;
+	uint16_t length;
+	uint16_t checksum;
+};
+
+struct udp_ipv4_socket_t {
+	ipv4_address local_addr;
+	ipv4_address extern_addr;
+	uint16_t local_port;
+	uint16_t extern_port;
+	struct ring_buffer_t rcv_buffer; // stack writes, app consumes
+	struct ring_buffer_t snd_buffer; // app writes, stack consumes
+};
+
+struct udp_ipv4_sckt_htable_node_t {
+	struct udp_ipv4_socket_t *socket;
+	struct udp_ipv4_sckt_htable_node_t *next;
+};
+
+struct udp_ipv4_sckt_htable_t {
+	struct udp_ipv4_sckt_htable_node_t **buckets;
+	uint8_t buckets_amount;
+	// add()
+	// remove()
+	// query()
+};
+
+// TCP LAYER
+struct tcp_context_t {
+	ipv4_address stack_ipv4_addr;
+	struct socket_manager_t *socket_manager;
+};
+
+struct tcp_ipv4_socket_t {
+	ipv4_address local_addr;
+	ipv4_address extern_addr;
+	uint16_t local_port;
+	uint16_t extern_port;
+	struct ring_buffer_t rcv_buffer; // stack writes, app consumes
+	struct ring_buffer_t snd_buffer; // app writes, stack consumes
+
+	// add write() pointer
+	// add read() pointer
+};
+
+struct tcp_ipv4_sckt_node_t {
+	struct tcp_ipv4_socket_t *socket;
+	struct tcp_ipv4_sckt_node_t *next;
+};
+
+struct tcp_ipv4_socket_htable_t {
+	struct tcp_ipv4_sckt_node_t **buckets;
+	uint8_t buckets_amount;
+	// add add()
+	// add remove()
+	// add query_connected()
+	// add query_listening()
+};
+
+// Socket manager
+struct socket_manager_t {
+	struct tcp_ipv4_socket_htable_t *tcp_ipv4_sckt_htable;
+	struct udp_ipv4_sckt_htable_t *udp_ipv4_sckt_htable;
+
+	// add create_udp_socket(port) pointer
+	// add create_tcp_socket(port) pointer
+	// add send_data_over_socket(socket) pointer
+};

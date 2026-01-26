@@ -9,9 +9,9 @@
 extern "C" {
 #endif
 
-int start_listening(int fd, struct nw_layer *tap);
-pkt_result send_up_to_ethernet(struct nw_layer *tap, struct pkt *packet);
-pkt_result write_to_interface(struct nw_layer *tap, struct pkt *packet);
+int start_listening(int fd, struct nw_layer_t *tap);
+pkt_result send_up_to_ethernet(struct nw_layer_t *tap, struct pkt_t *packet);
+pkt_result write_to_interface(struct nw_layer_t *tap, struct pkt_t *packet);
 
 #ifdef __cplusplus
 }
