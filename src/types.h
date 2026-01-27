@@ -31,7 +31,6 @@
 #define TCP 6
 #define UDP 17
 
-
 #define ECHO_REPLY 0
 #define DESTINATION_UNREACHABLE 3
 #define ECHO_REQUEST 8
@@ -44,7 +43,8 @@
 #define UDP_NAME "udp"
 #define TCP_NAME "tcp"
 
-#define SCKT_HTBL_BCKT_SIZE 1024
+#define UDP_SCKT_HTBL_SIZE 128	// buckets for listener entries
+#define TCP_SCKT_HTBL_SIZE 1024 // buckets for listener entries + multiple connections per etry
 #define RING_BUFF_SIZE
 
 extern const unsigned char IPV4_BROADCAST_MAC[MAC_ADDR_LEN];
@@ -119,6 +119,7 @@ struct pkt_t {
 	uint16_t len; // Packet length from current offset (current layer's length)
 
 	// END OF IPV4 PSEUDOHEADER  // DO NOT REMOVE ANYTHING EITHER!!
+	uint16_t src_port;
 };
 
 // ===== General Network Layer Structure =====
@@ -275,7 +276,7 @@ struct ring_buffer_t {
 // UDP LAYER
 struct udp_context_t {
 	ipv4_address stack_ipv4_addr;
-	struct socket_manager_t *socket_manager;
+	struct udp_ipv4_sckt_htable_t *socket_htable;
 };
 
 struct udp_header_t {
@@ -283,13 +284,10 @@ struct udp_header_t {
 	uint16_t dest_port;
 	uint16_t length;
 	uint16_t checksum;
-};
+} __attribute__((packed));
 
 struct udp_ipv4_socket_t {
-	ipv4_address local_addr;
-	ipv4_address extern_addr;
 	uint16_t local_port;
-	uint16_t extern_port;
 	struct ring_buffer_t rcv_buffer; // stack writes, app consumes
 	struct ring_buffer_t snd_buffer; // app writes, stack consumes
 };
@@ -352,6 +350,6 @@ struct socket_manager_t {
 
 // Checksum data
 struct checksum_chunk {
-    const void *data;
-    size_t len;
+	const void *data;
+	size_t len;
 };

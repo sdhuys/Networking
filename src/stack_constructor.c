@@ -10,8 +10,6 @@ struct nw_layer_t *construct_stack(int fd, char *if_name)
 	struct nw_layer_t *udp = malloc(sizeof(struct nw_layer_t));
 	struct nw_layer_t *tcp = malloc(sizeof(struct nw_layer_t));
 
-	static struct socket_manager_t socket_manager;
-
 	interface->name = if_name;
 	interface->send_down = &write_to_interface;
 	interface->rcv_up = &send_up_to_ethernet;
@@ -98,6 +96,14 @@ struct nw_layer_t *construct_stack(int fd, char *if_name)
 	udp->downs_count = 1;
 	udp->downs = malloc(udp->downs_count * sizeof(struct nw_layer_t *));
 	udp->downs[0] = ip;
+	struct udp_context_t *udp_context = malloc(sizeof(struct udp_context_t));
+	memcopy(udp_context->stack_ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
+	struct udp_ipv4_sckt_htable_t *udp_htable = malloc(sizeof(struct udp_ipv4_sckt_htable_t));
+	udp_htable->buckets_amount = UDP_SCKT_HTBL_SIZE;
+	pthread_mutex_t *bckt_locks = malloc(sizeof(pthread_mutex_t) * UDP_SCKT_HTBL_SIZE);
+	udp_htable->bucket_locks = bckt_locks;
+	struct udp_ipv4_sckt_htable_node_t **buckets = malloc(sizeof(struct udp_ipv4_sckt_htable_node_t) * UDP_SCKT_HTBL_SIZE);
+	udp_htable->buckets = buckets;
 
 	tcp->name = TCP_NAME;
 	tcp->send_down = &send_tcp_down;
