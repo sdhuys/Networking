@@ -97,13 +97,17 @@ struct nw_layer_t *construct_stack(int fd, char *if_name)
 	udp->downs = malloc(udp->downs_count * sizeof(struct nw_layer_t *));
 	udp->downs[0] = ip;
 	struct udp_context_t *udp_context = malloc(sizeof(struct udp_context_t));
-	memcopy(udp_context->stack_ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
+	memcpy(udp_context->stack_ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
 	struct udp_ipv4_sckt_htable_t *udp_htable = malloc(sizeof(struct udp_ipv4_sckt_htable_t));
 	udp_htable->buckets_amount = UDP_SCKT_HTBL_SIZE;
-	pthread_mutex_t *bckt_locks = malloc(sizeof(pthread_mutex_t) * UDP_SCKT_HTBL_SIZE);
+	pthread_rwlock_t *bckt_locks = malloc(sizeof(pthread_rwlock_t) * UDP_SCKT_HTBL_SIZE);
+	for (int i = 0; i < UDP_SCKT_HTBL_SIZE; i++) 
+		pthread_rwlock_init(&bckt_locks[i], NULL);
 	udp_htable->bucket_locks = bckt_locks;
-	struct udp_ipv4_sckt_htable_node_t **buckets = malloc(sizeof(struct udp_ipv4_sckt_htable_node_t) * UDP_SCKT_HTBL_SIZE);
+	struct udp_ipv4_sckt_htable_node_t **buckets = calloc(sizeof(struct udp_ipv4_sckt_htable_node_t), UDP_SCKT_HTBL_SIZE);
 	udp_htable->buckets = buckets;
+	udp_context->socket_htable = udp_htable;
+	udp->context = udp_context;
 
 	tcp->name = TCP_NAME;
 	tcp->send_down = &send_tcp_down;
