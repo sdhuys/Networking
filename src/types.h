@@ -139,6 +139,7 @@ struct nw_layer_t {
 // set as the context of interface nw_layer
 struct interface_context_t {
 	struct nw_interface_t *interfaces;
+	size_t if_amount;
 };
 
 struct nw_interface_t {

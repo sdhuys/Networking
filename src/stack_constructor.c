@@ -20,9 +20,10 @@ struct nw_layer_t *construct_stack(int fd, char *if_name)
 	interface->ups[0] = eth;
 	interface->downs = NULL;
 	interface->downs_count = 0;
+	struct interface_context_t *nw_if_context = malloc(sizeof(struct interface_context_t));
+	nw_if_context->if_amount = 1;
 	struct nw_interface_t *nw_if = malloc(sizeof(struct nw_interface_t));
 	set_net_if_struct(fd, if_name, nw_if);
-	struct interface_context_t *nw_if_context = malloc(sizeof(struct interface_context_t));
 	nw_if_context->interfaces = nw_if;
 	interface->context = nw_if_context;
 
