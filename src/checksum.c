@@ -1,10 +1,6 @@
 #include "checksum.h"
 
-#include <stdint.h>
-#include <stddef.h>
-#include <arpa/inet.h> // For htons
-
-// checksum over non-contiguous chunks of data
+// checksum over non-contiguous blocks of data
 uint16_t calc_checksum(const struct checksum_chunk *chunks, size_t amount)
 {
     uint32_t sum = 0;
