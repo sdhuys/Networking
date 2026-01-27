@@ -29,10 +29,8 @@
 #define ICMP 1
 #define IGMP 2
 #define TCP 6
-#define UDP 11
-#define ENCAP 41
-#define OSPF 89
-#define SCTP 132
+#define UDP 17
+
 
 #define ECHO_REPLY 0
 #define DESTINATION_UNREACHABLE 3
@@ -80,10 +78,10 @@ typedef enum {
 	IP_CHECKSUM_ERROR = -304,
 	IP_DEST_NOT_RELEVANT = -305,
 	IP_HDR_TRANSPORT_PROT_NOT_SUPPORTED = -306,
-	IP_HDR_UNKNOWN_TRANSPORT_PROT = -307,
-	IP_NO_ROUTE_FOUND = -308,
+	IP_NO_ROUTE_FOUND = -307,
 	ICMP_CHECKSUM_ERROR = -351,
 	ICMP_TYPE_NOT_SUPPORTED = -352,
+	UDP_CHECKSUM_ERROR = -401,
 
 	LAYER_NAME_NOT_FOUND = -2,
 	NOT_IMPLEMENTED_YET = -1
@@ -350,4 +348,10 @@ struct socket_manager_t {
 	// add create_udp_socket(port) pointer
 	// add create_tcp_socket(port) pointer
 	// add send_data_over_socket(socket) pointer
+};
+
+// Checksum data
+struct checksum_chunk {
+    const void *data;
+    size_t len;
 };

@@ -37,13 +37,8 @@ pkt_result receive_ipv4_up(struct nw_layer_t *self, struct pkt_t *packet)
 		return pass_up_to_layer(self, TCP_NAME, packet);
 	case UDP:
 		return pass_up_to_layer(self, UDP_NAME, packet);
-	case IGMP:
-	case ENCAP:
-	case OSPF:
-	case SCTP:
-		return IP_HDR_TRANSPORT_PROT_NOT_SUPPORTED;
 	default:
-		return IP_HDR_UNKNOWN_TRANSPORT_PROT;
+		return IP_HDR_TRANSPORT_PROT_NOT_SUPPORTED;
 	};
 }
 
