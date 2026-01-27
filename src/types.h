@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
 
 // ===== Definitions & Constants =====
 #define MAC_ADDR_LEN 6
@@ -47,6 +48,8 @@
 #define TCP_SCKT_HTBL_SIZE 1024 // buckets for listener entries + multiple connections per etry
 #define RING_BUFF_SIZE
 
+#define GOLDEN_RATIO_32 2654435761U
+
 extern const unsigned char IPV4_BROADCAST_MAC[MAC_ADDR_LEN];
 extern const unsigned char IPV4_BROADCAST_IP[IPV4_ADDR_LEN];
 
@@ -82,6 +85,7 @@ typedef enum {
 	ICMP_CHECKSUM_ERROR = -351,
 	ICMP_TYPE_NOT_SUPPORTED = -352,
 	UDP_CHECKSUM_ERROR = -401,
+	UDP_PORT_NO_LISTENER = -402,
 
 	LAYER_NAME_NOT_FOUND = -2,
 	NOT_IMPLEMENTED_YET = -1
@@ -114,13 +118,13 @@ struct pkt_t {
 
 	ipv4_address src_ip;
 	ipv4_address dest_ip;
-	uint8_t padding; // set to 0 by allocate_pkt()
+	uint8_t padding;
 	uint8_t protocol;
 	uint16_t len; // Packet length from current offset (current layer's length)
 
 	// END OF IPV4 PSEUDOHEADER  // DO NOT REMOVE ANYTHING EITHER!!
 	uint16_t src_port;
-};
+}__attribute__((packed));
 
 // ===== General Network Layer Structure =====
 struct nw_layer_t {
@@ -254,7 +258,7 @@ struct ipv4_pseudo_header_t {
 	uint8_t padding;
 	uint8_t protocol;
 	uint16_t len;
-};
+}__attribute__((packed));
 
 // ICMP LAYER
 struct icmp_context_t {
@@ -286,10 +290,17 @@ struct udp_header_t {
 	uint16_t checksum;
 } __attribute__((packed));
 
+enum udp_socket_state_t {
+	LISTENING,
+	CLOSED
+};
+
 struct udp_ipv4_socket_t {
 	uint16_t local_port;
 	struct ring_buffer_t rcv_buffer; // stack writes, app consumes
 	struct ring_buffer_t snd_buffer; // app writes, stack consumes
+	enum udp_socket_state_t state;
+	uint8_t ref_count;
 };
 
 struct udp_ipv4_sckt_htable_node_t {
@@ -299,11 +310,8 @@ struct udp_ipv4_sckt_htable_node_t {
 
 struct udp_ipv4_sckt_htable_t {
 	struct udp_ipv4_sckt_htable_node_t **buckets;
-	uint8_t buckets_amount;
-	pthread_mutex_t *bucket_locks; // One lock per bucket
-				       // add()
-				       // remove()
-				       // query()
+	uint16_t buckets_amount;
+	pthread_rwlock_t *bucket_locks; // One lock per bucket
 };
 
 // TCP LAYER
@@ -320,8 +328,8 @@ struct tcp_ipv4_socket_t {
 	struct ring_buffer_t rcv_buffer; // stack writes, app consumes
 	struct ring_buffer_t snd_buffer; // app writes, stack consumes
 
-	// add write() pointer
-	// add read() pointer
+	// add write()
+	// add read()
 };
 
 struct tcp_ipv4_sckt_node_t {
@@ -342,10 +350,6 @@ struct tcp_ipv4_socket_htable_t {
 struct socket_manager_t {
 	struct tcp_ipv4_socket_htable_t *tcp_ipv4_sckt_htable;
 	struct udp_ipv4_sckt_htable_t *udp_ipv4_sckt_htable;
-
-	// add create_udp_socket(port) pointer
-	// add create_tcp_socket(port) pointer
-	// add send_data_over_socket(socket) pointer
 };
 
 // Checksum data
