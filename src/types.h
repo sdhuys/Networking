@@ -113,12 +113,14 @@ struct pkt_t {
 	mac_address dest_mac;
 
 	// START OF IPV4 PSEUDOHEADER // DO NOT PUT EXTRA FIELDS IN HERE!! WILL BREAK CHECKSUM
+
 	ipv4_address src_ip;
 	ipv4_address dest_ip;
 	uint8_t padding; // set to 0 by allocate_pkt()
 	uint8_t protocol;
 	uint16_t len; // Packet length from current offset (current layer's length)
-		      // END OF IPV4 PSEUDOHEADER  // DO NOT REMOVE ANYTHING EITHER!!
+
+	// END OF IPV4 PSEUDOHEADER  // DO NOT REMOVE ANYTHING EITHER!!
 };
 
 // ===== General Network Layer Structure =====
@@ -135,6 +137,10 @@ struct nw_layer_t {
 
 // ===== Network Interface =====
 // set as the context of interface nw_layer
+struct interface_context_t {
+	struct nw_interface_t *interfaces;
+};
+
 struct nw_interface_t {
 	char name[IFNAMSIZ];
 	int fd;
@@ -212,9 +218,8 @@ struct route_t {
 	uint8_t prefix_len;   // CIDR mask (0–32)
 	uint8_t mtu;	      // max transmission unit
 	route_type_t type;
-	uint32_t gateway;  // valid only if type == ROUTE_VIA
-	uint32_t iface_id; // which interface to send on (NOT IMPLEMENTED, HARDCODED
-			   // ONLY 1 INTERFACE)
+	uint32_t gateway; // valid only if type == ROUTE_VIA
+	uint32_t iface_id;
 };
 
 struct ipv4_context_t {
@@ -242,6 +247,14 @@ struct ipv4_header_t {
 	ipv4_address src_ip;
 	ipv4_address dest_ip;
 } __attribute__((packed));
+
+struct ipv4_pseudo_header_t {
+	ipv4_address src_ip;
+	ipv4_address dest_ip;
+	uint8_t padding;
+	uint8_t protocol;
+	uint16_t len;
+};
 
 // ICMP LAYER
 struct icmp_context_t {
@@ -290,9 +303,10 @@ struct udp_ipv4_sckt_htable_node_t {
 struct udp_ipv4_sckt_htable_t {
 	struct udp_ipv4_sckt_htable_node_t **buckets;
 	uint8_t buckets_amount;
-	// add()
-	// remove()
-	// query()
+	pthread_mutex_t *bucket_locks; // One lock per bucket
+				       // add()
+				       // remove()
+				       // query()
 };
 
 // TCP LAYER

@@ -22,7 +22,9 @@ struct nw_layer_t *construct_stack(int fd, char *if_name)
 	interface->downs_count = 0;
 	struct nw_interface_t *nw_if = malloc(sizeof(struct nw_interface_t));
 	set_net_if_struct(fd, if_name, nw_if);
-	interface->context = nw_if;
+	struct interface_context_t *nw_if_context = malloc(sizeof(struct interface_context_t));
+	nw_if_context->interfaces = nw_if;
+	interface->context = nw_if_context;
 
 	// assign stack mac address and ip address on same subnet as interface
 	static unsigned char stack_mac_addr[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};

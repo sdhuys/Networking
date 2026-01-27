@@ -28,9 +28,10 @@ pkt_result send_up_to_ethernet(struct nw_layer_t *interface, struct pkt_t *packe
 pkt_result write_to_interface(struct nw_layer_t *interface, struct pkt_t *packet)
 {
 	// context could contain array of interfaces
-	struct nw_interface_t *nw_if =
-	    (struct nw_interface_t *)interface->context + packet->intrfc_indx;
-	int fd = nw_if->fd;
+	struct interface_context_t *if_cntx = (struct interface_context_t *)interface->context;
+	struct nw_interface_t *nw_interfaces = if_cntx->interfaces;
+	struct nw_interface_t nw_if = nw_interfaces[packet->intrfc_indx];
+	int fd = nw_if.fd;
 	ssize_t nwrite = write(fd, packet->data, packet->len);
 
 	if (nwrite < 0) {
