@@ -1,5 +1,6 @@
 #pragma once
 #include "types.h"
+#include <stdalign.h>
 
 #define PKT_BUFF_POOL_SIZE 1000
 

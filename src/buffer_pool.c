@@ -2,7 +2,7 @@
 
 // could/should(?) be part of tap context instead of static variables
 // ok for now
-static unsigned char buffer_pool[MAX_ETH_FRAME_SIZE][PKT_BUFF_POOL_SIZE];
+alignas(64) static unsigned char buffer_pool[PKT_BUFF_POOL_SIZE][MAX_ETH_FRAME_SIZE];
 static struct pkt_t pkt_pool[PKT_BUFF_POOL_SIZE];
 static struct pkt_t *free_pkt_stack[PKT_BUFF_POOL_SIZE];
 static int top_free_index;
