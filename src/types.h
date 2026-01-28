@@ -6,7 +6,6 @@
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
-#include <pthread.h>
 
 // ===== Definitions & Constants =====
 #define MAC_ADDR_LEN 6
