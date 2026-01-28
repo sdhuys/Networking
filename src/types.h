@@ -111,20 +111,13 @@ typedef enum {
 struct pkt_t {
 	unsigned char *data; // Only modified once we go back down the stack
 	size_t offset;	     // Offset to the start of the current layer's header
+	uint16_t len;	     // Packet length from current offset (current layer's length)
 	uint8_t ref_count;
 	int intrfc_indx;
 	ether_type ethertype;
 	mac_address dest_mac;
-
-	// START OF IPV4 PSEUDOHEADER // DO NOT PUT EXTRA FIELDS IN HERE!! WILL BREAK CHECKSUM
-
 	ipv4_address src_ip;
 	ipv4_address dest_ip;
-	uint8_t padding;
-	uint8_t protocol;
-	uint16_t len; // Packet length from current offset (current layer's length)
-
-	// END OF IPV4 PSEUDOHEADER  // DO NOT REMOVE ANYTHING EITHER!!
 	uint16_t src_port;
 } __attribute__((packed));
 
