@@ -40,7 +40,8 @@ pkt_result receive_frame_up(struct nw_layer_t *self, struct pkt_t *packet)
 
 pkt_result send_frame_down(struct nw_layer_t *self, struct pkt_t *packet)
 {
-	struct ethernet_header_t *header = (struct ethernet_header_t *)(packet->data + packet->offset);
+	struct ethernet_header_t *header =
+	    (struct ethernet_header_t *)(packet->data + packet->offset);
 	struct ethernet_context_t *context = (struct ethernet_context_t *)self->context;
 
 	header->ethertype = packet->ethertype;

@@ -39,7 +39,7 @@ struct pkt_t *allocate_pkt()
 void release_pkt(struct pkt_t *pkt)
 {
 	pthread_mutex_lock(&pool_mutex);
-	if (--pkt->ref_count <= 0) 
+	if (--pkt->ref_count <= 0)
 		free_pkt_stack[++top_free_index] = pkt;
 	pthread_mutex_unlock(&pool_mutex);
 }

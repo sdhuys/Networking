@@ -132,7 +132,7 @@ bool add_to_hashtable(struct udp_ipv4_sckt_htable_t *htable, struct udp_ipv4_soc
 	    malloc(sizeof(struct udp_ipv4_sckt_htable_node_t));
 	if (new_node == NULL)
 		return NULL;
-		
+
 	new_node->socket = socket;
 	new_node->next = htable->buckets[hash];
 	htable->buckets[hash] = new_node;

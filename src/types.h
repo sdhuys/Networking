@@ -6,7 +6,6 @@
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
-#include <pthread.h>
 
 // ===== Definitions & Constants =====
 #define MAC_ADDR_LEN 6
@@ -90,7 +89,6 @@ typedef enum {
 	UDP_PORT_NO_LISTENER = -402,
 	UDP_SOCKET_CLOSED = -403,
 
-
 	LAYER_NAME_NOT_FOUND = -2,
 	NOT_IMPLEMENTED_YET = -1
 } pkt_result;
@@ -128,7 +126,7 @@ struct pkt_t {
 
 	// END OF IPV4 PSEUDOHEADER  // DO NOT REMOVE ANYTHING EITHER!!
 	uint16_t src_port;
-}__attribute__((packed));
+} __attribute__((packed));
 
 // ===== General Network Layer Structure =====
 struct nw_layer_t {
@@ -262,7 +260,7 @@ struct ipv4_pseudo_header_t {
 	uint8_t padding;
 	uint8_t protocol;
 	uint16_t len;
-}__attribute__((packed));
+} __attribute__((packed));
 
 // ICMP LAYER
 struct icmp_context_t {
@@ -294,10 +292,7 @@ struct udp_header_t {
 	uint16_t checksum;
 } __attribute__((packed));
 
-enum udp_socket_state_t {
-	LISTENING,
-	CLOSED
-};
+enum udp_socket_state_t { LISTENING, CLOSED };
 
 struct udp_ipv4_socket_t {
 	uint16_t local_port;
