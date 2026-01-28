@@ -104,7 +104,7 @@ struct nw_layer_t *construct_stack(int fd, char *if_name)
 	for (int i = 0; i < UDP_SCKT_HTBL_SIZE; i++) 
 		pthread_rwlock_init(&bckt_locks[i], NULL);
 	udp_htable->bucket_locks = bckt_locks;
-	struct udp_ipv4_sckt_htable_node_t **buckets = calloc(sizeof(struct udp_ipv4_sckt_htable_node_t), UDP_SCKT_HTBL_SIZE);
+	struct udp_ipv4_sckt_htable_node_t **buckets = calloc(UDP_SCKT_HTBL_SIZE, sizeof(struct udp_ipv4_sckt_htable_node_t));
 	udp_htable->buckets = buckets;
 	udp_context->socket_htable = udp_htable;
 	udp->context = udp_context;

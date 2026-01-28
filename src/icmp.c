@@ -20,14 +20,14 @@ pkt_result receive_icmp_up(struct nw_layer_t *self, struct pkt_t *packet)
 		return ICMP_ECHO_REPLY_RCVD;
 	case ECHO_REQUEST:
 		memcpy(packet->dest_ip, packet->src_ip, IPV4_ADDR_LEN);
-		echo_request_to_reply(packet, header, packet->len);
+		echo_request_to_reply(packet, header);
 		return send_icmp_down(self, packet);
 	default:
 		return ICMP_TYPE_NOT_SUPPORTED;
 	}
 }
 
-void echo_request_to_reply(struct pkt_t *packet, struct icmp_header_t *header, size_t len)
+void echo_request_to_reply(struct pkt_t *packet, struct icmp_header_t *header)
 {
 	memcpy(packet->dest_ip, packet->src_ip, IPV4_ADDR_LEN);
 	packet->protocol = ICMP;
