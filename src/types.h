@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
 
 // ===== Definitions & Constants =====
 #define MAC_ADDR_LEN 6
@@ -298,6 +299,8 @@ struct udp_ipv4_socket_t {
 	uint16_t local_port;
 	struct ring_buffer_t rcv_buffer; // stack writes, app consumes
 	struct ring_buffer_t snd_buffer; // app writes, stack consumes
+	enum udp_socket_state_t state;
+	uint8_t ref_count;
 	enum udp_socket_state_t state;
 	uint8_t ref_count;
 };

@@ -5,6 +5,9 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <arpa/inet.h>
+#include <assert.h>
+#include <stdlib.h>
 
 #ifdef __cplusplus
 extern "C" {
