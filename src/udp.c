@@ -26,8 +26,6 @@ pkt_result write_to_udp_socket(struct udp_ipv4_socket_t *socket, struct pkt_t *p
 {
 	if (socket->state == CLOSED)
 		return UDP_SOCKET_CLOSED;
-	// occasionally application could close socket in this windown between check and write
-	// => release_socket will eventually destroy the socket anyway
 
 	// add writing to ring buffer
 	release_socket(socket);
@@ -162,16 +160,18 @@ bool validate_checksum(struct udp_header_t *header, struct pkt_t *packet)
 	if (header->checksum == 0)
 		return true;
 
-	struct ipv4_pseudo_header_t *pseudo_h = (struct ipv4_pseudo_header_t *)&packet->src_ip;
-	pseudo_h->len = header->length;
-	pseudo_h->padding = 0;
-	pseudo_h->protocol = UDP;
-	uint16_t udp_length = ntohs(header->length);
+	struct ipv4_pseudo_header_t pseudo_h = {
+		.len = header->length,
+		.padding = 0,
+		.protocol = UDP,
+	};
+	memcpy(pseudo_h.dest_ip, packet->dest_ip, IPV4_ADDR_LEN);
+	memcpy(pseudo_h.src_ip, packet->src_ip, IPV4_ADDR_LEN);
+
 
 	struct checksum_chunk chunks[2] = {
-	    {.data = packet->data + packet->offset, .len = udp_length},
-	    {.data = pseudo_h, .len = sizeof(struct ipv4_pseudo_header_t)}};
+	    {.data = packet->data + packet->offset, .len = packet->len},
+	    {.data = &pseudo_h, .len = sizeof(struct ipv4_pseudo_header_t)}};
 	uint16_t checksum = calc_checksum(chunks, 2);
-	pseudo_h->len = udp_length;
 	return checksum == 0;
 }
