@@ -300,8 +300,6 @@ struct udp_ipv4_socket_t {
 	struct ring_buffer_t snd_buffer; // app writes, stack consumes
 	enum udp_socket_state_t state;
 	uint8_t ref_count;
-	enum udp_socket_state_t state;
-	uint8_t ref_count;
 };
 
 struct udp_ipv4_sckt_htable_node_t {
