@@ -1,5 +1,6 @@
 #pragma once
 #include <net/if.h>
+#include <pthread.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -30,7 +31,6 @@
 #define IGMP 2
 #define TCP 6
 #define UDP 17
-
 
 #define ECHO_REPLY 0
 #define DESTINATION_UNREACHABLE 3
@@ -352,6 +352,6 @@ struct socket_manager_t {
 
 // Checksum data
 struct checksum_chunk {
-    const void *data;
-    size_t len;
+	const void *data;
+	size_t len;
 };
