@@ -21,6 +21,7 @@ bool add_to_hashtable(struct udp_ipv4_sckt_htable_t *htable, struct udp_ipv4_soc
 void retain_socket(struct udp_ipv4_socket_t *socket);
 void release_socket(struct udp_ipv4_socket_t *socket);
 uint32_t calc_hash(uint16_t port, struct udp_ipv4_sckt_htable_t *htable);
+pkt_result write_to_udp_socket(struct udp_ipv4_socket_t *socket, struct pkt_t *packet);
 
 #ifdef __cplusplus
 }
