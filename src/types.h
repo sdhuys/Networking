@@ -384,6 +384,9 @@ struct socket_ops_t {
 
 	bool (*write_to_snd_buffer)(void *sock, struct send_request_t req);
 	struct pkt_t *(*read_rcv_buffer)(void *sock);
+
+	void (*unlock)(void *sock);
+	void (*lock)(void *sock);
 };
 
 // Transport-protocol-agnostic socket handle

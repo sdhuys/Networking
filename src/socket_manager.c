@@ -1,20 +1,22 @@
 #include "socket_manager.h"
 
-void notify_socket_readable_rcv(struct socket_manager_t *mgr, struct socket_handle_t sock)
+void notify_socket_readable_rcv(struct socket_manager_t *mgr, struct socket_handle_t sock_h)
 {
-	if (!sock.ops->is_rcv_queued(sock.sock)) {
-		sock.ops->set_rcv_queued(sock.sock, true);
-		sock.ops->retain(sock.sock);
-		enqueue_socket(mgr->receive_up_sock_q, sock);
+	if (!sock_h.ops->is_rcv_queued(sock_h.sock)) {
+		sock_h.ops->set_rcv_queued(sock_h.sock, true);
+		sock_h.ops->unlock(sock_h.sock); // UNLOCK FIRST
+		sock_h.ops->retain(sock_h.sock);
+		enqueue_socket(mgr->receive_up_sock_q, sock_h);
 	}
 }
 
-void notify_socket_readable_snd(struct socket_manager_t *mgr, struct socket_handle_t sock)
+void notify_socket_readable_snd(struct socket_manager_t *mgr, struct socket_handle_t sock_h)
 {
-	if (!sock.ops->is_snd_queued(sock.sock)) {
-		sock.ops->set_snd_queued(sock.sock, true);
-		sock.ops->retain(sock.sock);
-		enqueue_socket(mgr->send_down_sock_q, sock);
+	if (!sock_h.ops->is_snd_queued(sock_h.sock)) {
+		sock_h.ops->set_snd_queued(sock_h.sock, true);
+		sock_h.ops->unlock(sock_h.sock); // UNLOCK FIRST
+		sock_h.ops->retain(sock_h.sock);
+		enqueue_socket(mgr->send_down_sock_q, sock_h);
 	}
 }
 
@@ -55,6 +57,9 @@ struct socket_h_q_node_t *dequeue_socket(struct socket_h_q_t *q)
 void enqueue_socket(struct socket_h_q_t *q, struct socket_handle_t sock)
 {
 	struct socket_h_q_node_t *node = malloc(sizeof(*node));
+	if (!node)
+		return;
+
 	node->socket = sock;
 	node->next = NULL;
 

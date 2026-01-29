@@ -1,4 +1,5 @@
 #include "udp.h"
+#include <stdio.h>
 
 pkt_result send_udp_down(struct nw_layer_t *self, struct pkt_t *packet)
 {
@@ -24,10 +25,9 @@ pkt_result receive_udp_up(struct nw_layer_t *self, struct pkt_t *packet)
 	if (socket == NULL)
 		return UDP_PORT_NO_LISTENER;
 
-	// LOCK SOCKET //
 	pkt_result r = write_up_to_rcv_buffer(context->sock_manager, socket, packet);
 	release_udp_socket(socket);
-	// UNLOCK SOCKET //
+
 
 	return r;
 }

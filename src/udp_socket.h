@@ -25,3 +25,5 @@ void udp_retain(void *s);
 void udp_release(void *s);
 bool udp_write_to_snd_buffer(void *s, struct send_request_t req);
 struct pkt_t *udp_read_rcv_buffer(void *s);
+void lock_socket(void *s);
+void unlock_socket(void *s);

@@ -2,9 +2,11 @@
 #include "types.h"
 #include "udp_hashtable.h"
 #include "udp_socket.h"
+#include "app.h"
 
 void start_app(struct socket_manager_t *socket_manager)
 {
+	app_socket_open(socket_manager, SOCK_UDP, 9000);
 	// OPEN SOCKETS
 	// LOOP READING socket_manager->receive_up_sock_q
 	// echo data back to socket_manager->send_down_sock_q

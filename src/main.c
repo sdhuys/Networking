@@ -1,3 +1,4 @@
+#include "app.h"
 #include "stack_constructor.h"
 #include <arpa/inet.h>
 #include <errno.h>
@@ -40,6 +41,7 @@ int main()
 	struct socket_manager_t *socket_manager = stack.sock_manager;
 
 	// START 3 THREADS
+	start_app(socket_manager);
 	start_listening(tap_fd, tap);
 	// ^ stack sending up from TAP thread, writing to socket_manager->receive_up_sock_q
 

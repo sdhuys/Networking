@@ -1,11 +1,14 @@
 #include "udp_socket.h"
+#include <stdio.h>
 
 const struct socket_ops_t udp_socket_ops = {.is_rcv_queued = udp_is_rcv_queued,
 					    .set_rcv_queued = udp_set_rcv_queued,
 					    .retain = udp_retain,
 					    .release = udp_release,
 					    .write_to_snd_buffer = udp_write_to_snd_buffer,
-					    .read_rcv_buffer = udp_read_rcv_buffer};
+					    .read_rcv_buffer = udp_read_rcv_buffer,
+					    .unlock = unlock_socket,
+					    .lock = lock_socket};
 
 struct udp_ipv4_socket_t *create_udp_socket(uint16_t port)
 {
@@ -75,8 +78,11 @@ pkt_result write_up_to_rcv_buffer(struct socket_manager_t *socket_manager,
 {
 	pthread_mutex_t *lock = &(socket->lock);
 	pthread_mutex_lock(lock);
-	if (socket->state == CLOSED)
+
+	if (socket->state == CLOSED) {
+		pthread_mutex_unlock(lock);
 		return UDP_SOCKET_CLOSED;
+	}
 
 	if (!write_to_buffer(socket->rcv_buffer, packet)) {
 		return RING_BUFFER_FULL;
@@ -194,4 +200,16 @@ struct pkt_t *udp_read_rcv_buffer(void *s)
 	struct pkt_t *pkt = read_buffer(rcv_buffer);
 	pthread_mutex_unlock(lock);
 	return pkt;
+}
+
+void lock_socket(void *s)
+{
+	struct udp_ipv4_socket_t *socket = (struct udp_ipv4_socket_t *)s;
+	pthread_mutex_lock(&socket->lock);
+}
+
+void unlock_socket(void *s)
+{
+	struct udp_ipv4_socket_t *socket = (struct udp_ipv4_socket_t *)s;
+	pthread_mutex_unlock(&socket->lock);
 }
