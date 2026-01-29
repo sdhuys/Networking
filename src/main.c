@@ -35,8 +35,18 @@ int main()
 	if ((tap_fd = tap_setup()) < 0)
 		return 1;
 
-	struct nw_layer_t *tap = construct_stack(tap_fd, TAP_NAME);
+	struct stack_t stack = construct_stack(tap_fd, TAP_NAME);
+	struct nw_layer_t *tap = stack.if_layer;
+	struct socket_manager_t *socket_manager = stack.sock_manager;
+
+	// START 3 THREADS
 	start_listening(tap_fd, tap);
+	// ^ stack sending up from TAP thread, writing to socket_manager->receive_up_sock_q
+
+	// application thread: reading from socket_manager->receive_up_sock_q
+	// + writing to socket_manager->send_down_sock_q
+
+	// stack thread reading from socket_manager->send_down_q
 	return 0;
 }
 

@@ -18,6 +18,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ---- Source files ----
 # Library source files (shared between main executable and tests)
 set(LIB_SOURCES
+  src/app.c
   src/arp.c
   src/buffer_pool.c
   src/checksum.c
@@ -28,9 +29,12 @@ set(LIB_SOURCES
   src/layer_router.c
   src/routing_table.c
   src/stack_constructor.c
+  src/socket_manager.c
   src/tap.c
   src/tcp.c
   src/udp.c
+  src/udp_hashtable.c
+  src/udp_socket.c
 )
 
 # Main executable source files

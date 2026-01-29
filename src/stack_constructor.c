@@ -1,6 +1,6 @@
 #include "stack_constructor.h"
 
-struct nw_layer_t *construct_stack(int fd, char *if_name)
+struct stack_t construct_stack(int fd, char *if_name)
 {
 	struct nw_layer_t *interface = malloc(sizeof(struct nw_layer_t));
 	struct nw_layer_t *eth = malloc(sizeof(struct nw_layer_t));
@@ -88,6 +88,14 @@ struct nw_layer_t *construct_stack(int fd, char *if_name)
 	icmp->downs = malloc(icmp->downs_count * sizeof(struct nw_layer_t *));
 	icmp->downs[0] = ip;
 
+	struct socket_manager_t *socket_manager = malloc(sizeof(struct socket_manager_t));
+	socket_manager->receive_up_sock_q = malloc(sizeof(struct socket_h_q_t));
+	socket_manager->send_down_sock_q = malloc(sizeof(struct socket_h_q_t));
+	socket_manager->receive_up_sock_q->head = NULL;
+	socket_manager->receive_up_sock_q->tail = NULL;
+	socket_manager->send_down_sock_q->head = NULL;
+	socket_manager->send_down_sock_q->tail = NULL;
+
 	udp->name = UDP_NAME;
 	udp->send_down = &send_udp_down;
 	udp->rcv_up = &receive_udp_up;
@@ -100,14 +108,15 @@ struct nw_layer_t *construct_stack(int fd, char *if_name)
 	memcpy(udp_context->stack_ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
 	struct udp_ipv4_sckt_htable_t *udp_htable = malloc(sizeof(struct udp_ipv4_sckt_htable_t));
 	udp_htable->buckets_amount = UDP_SCKT_HTBL_SIZE;
-	pthread_rwlock_t *bckt_locks = malloc(sizeof(pthread_rwlock_t) * UDP_SCKT_HTBL_SIZE);
+	pthread_mutex_t *bckt_locks = malloc(sizeof(pthread_mutex_t) * UDP_SCKT_HTBL_SIZE);
 	for (int i = 0; i < UDP_SCKT_HTBL_SIZE; i++)
-		pthread_rwlock_init(&bckt_locks[i], NULL);
+		pthread_mutex_init(&bckt_locks[i], NULL);
 	udp_htable->bucket_locks = bckt_locks;
 	struct udp_ipv4_sckt_htable_node_t **buckets =
 	    calloc(UDP_SCKT_HTBL_SIZE, sizeof(struct udp_ipv4_sckt_htable_node_t));
 	udp_htable->buckets = buckets;
-	udp_context->socket_htable = udp_htable;
+	socket_manager->udp_ipv4_sckt_htable = udp_htable;
+	udp_context->sock_manager = socket_manager;
 	udp->context = udp_context;
 
 	tcp->name = TCP_NAME;
@@ -119,7 +128,8 @@ struct nw_layer_t *construct_stack(int fd, char *if_name)
 	tcp->downs = malloc(tcp->downs_count * sizeof(struct nw_layer_t *));
 	tcp->downs[0] = ip;
 
-	return interface;
+	struct stack_t stack = {.if_layer = interface, .sock_manager = socket_manager};
+	return stack;
 }
 
 void set_net_if_struct(int fd, char *if_name, struct nw_interface_t *n_if)

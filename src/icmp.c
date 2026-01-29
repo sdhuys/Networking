@@ -30,7 +30,7 @@ pkt_result receive_icmp_up(struct nw_layer_t *self, struct pkt_t *packet)
 void echo_request_to_reply(struct pkt_t *packet, struct icmp_header_t *header)
 {
 	memcpy(packet->dest_ip, packet->src_ip, IPV4_ADDR_LEN);
-	packet->protocol = ICMP;
+	packet->protocol = P_ICMP;
 	header->type = 0;
 	header->code = 0;
 	header->checksum = 0;

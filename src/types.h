@@ -27,16 +27,15 @@
 #define IPV6 0x86DD
 #define VLAN 0x8100
 
-#define ICMP 1
-#define IGMP 2
-#define TCP 6
-#define UDP 17
+#define P_ICMP 1
+#define P_TCP 6
+#define P_UDP 17
 
 #define ECHO_REPLY 0
 #define DESTINATION_UNREACHABLE 3
 #define ECHO_REQUEST 8
 
-#define TAP_NAME "tap"
+#define TAP_NAME "tap0"
 #define ETH_NAME "ethernet"
 #define ARP_NAME "arp"
 #define ICMP_NAME "icmp"
@@ -46,7 +45,7 @@
 
 #define UDP_SCKT_HTBL_SIZE 128	// buckets for listener entries
 #define TCP_SCKT_HTBL_SIZE 1024 // buckets for listener entries + multiple connections per etry
-#define RING_BUFF_SIZE
+#define RING_BUFF_SIZE 1024
 
 #define GOLDEN_RATIO_32 2654435761U
 
@@ -89,6 +88,8 @@ typedef enum {
 	UDP_PORT_NO_LISTENER = -402,
 	UDP_SOCKET_CLOSED = -403,
 
+	RING_BUFFER_FULL = -501,
+
 	LAYER_NAME_NOT_FOUND = -2,
 	NOT_IMPLEMENTED_YET = -1
 } pkt_result;
@@ -115,11 +116,13 @@ struct pkt_t {
 	uint8_t ref_count;
 	int intrfc_indx;
 	ether_type ethertype;
+	uint8_t protocol;
 	mac_address dest_mac;
 	ipv4_address src_ip;
 	ipv4_address dest_ip;
 	uint16_t src_port;
-} __attribute__((packed));
+	uint16_t dest_port;
+};
 
 // ===== General Network Layer Structure =====
 struct nw_layer_t {
@@ -269,13 +272,15 @@ struct icmp_header_t {
 //// TRANSPORT LAYERS ////
 // RING BUFFER
 struct ring_buffer_t {
-	// implement ring buffer
+	struct pkt_t *packets[RING_BUFF_SIZE];
+	uint32_t head;
+	uint32_t tail;
 };
 
 // UDP LAYER
 struct udp_context_t {
 	ipv4_address stack_ipv4_addr;
-	struct udp_ipv4_sckt_htable_t *socket_htable;
+	struct socket_manager_t *sock_manager;
 };
 
 struct udp_header_t {
@@ -285,14 +290,17 @@ struct udp_header_t {
 	uint16_t checksum;
 } __attribute__((packed));
 
-enum udp_socket_state_t { LISTENING, CLOSED };
+typedef enum { LISTENING, CLOSED } udp_socket_state_t;
 
 struct udp_ipv4_socket_t {
 	uint16_t local_port;
-	struct ring_buffer_t rcv_buffer; // stack writes, app consumes
-	struct ring_buffer_t snd_buffer; // app writes, stack consumes
-	enum udp_socket_state_t state;
+	struct ring_buffer_t *rcv_buffer; // stack writes, app consumes
+	struct ring_buffer_t *snd_buffer; // app writes, stack consumes
+	udp_socket_state_t state;
 	uint8_t ref_count;
+	bool queued_for_rcv;
+	bool queued_for_snd;
+	pthread_mutex_t lock;
 };
 
 struct udp_ipv4_sckt_htable_node_t {
@@ -303,7 +311,7 @@ struct udp_ipv4_sckt_htable_node_t {
 struct udp_ipv4_sckt_htable_t {
 	struct udp_ipv4_sckt_htable_node_t **buckets;
 	uint16_t buckets_amount;
-	pthread_rwlock_t *bucket_locks; // One lock per bucket
+	pthread_mutex_t *bucket_locks; // One lock per bucket
 };
 
 // TCP LAYER
@@ -319,9 +327,6 @@ struct tcp_ipv4_socket_t {
 	uint16_t extern_port;
 	struct ring_buffer_t rcv_buffer; // stack writes, app consumes
 	struct ring_buffer_t snd_buffer; // app writes, stack consumes
-
-	// add write()
-	// add read()
 };
 
 struct tcp_ipv4_sckt_node_t {
@@ -338,14 +343,66 @@ struct tcp_ipv4_socket_htable_t {
 	// add query_listening()
 };
 
-// Socket manager
-struct socket_manager_t {
-	struct tcp_ipv4_socket_htable_t *tcp_ipv4_sckt_htable;
-	struct udp_ipv4_sckt_htable_t *udp_ipv4_sckt_htable;
-};
-
 // Checksum data
 struct checksum_chunk {
 	const void *data;
 	size_t len;
+};
+
+// Socket manager
+struct socket_manager_t {
+	struct tcp_ipv4_socket_htable_t *tcp_ipv4_sckt_htable;
+	struct udp_ipv4_sckt_htable_t *udp_ipv4_sckt_htable;
+	struct socket_h_q_t *send_down_sock_q;	// app writes, stack reads
+	struct socket_h_q_t *receive_up_sock_q; // stack writes, app reads
+};
+
+// STACK: contains everything for stack rcv + snd and app rcv + snd
+struct stack_t {
+	struct nw_layer_t *if_layer;
+	struct socket_manager_t *sock_manager;
+};
+
+// App send request
+struct send_request_t {
+	unsigned char *data;
+	size_t len;
+	ipv4_address dest_ip; // optional, only for UDP
+	uint16_t dest_port;   // optional, only for UDP
+};
+
+// Protocol agnostic socket operations
+struct socket_ops_t {
+	bool (*is_rcv_queued)(void *sock);
+	void (*set_rcv_queued)(void *sock, bool);
+
+	bool (*is_snd_queued)(void *sock);
+	void (*set_snd_queued)(void *sock, bool);
+
+	void (*retain)(void *sock);
+	void (*release)(void *sock);
+
+	bool (*write_to_snd_buffer)(void *sock, struct send_request_t req);
+	struct pkt_t *(*read_rcv_buffer)(void *sock);
+};
+
+// Transport-protocol-agnostic socket handle
+typedef enum { SOCK_UDP, SOCK_TCP } socket_type_t;
+
+struct socket_handle_t {
+	void *sock;
+	socket_type_t type;		// for debugging/logging
+	const struct socket_ops_t *ops; // should contain all type-specific actions
+};
+
+// Socket handle queue
+struct socket_h_q_t {
+	struct socket_h_q_node_t *head;
+	struct socket_h_q_node_t *tail;
+	pthread_mutex_t lock;
+};
+
+struct socket_h_q_node_t {
+	struct socket_handle_t socket;
+	struct socket_h_q_node_t *next;
 };

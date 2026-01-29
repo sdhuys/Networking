@@ -5,6 +5,9 @@ int start_listening(int fd, struct nw_layer_t *interface)
 	init_buffer_pool();
 	for (;;) {
 		struct pkt_t *packet = allocate_pkt();
+		if (packet == NULL)
+			continue;
+
 		ssize_t nread = read(fd, packet->data, MAX_ETH_FRAME_SIZE);
 		if (nread < 0)
 			continue;

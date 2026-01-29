@@ -22,7 +22,7 @@
 extern "C" {
 #endif
 
-struct nw_layer_t *construct_stack(int fd, char *if_name);
+struct stack_t construct_stack(int fd, char *if_name);
 void set_net_if_struct(int fd, char *if_name, struct nw_interface_t *n_if);
 void set_stack_ipv4_addr(struct nw_interface_t *n_if, ipv4_address stack_ip_addr);
 

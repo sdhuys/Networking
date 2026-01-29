@@ -30,12 +30,13 @@ pkt_result receive_ipv4_up(struct nw_layer_t *self, struct pkt_t *packet)
 	packet->offset += header_len * 4; // == sizeof(struct ipv4_header) since we
 					  // enforece NO OPTIONS in header
 	packet->len -= header_len * 4;
+	packet->protocol = header->protocol;
 	switch (header->protocol) {
-	case ICMP:
+	case P_ICMP:
 		return pass_up_to_layer(self, ICMP_NAME, packet);
-	case TCP:
+	case P_TCP:
 		return pass_up_to_layer(self, TCP_NAME, packet);
-	case UDP:
+	case P_UDP:
 		return pass_up_to_layer(self, UDP_NAME, packet);
 	default:
 		return IP_HDR_TRANSPORT_PROT_NOT_SUPPORTED;
@@ -79,9 +80,10 @@ pkt_result send_ipv4_down(struct nw_layer_t *self, struct pkt_t *packet)
 		struct pkt_t *arp_request = create_arp_request_for(arp_layer, next_hop);
 		send_arp_down(arp_layer, arp_request);
 	}
-	if (dest_ip_node->status == ARP_INCOMPLETE)
+	if (dest_ip_node->status == ARP_INCOMPLETE) {
+		retain_pkt(packet);
 		return add_pkt_to_q(dest_ip_node, packet);
-
+	}
 	memcpy(packet->dest_mac, dest_ip_node->mac_addr, MAC_ADDR_LEN);
 	return self->downs[0]->send_down(self->downs[0], packet);
 }

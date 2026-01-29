@@ -94,7 +94,6 @@ pkt_result add_pkt_to_q(struct arp_table_node_t *node, struct pkt_t *packet)
 		node->pending_tail->next = new;
 	node->pending_tail = new;
 
-	retain_pkt(packet);
 	return PACKET_QUEUED;
 }
 
