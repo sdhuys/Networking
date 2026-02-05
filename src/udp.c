@@ -28,7 +28,6 @@ pkt_result receive_udp_up(struct nw_layer_t *self, struct pkt_t *packet)
 	pkt_result r = write_up_to_rcv_buffer(context->sock_manager, socket, packet);
 	release_udp_socket(socket);
 
-
 	return r;
 }
 

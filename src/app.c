@@ -1,8 +1,8 @@
+#include "app.h"
 #include "socket_manager.h"
 #include "types.h"
 #include "udp_hashtable.h"
 #include "udp_socket.h"
-#include "app.h"
 
 void start_app(struct socket_manager_t *socket_manager)
 {
@@ -12,8 +12,9 @@ void start_app(struct socket_manager_t *socket_manager)
 	// echo data back to socket_manager->send_down_sock_q
 }
 
-struct socket_handle_t
-app_socket_open(struct socket_manager_t *socket_manager, socket_type_t type, uint16_t local_port)
+struct socket_handle_t app_socket_open(struct socket_manager_t *socket_manager,
+				       socket_type_t type,
+				       uint16_t local_port)
 {
 	struct socket_handle_t handle = {0};
 

@@ -6,7 +6,9 @@ void start_app(struct socket_manager_t *socket_manager);
 
 // Open a socket of the given type (SOCK_UDP or SOCK_TCP).
 // Returns a socket handle that must be retained/released correctly.
-struct socket_handle_t app_socket_open(struct socket_manager_t *socket_manager, socket_type_t type, uint16_t local_port);
+struct socket_handle_t app_socket_open(struct socket_manager_t *socket_manager,
+				       socket_type_t type,
+				       uint16_t local_port);
 
 // Close a socket handle, releasing its resources.
 // After this, the handle is invalid.
