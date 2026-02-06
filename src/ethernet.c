@@ -47,7 +47,7 @@ pkt_result send_frame_down(struct nw_layer_t *self, struct pkt_t *packet)
 	header->ethertype = packet->ethertype;
 	memcpy(header->dest_mac, packet->dest_mac, MAC_ADDR_LEN);
 	memcpy(header->src_mac, context->mac_addr, MAC_ADDR_LEN);
-	
+
 	return self->downs[0]->send_down(self->downs[0], packet);
 }
 

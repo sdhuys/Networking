@@ -110,9 +110,9 @@ typedef enum {
 
 // ===== Packet Structure =====
 struct pkt_t {
-	unsigned char *data; 
-	size_t offset;	     // Offset to the start of the current layer's header
-	uint16_t len;	     // Packet length from current offset (current layer's length)
+	unsigned char *data;
+	size_t offset; // Offset to the start of the current layer's header
+	uint16_t len;  // Packet length from current offset (current layer's length)
 	uint8_t ref_count;
 	int if_index;
 	ether_type ethertype;
@@ -365,7 +365,7 @@ struct socket_manager_t {
 struct stack_t {
 	struct nw_layer_t *if_layer;
 	struct nw_layer_t *udp_layer;
-    struct nw_layer_t *tcp_layer;
+	struct nw_layer_t *tcp_layer;
 	struct socket_manager_t *sock_manager;
 };
 

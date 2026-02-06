@@ -41,20 +41,19 @@ struct pkt_t *allocate_pkt()
 
 void release_pkt(struct pkt_t *pkt)
 {
-    int should_free = 0;
+	int should_free = 0;
 
-    pthread_mutex_lock(&pkt->lock);
-    if (--pkt->ref_count == 0)
-        should_free = 1;
-    pthread_mutex_unlock(&pkt->lock);
+	pthread_mutex_lock(&pkt->lock);
+	if (--pkt->ref_count == 0)
+		should_free = 1;
+	pthread_mutex_unlock(&pkt->lock);
 
-    if (should_free) {
-        pthread_mutex_lock(&pool_mutex);
-        free_pkt_stack[++top_free_index] = pkt;
-        pthread_mutex_unlock(&pool_mutex);
-    }
+	if (should_free) {
+		pthread_mutex_lock(&pool_mutex);
+		free_pkt_stack[++top_free_index] = pkt;
+		pthread_mutex_unlock(&pool_mutex);
+	}
 }
-
 
 void retain_pkt(struct pkt_t *pkt)
 {
