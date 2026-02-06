@@ -276,6 +276,7 @@ struct ring_buffer_t {
 	struct pkt_t *packets[RING_BUFF_SIZE];
 	uint32_t head;
 	uint32_t tail;
+	pthread_mutex_t lock;
 };
 
 // UDP LAYER
@@ -404,6 +405,8 @@ struct socket_h_q_t {
 	struct socket_h_q_node_t *head;
 	struct socket_h_q_node_t *tail;
 	pthread_mutex_t lock;
+	pthread_cond_t cond;
+	size_t len;
 };
 
 struct socket_h_q_node_t {

@@ -6,10 +6,19 @@
 
 void start_app(struct socket_manager_t *socket_manager)
 {
-	app_socket_open(socket_manager, SOCK_UDP, 9000);
-	// OPEN SOCKETS
-	// LOOP READING socket_manager->receive_up_sock_q
-	// echo data back to socket_manager->send_down_sock_q
+	struct socket_handle_t socket = app_socket_open(socket_manager, SOCK_UDP, 9000);
+
+	struct socket_h_q_t *read_queue = socket_manager->receive_up_sock_q;
+	pthread_mutex_lock(&read_queue->lock);
+	while (1) {
+		while (read_queue->len == 0) {
+			pthread_cond_wait(&read_queue->cond, &read_queue->lock);
+		}
+		struct pkt_t *pkt;
+		while ((pkt = app_socket_receive(socket_manager)) != NULL) {
+			app_socket_send(socket, pkt->data, pkt->len);
+		}
+	}
 }
 
 struct socket_handle_t app_socket_open(struct socket_manager_t *socket_manager,
@@ -67,8 +76,9 @@ pkt_result app_socket_send(struct socket_handle_t sock, unsigned char *data, siz
 	return success ? SENT : WRITE_ERROR;
 }
 
-struct pkt_t *app_socket_receive(struct socket_handle_t sock)
+struct pkt_t *app_socket_receive(struct socket_manager_t *socket_manager)
 {
+	struct socket_handle_t sock = dequeue_readable_socket(socket_manager);
 	if (!sock.sock || !sock.ops || !sock.ops->read_rcv_buffer)
 		return NULL;
 

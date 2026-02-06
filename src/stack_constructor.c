@@ -93,8 +93,14 @@ struct stack_t construct_stack(int fd, char *if_name)
 	socket_manager->send_down_sock_q = malloc(sizeof(struct socket_h_q_t));
 	socket_manager->receive_up_sock_q->head = NULL;
 	socket_manager->receive_up_sock_q->tail = NULL;
+	socket_manager->receive_up_sock_q->len = 0;
+	pthread_cond_init(&socket_manager->receive_up_sock_q->cond, NULL);
+	pthread_mutex_init(&socket_manager->receive_up_sock_q->lock, NULL);
 	socket_manager->send_down_sock_q->head = NULL;
 	socket_manager->send_down_sock_q->tail = NULL;
+	socket_manager->send_down_sock_q->len = 0;
+	pthread_cond_init(&socket_manager->send_down_sock_q->cond, NULL);
+	pthread_mutex_init(&socket_manager->send_down_sock_q->lock, NULL);
 
 	udp->name = UDP_NAME;
 	udp->send_down = &send_udp_down;

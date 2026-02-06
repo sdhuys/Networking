@@ -36,6 +36,7 @@ struct ring_buffer_t *create_init_ring_buffer()
 	if (buff == NULL)
 		return NULL;
 
+	pthread_mutex_init(&buff->lock, NULL);
 	buff->head = 0;
 	buff->tail = 0;
 	return buff;
@@ -77,45 +78,48 @@ pkt_result write_up_to_rcv_buffer(struct socket_manager_t *socket_manager,
 				  struct pkt_t *packet)
 {
 	pthread_mutex_t *lock = &(socket->lock);
-	pthread_mutex_lock(lock);
 
 	if (socket->state == CLOSED) {
 		pthread_mutex_unlock(lock);
 		return UDP_SOCKET_CLOSED;
 	}
+	pthread_mutex_unlock(lock);
 
 	if (!write_to_buffer(socket->rcv_buffer, packet)) {
 		return RING_BUFFER_FULL;
-		pthread_mutex_unlock(lock);
 	}
 
 	struct socket_handle_t sock_h = create_udp_socket_handle(socket);
 	notify_socket_readable_rcv(socket_manager, sock_h);
-
-	pthread_mutex_unlock(lock);
 	return SENT_UP_TO_APPLICATION;
 }
 
-// should only be called while socket owning the buffer is under lock
 bool write_to_buffer(struct ring_buffer_t *buff, struct pkt_t *packet)
 {
+	pthread_mutex_lock(&buff->lock);
 	uint32_t next_head = (buff->head + 1) % RING_BUFF_SIZE;
-	if (next_head == buff->tail)
+	if (next_head == buff->tail) {
+		pthread_mutex_unlock(&buff->lock);
 		return false;
+	}
 
 	buff->packets[buff->head] = packet;
 	buff->head = next_head;
+	pthread_mutex_unlock(&buff->lock);
 	return true;
 }
 
-// should only be called while socket owning the buffer is under lock
 struct pkt_t *read_buffer(struct ring_buffer_t *buff)
 {
-	if (buff->head == buff->tail)
+	pthread_mutex_lock(&buff->lock);
+	if (buff->head == buff->tail) {
+		pthread_mutex_unlock(&buff->lock);
 		return NULL;
+	}
 
 	struct pkt_t *pkt = buff->packets[buff->tail];
 	buff->tail = (buff->tail + 1) % RING_BUFF_SIZE;
+	pthread_mutex_unlock(&buff->lock);
 	return pkt;
 }
 
@@ -159,6 +163,7 @@ bool udp_write_to_snd_buffer(void *s, struct send_request_t req)
 
 	if (socket->state == CLOSED)
 		return false;
+	pthread_mutex_unlock(soc_lock);
 
 	struct ring_buffer_t *buffer = socket->snd_buffer;
 
@@ -178,27 +183,20 @@ bool udp_write_to_snd_buffer(void *s, struct send_request_t req)
 	if (!write_to_buffer(buffer, packet)) {
 		release_pkt(packet); // failure, buffer releases ownership
 		release_pkt(packet); // caller releases ownership too
-		pthread_mutex_unlock(soc_lock);
 		return false;
 	}
 
 	// notify_socket_readable_snd(); NEED ACCESS TO SOCK_MANAGER, MAKE GLOBAL?
 	//  OR store in socket struct?
 	release_pkt(packet); // caller releases ownership
-
-	pthread_mutex_unlock(soc_lock);
 	return true;
 }
 
 struct pkt_t *udp_read_rcv_buffer(void *s)
 {
 	struct udp_ipv4_socket_t *socket = (struct udp_ipv4_socket_t *)s;
-
-	pthread_mutex_t *lock = &(socket->lock);
-	pthread_mutex_lock(lock);
 	struct ring_buffer_t *rcv_buffer = socket->rcv_buffer;
 	struct pkt_t *pkt = read_buffer(rcv_buffer);
-	pthread_mutex_unlock(lock);
 	return pkt;
 }
 

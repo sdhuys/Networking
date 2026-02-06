@@ -2,9 +2,10 @@
 
 void notify_socket_readable_rcv(struct socket_manager_t *mgr, struct socket_handle_t sock_h)
 {
+	sock_h.ops->lock(sock_h.sock); // LOCK
 	if (!sock_h.ops->is_rcv_queued(sock_h.sock)) {
 		sock_h.ops->set_rcv_queued(sock_h.sock, true);
-		sock_h.ops->unlock(sock_h.sock); // UNLOCK FIRST
+		sock_h.ops->unlock(sock_h.sock); // UNLOCK
 		sock_h.ops->retain(sock_h.sock);
 		enqueue_socket(mgr->receive_up_sock_q, sock_h);
 	}
@@ -12,9 +13,10 @@ void notify_socket_readable_rcv(struct socket_manager_t *mgr, struct socket_hand
 
 void notify_socket_readable_snd(struct socket_manager_t *mgr, struct socket_handle_t sock_h)
 {
+	sock_h.ops->lock(sock_h.sock); // LOCK
 	if (!sock_h.ops->is_snd_queued(sock_h.sock)) {
 		sock_h.ops->set_snd_queued(sock_h.sock, true);
-		sock_h.ops->unlock(sock_h.sock); // UNLOCK FIRST
+		sock_h.ops->unlock(sock_h.sock); // UNLOCK
 		sock_h.ops->retain(sock_h.sock);
 		enqueue_socket(mgr->send_down_sock_q, sock_h);
 	}
@@ -43,14 +45,19 @@ void release_socket_from_queue(struct socket_handle_t sock, bool rx)
 
 struct socket_h_q_node_t *dequeue_socket(struct socket_h_q_t *q)
 {
-	if (!q->head)
+	pthread_mutex_lock(&q->lock);
+	if (!q->head) {
+		pthread_mutex_unlock(&q->lock);
 		return NULL;
+	}
 
 	struct socket_h_q_node_t *node = q->head;
 	q->head = node->next;
 	if (!q->head)
 		q->tail = NULL;
 	node->next = NULL;
+	--q->len;
+	pthread_mutex_unlock(&q->lock);
 	return node;
 }
 
@@ -63,6 +70,7 @@ void enqueue_socket(struct socket_h_q_t *q, struct socket_handle_t sock)
 	node->socket = sock;
 	node->next = NULL;
 
+	pthread_mutex_lock(&q->lock);
 	if (!q->head) {
 		q->head = node;
 		q->tail = node;
@@ -70,4 +78,6 @@ void enqueue_socket(struct socket_h_q_t *q, struct socket_handle_t sock)
 		q->tail->next = node;
 		q->tail = node;
 	}
+	++q->len;
+	pthread_mutex_unlock(&q->lock);
 }

@@ -13,6 +13,7 @@ void init_buffer_pool()
 	for (int i = 0; i < PKT_BUFF_POOL_SIZE; i++) {
 		pkt_pool[i].data = buffer_pool[i];
 		pkt_pool[i].ref_count = 0;
+		pthread_mutex_init(&pkt_pool[i].lock, NULL);
 		free_pkt_stack[i] = &pkt_pool[i];
 	}
 	top_free_index = PKT_BUFF_POOL_SIZE - 1;
