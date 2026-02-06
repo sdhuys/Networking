@@ -134,7 +134,10 @@ struct stack_t construct_stack(int fd, char *if_name)
 	tcp->downs = malloc(tcp->downs_count * sizeof(struct nw_layer_t *));
 	tcp->downs[0] = ip;
 
-	struct stack_t stack = {.if_layer = interface, .sock_manager = socket_manager};
+	struct stack_t stack = {.if_layer = interface,
+				.tcp_layer = tcp,
+				.udp_layer = udp,
+				.sock_manager = socket_manager};
 	return stack;
 }
 

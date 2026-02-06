@@ -27,9 +27,11 @@ set(LIB_SOURCES
   src/icmp.c
   src/ipv4.c
   src/layer_router.c
+  src/ring_buffer.c
   src/routing_table.c
-  src/stack_constructor.c
   src/socket_manager.c
+  src/stack_constructor.c
+  src/stack_tx_worker.c
   src/tap.c
   src/tcp.c
   src/udp.c
@@ -50,7 +52,7 @@ set(TEST_SOURCES
 
 # ---- Main executable ----
 add_executable(networking.elf ${MAIN_SOURCES})
-target_compile_options(networking.elf PRIVATE -Wall -Wextra)
+target_compile_options(networking.elf PRIVATE -Wall -Wextra -rdynamic)
 
 # ---- Tests ----
 if(BUILD_TESTING)

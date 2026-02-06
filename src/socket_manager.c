@@ -1,27 +1,35 @@
 #include "socket_manager.h"
+#include <stdio.h>
 
-void notify_socket_readable_rcv(struct socket_manager_t *mgr, struct socket_handle_t sock_h)
+void notify_socket_readable_rcv(struct socket_manager_t *mgr, void *sock, const struct socket_ops_t *ops, socket_type_t type)
 {
-	sock_h.ops->lock(sock_h.sock); // LOCK
-	if (!sock_h.ops->is_rcv_queued(sock_h.sock)) {
-		sock_h.ops->set_rcv_queued(sock_h.sock, true);
-		sock_h.ops->unlock(sock_h.sock); // UNLOCK
-		sock_h.ops->retain(sock_h.sock);
-		enqueue_socket(mgr->receive_up_sock_q, sock_h);
-	}
+    ops->lock(sock);
+    if (!ops->is_rcv_queued(sock)) {
+        ops->set_rcv_queued(sock, true);
+        ops->unlock(sock);
+        ops->retain(sock);
+        struct socket_handle_t h = { .sock = sock, .type = type, .ops = ops };
+        enqueue_socket(mgr->receive_up_sock_q, h);
+    } else {
+        ops->unlock(sock);
+    }
 }
 
-void notify_socket_readable_snd(struct socket_manager_t *mgr, struct socket_handle_t sock_h)
+void notify_socket_readable_snd(struct socket_manager_t *mgr, void *sock, const struct socket_ops_t *ops, socket_type_t type)
 {
-	sock_h.ops->lock(sock_h.sock); // LOCK
-	if (!sock_h.ops->is_snd_queued(sock_h.sock)) {
-		sock_h.ops->set_snd_queued(sock_h.sock, true);
-		sock_h.ops->unlock(sock_h.sock); // UNLOCK
-		sock_h.ops->retain(sock_h.sock);
-		enqueue_socket(mgr->send_down_sock_q, sock_h);
-	}
+    ops->lock(sock);
+    if (!ops->is_snd_queued(sock)) {
+        ops->set_snd_queued(sock, true);
+        ops->unlock(sock);
+        ops->retain(sock);
+        struct socket_handle_t h = { .sock = sock, .type = type, .ops = ops };
+        enqueue_socket(mgr->send_down_sock_q, h);
+    } else {
+        ops->unlock(sock);
+    }
 }
 
+// CONSUMER: Application side (RX)
 struct socket_handle_t dequeue_readable_socket(struct socket_manager_t *mgr)
 {
 	struct socket_h_q_node_t *node = dequeue_socket(mgr->receive_up_sock_q);
@@ -31,6 +39,18 @@ struct socket_handle_t dequeue_readable_socket(struct socket_manager_t *mgr)
 		free(node);
 	}
 	return sock;
+}
+
+// CONSUMER: Stack side (TX)
+struct socket_handle_t dequeue_writable_socket(struct socket_manager_t *mgr)
+{
+    struct socket_h_q_node_t *node = dequeue_socket(mgr->send_down_sock_q);
+    struct socket_handle_t sock = {0};
+    if (node) {
+        sock = node->socket;
+        free(node);
+    }
+    return sock;
 }
 
 void release_socket_from_queue(struct socket_handle_t sock, bool rx)
@@ -57,7 +77,7 @@ struct socket_h_q_node_t *dequeue_socket(struct socket_h_q_t *q)
 		q->tail = NULL;
 	node->next = NULL;
 	--q->len;
-	pthread_mutex_unlock(&q->lock);
+	pthread_mutex_unlock(&q->lock);	
 	return node;
 }
 
@@ -78,6 +98,7 @@ void enqueue_socket(struct socket_h_q_t *q, struct socket_handle_t sock)
 		q->tail->next = node;
 		q->tail = node;
 	}
-	++q->len;
+	if (q->len++ == 0)
+		pthread_cond_broadcast(&q->cond);
 	pthread_mutex_unlock(&q->lock);
 }

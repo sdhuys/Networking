@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-int start_listening(int fd, struct nw_layer_t *tap);
+int start_listening(struct nw_layer_t *interface);
 pkt_result send_up_to_ethernet(struct nw_layer_t *tap, struct pkt_t *packet);
 pkt_result write_to_interface(struct nw_layer_t *tap, struct pkt_t *packet);
 

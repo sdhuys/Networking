@@ -1,4 +1,5 @@
 #include "ipv4.h"
+#include <stdio.h>
 
 pkt_result receive_ipv4_up(struct nw_layer_t *self, struct pkt_t *packet)
 {
@@ -58,7 +59,7 @@ pkt_result send_ipv4_down(struct nw_layer_t *self, struct pkt_t *packet)
 
 	if (next_hop_route == NULL)
 		return IP_NO_ROUTE_FOUND; // should relay ICMP Destination Unreachable to UDP or TCP
-	packet->intrfc_indx = next_hop_route->iface_id;
+	packet->if_index = next_hop_route->iface_id;
 
 	// Write header
 	struct ipv4_header_t *header = (struct ipv4_header_t *)(packet->data + packet->offset);

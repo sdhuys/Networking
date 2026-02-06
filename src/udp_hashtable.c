@@ -6,13 +6,12 @@ bool add_to_hashtable(struct udp_ipv4_sckt_htable_t *htable, struct udp_ipv4_soc
 	uint32_t hash = calc_hash(socket->local_port, htable);
 	printf("%d => %d \n", socket->local_port, hash);
 
-	pthread_mutex_t *lock = &(htable->bucket_locks[hash]);
-	pthread_mutex_lock(lock);
+	pthread_mutex_lock(&htable->bucket_locks[hash]);
 
 	struct udp_ipv4_sckt_htable_node_t *node = htable->buckets[hash];
 	while (node != NULL) {
 		if (node->socket->local_port == socket->local_port) {
-			pthread_mutex_unlock(lock);
+			pthread_mutex_unlock(&htable->bucket_locks[hash]);
 			return false;
 		}
 		node = node->next;
@@ -26,15 +25,13 @@ bool add_to_hashtable(struct udp_ipv4_sckt_htable_t *htable, struct udp_ipv4_soc
 	new_node->socket = socket;
 	new_node->next = htable->buckets[hash];
 	htable->buckets[hash] = new_node;
-	pthread_mutex_unlock(lock);
+	pthread_mutex_unlock(&htable->bucket_locks[hash]);
 	return true;
 }
 
 struct udp_ipv4_socket_t *query_hashtable(struct udp_ipv4_sckt_htable_t *htable, uint16_t dest_port)
 {
 	uint32_t hash = calc_hash(dest_port, htable);
-	printf("%d => %d \n", hash, dest_port);
-
 	struct udp_ipv4_sckt_htable_node_t *bucket_node = htable->buckets[hash];
 
 	pthread_mutex_t *lock = &(htable->bucket_locks[hash]);

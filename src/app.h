@@ -15,7 +15,7 @@ struct socket_handle_t app_socket_open(struct socket_manager_t *socket_manager,
 void app_socket_close(struct socket_manager_t *socket_manager, struct socket_handle_t socket_h);
 
 // Send data through a socket
-pkt_result app_socket_send(struct socket_handle_t sock, unsigned char *data, size_t len);
+pkt_result app_socket_send(struct socket_handle_t sock, struct send_request_t req);
 
 // Receive next packet from a socket's receive buffer.
 // Returns a pointer to a packet; ownership remains with the API until released.

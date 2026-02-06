@@ -3,6 +3,8 @@
 
 const struct socket_ops_t udp_socket_ops = {.is_rcv_queued = udp_is_rcv_queued,
 					    .set_rcv_queued = udp_set_rcv_queued,
+					    .is_snd_queued = udp_is_snd_queued,
+					    .set_snd_queued = udp_set_snd_queued,
 					    .retain = udp_retain,
 					    .release = udp_release,
 					    .write_to_snd_buffer = udp_write_to_snd_buffer,
@@ -25,8 +27,8 @@ struct udp_ipv4_socket_t *create_udp_socket(uint16_t port)
 	socket->rcv_buffer = rcv_b;
 	socket->snd_buffer = snd_b;
 	pthread_mutex_init(&socket->lock, NULL);
-
 	socket->state = LISTENING;
+	socket->mgr = NULL; // set by app_socket_open()
 	return socket;
 }
 
@@ -73,63 +75,20 @@ void release_udp_socket(struct udp_ipv4_socket_t *socket)
 		destroy_udp_socket(socket);
 }
 
-pkt_result write_up_to_rcv_buffer(struct socket_manager_t *socket_manager,
-				  struct udp_ipv4_socket_t *socket,
-				  struct pkt_t *packet)
+pkt_result write_up_to_rcv_buffer(struct udp_ipv4_socket_t *socket, struct pkt_t *packet)
 {
-	pthread_mutex_t *lock = &(socket->lock);
-
+	pthread_mutex_lock(&(socket->lock));
 	if (socket->state == CLOSED) {
-		pthread_mutex_unlock(lock);
+		pthread_mutex_unlock(&(socket->lock));
 		return UDP_SOCKET_CLOSED;
 	}
-	pthread_mutex_unlock(lock);
+	pthread_mutex_unlock(&(socket->lock));
 
-	if (!write_to_buffer(socket->rcv_buffer, packet)) {
+	if (!write_to_buffer(socket->rcv_buffer, packet))
 		return RING_BUFFER_FULL;
-	}
 
-	struct socket_handle_t sock_h = create_udp_socket_handle(socket);
-	notify_socket_readable_rcv(socket_manager, sock_h);
+	notify_socket_readable_rcv(socket->mgr, socket, &udp_socket_ops, SOCK_UDP);
 	return SENT_UP_TO_APPLICATION;
-}
-
-bool write_to_buffer(struct ring_buffer_t *buff, struct pkt_t *packet)
-{
-	pthread_mutex_lock(&buff->lock);
-	uint32_t next_head = (buff->head + 1) % RING_BUFF_SIZE;
-	if (next_head == buff->tail) {
-		pthread_mutex_unlock(&buff->lock);
-		return false;
-	}
-
-	buff->packets[buff->head] = packet;
-	buff->head = next_head;
-	pthread_mutex_unlock(&buff->lock);
-	return true;
-}
-
-struct pkt_t *read_buffer(struct ring_buffer_t *buff)
-{
-	pthread_mutex_lock(&buff->lock);
-	if (buff->head == buff->tail) {
-		pthread_mutex_unlock(&buff->lock);
-		return NULL;
-	}
-
-	struct pkt_t *pkt = buff->packets[buff->tail];
-	buff->tail = (buff->tail + 1) % RING_BUFF_SIZE;
-	pthread_mutex_unlock(&buff->lock);
-	return pkt;
-}
-
-struct socket_handle_t create_udp_socket_handle(struct udp_ipv4_socket_t *socket)
-{
-	struct socket_handle_t handle;
-	handle.sock = socket;
-	handle.type = SOCK_UDP;
-	handle.ops = &udp_socket_ops;
-	return handle;
 }
 
 // socket handle operations (app side)
@@ -141,6 +100,16 @@ bool udp_is_rcv_queued(void *s)
 void udp_set_rcv_queued(void *s, bool v)
 {
 	((struct udp_ipv4_socket_t *)s)->queued_for_rcv = v;
+}
+
+bool udp_is_snd_queued(void *s)
+{
+	return ((struct udp_ipv4_socket_t *)s)->queued_for_snd;
+}
+
+void udp_set_snd_queued(void *s, bool v)
+{
+	((struct udp_ipv4_socket_t *)s)->queued_for_snd = v;
 }
 
 void udp_retain(void *s)
@@ -157,13 +126,13 @@ void udp_release(void *s)
 bool udp_write_to_snd_buffer(void *s, struct send_request_t req)
 {
 	struct udp_ipv4_socket_t *socket = (struct udp_ipv4_socket_t *)s;
+	pthread_mutex_lock(&socket->lock);
 
-	pthread_mutex_t *soc_lock = &socket->lock;
-	pthread_mutex_lock(soc_lock);
-
-	if (socket->state == CLOSED)
+	if (socket->state == CLOSED) {
+		pthread_mutex_unlock(&socket->lock);
 		return false;
-	pthread_mutex_unlock(soc_lock);
+	}
+	pthread_mutex_unlock(&socket->lock);
 
 	struct ring_buffer_t *buffer = socket->snd_buffer;
 
@@ -171,13 +140,13 @@ bool udp_write_to_snd_buffer(void *s, struct send_request_t req)
 	if (packet == NULL)
 		return false;
 
-	packet->data = req.data;
 	packet->len = req.len;
 	memcpy(packet->dest_ip, req.dest_ip, IPV4_ADDR_LEN);
 	packet->dest_port = req.dest_port;
 	packet->src_port = socket->local_port;
 	packet->offset = MAX_ETH_FRAME_SIZE - req.len - sizeof(struct udp_header_t);
 	packet->protocol = P_UDP;
+	memcpy((packet->data + packet->offset), req.data, req.len);
 
 	retain_pkt(packet); // increment for the buffer's ownership
 	if (!write_to_buffer(buffer, packet)) {
@@ -185,9 +154,7 @@ bool udp_write_to_snd_buffer(void *s, struct send_request_t req)
 		release_pkt(packet); // caller releases ownership too
 		return false;
 	}
-
-	// notify_socket_readable_snd(); NEED ACCESS TO SOCK_MANAGER, MAKE GLOBAL?
-	//  OR store in socket struct?
+	notify_socket_readable_snd(socket->mgr, socket, &udp_socket_ops, SOCK_UDP);
 	release_pkt(packet); // caller releases ownership
 	return true;
 }

@@ -203,5 +203,6 @@ pkt_result send_arp_down(struct nw_layer_t *self, struct pkt_t *packet)
 	print_arp_header((struct arp_data_t *)&packet->data[packet->offset]);
 	packet->ethertype = htons(ARP);
 	packet->offset -= sizeof(struct ethernet_header_t);
+	packet->len += sizeof(struct ethernet_header_t);
 	return self->downs[0]->send_down(self->downs[0], packet);
 }

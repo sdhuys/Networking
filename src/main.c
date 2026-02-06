@@ -1,5 +1,6 @@
 #include "app.h"
 #include "stack_constructor.h"
+#include "stack_tx_worker.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -30,6 +31,20 @@ int get_tap(char *name, int flags);
 int activate_tap(char *if_name);
 int set_ipv4_addr(char *name, char *address);
 
+void *start_app_wrapper(void *arg)
+{
+	struct socket_manager_t *manager = (struct socket_manager_t *)arg;
+	start_app(manager);
+	return NULL;
+}
+
+void *start_listening_wrapper(void *arg)
+{
+	struct nw_layer_t *tap = (struct nw_layer_t *)arg;
+	start_listening(tap);
+	return NULL;
+}
+
 int main()
 {
 	int tap_fd;
@@ -40,15 +55,12 @@ int main()
 	struct nw_layer_t *tap = stack.if_layer;
 	struct socket_manager_t *socket_manager = stack.sock_manager;
 
-	// START 3 THREADS
-	start_app(socket_manager);
-	start_listening(tap_fd, tap);
-	// ^ stack sending up from TAP thread, writing to socket_manager->receive_up_sock_q
+	pthread_t app_tid;
+	pthread_t stack_tx_tid;
+	pthread_create(&app_tid, NULL, start_app_wrapper, (void *)socket_manager);
+	pthread_create(&stack_tx_tid, NULL, stack_transmission_loop, (void *)&stack);
+	start_listening(tap);
 
-	// application thread: reading from socket_manager->receive_up_sock_q
-	// + writing to socket_manager->send_down_sock_q
-
-	// stack thread reading from socket_manager->send_down_q
 	return 0;
 }
 

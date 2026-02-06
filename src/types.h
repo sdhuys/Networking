@@ -45,7 +45,7 @@
 
 #define UDP_SCKT_HTBL_SIZE 128	// buckets for listener entries
 #define TCP_SCKT_HTBL_SIZE 1024 // buckets for listener entries + multiple connections per etry
-#define RING_BUFF_SIZE 1024
+#define RING_BUFF_SIZE 6
 
 #define GOLDEN_RATIO_32 2654435761U
 
@@ -110,11 +110,11 @@ typedef enum {
 
 // ===== Packet Structure =====
 struct pkt_t {
-	unsigned char *data; // Only modified once we go back down the stack
+	unsigned char *data; 
 	size_t offset;	     // Offset to the start of the current layer's header
 	uint16_t len;	     // Packet length from current offset (current layer's length)
 	uint8_t ref_count;
-	int intrfc_indx;
+	int if_index;
 	ether_type ethertype;
 	uint8_t protocol;
 	mac_address dest_mac;
@@ -123,6 +123,7 @@ struct pkt_t {
 	uint16_t src_port;
 	uint16_t dest_port;
 	pthread_mutex_t lock;
+	uint16_t pool_index; // for debugging
 };
 
 // ===== General Network Layer Structure =====
@@ -303,6 +304,7 @@ struct udp_ipv4_socket_t {
 	bool queued_for_rcv;
 	bool queued_for_snd;
 	pthread_mutex_t lock;
+	struct socket_manager_t *mgr;
 };
 
 struct udp_ipv4_sckt_htable_node_t {
@@ -362,6 +364,8 @@ struct socket_manager_t {
 // STACK: contains everything for stack rcv + snd and app rcv + snd
 struct stack_t {
 	struct nw_layer_t *if_layer;
+	struct nw_layer_t *udp_layer;
+    struct nw_layer_t *tcp_layer;
 	struct socket_manager_t *sock_manager;
 };
 

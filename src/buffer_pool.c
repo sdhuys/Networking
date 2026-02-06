@@ -1,4 +1,5 @@
 #include "buffer_pool.h"
+#include <stdio.h>
 
 alignas(64) static unsigned char buffer_pool[PKT_BUFF_POOL_SIZE][MAX_ETH_FRAME_SIZE];
 static struct pkt_t pkt_pool[PKT_BUFF_POOL_SIZE];
@@ -15,6 +16,7 @@ void init_buffer_pool()
 		pkt_pool[i].ref_count = 0;
 		pthread_mutex_init(&pkt_pool[i].lock, NULL);
 		free_pkt_stack[i] = &pkt_pool[i];
+		pkt_pool[i].pool_index = i;
 	}
 	top_free_index = PKT_BUFF_POOL_SIZE - 1;
 
