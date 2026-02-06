@@ -122,6 +122,7 @@ struct pkt_t {
 	ipv4_address dest_ip;
 	uint16_t src_port;
 	uint16_t dest_port;
+	pthread_mutex_t lock;
 };
 
 // ===== General Network Layer Structure =====
