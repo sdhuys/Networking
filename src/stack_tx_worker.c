@@ -12,7 +12,6 @@ void *stack_transmission_loop(void *arg)
 			pthread_cond_wait(&q->cond, &q->lock);
 		}
 		pthread_mutex_unlock(&q->lock);
-		printf("STACK TRANSMISSION WAKEN UP \n \n");
 		while (1) {
 			struct socket_handle_t h = dequeue_writable_socket(mgr);
 

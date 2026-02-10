@@ -22,18 +22,6 @@ int start_listening(struct nw_layer_t *interface)
 		pkt_result result = interface->rcv_up(interface, packet);
 		printf("%d \n\n", result);
 
-		pthread_mutex_lock(&packet->lock);
-		if (packet->dest_port == 9000) {
-			FILE *log = fopen("in.txt", "a");
-			if (log) {
-				for (size_t i = 0; i < (size_t)nread; i++)
-					fprintf(log, "%02X", packet->data[i]);
-				fprintf(log, "\n");
-				fclose(log);
-			}
-		}
-		pthread_mutex_unlock(&packet->lock);
-
 		if (result != SENT)
 			release_pkt(packet);
 	}
