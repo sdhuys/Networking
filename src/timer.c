@@ -1,10 +1,10 @@
 #include "timer.h"
 
-void run_timers(struct timer_min_heap_t *heap)
+void execute_exp_timers(struct timer_min_heap_t *heap)
 {
-    if (heap == NULL)
-        return;
-        
+	if (heap == NULL)
+		return;
+
 	uint64_t now = now_ms();
 
 	while (heap->count > 0) {
@@ -18,13 +18,14 @@ void run_timers(struct timer_min_heap_t *heap)
 	}
 }
 
-struct timer_min_heap_t *create_timers_min_heap()
+struct timer_min_heap_t *create_timers_min_heap(int wake_fd)
 {
 	struct timer_min_heap_t *timers = malloc(sizeof(struct timer_min_heap_t));
 	if (timers == NULL)
 		return NULL;
 
 	timers->count = 0;
+	timers->wake_fd = wake_fd;
 	return timers;
 }
 
@@ -44,6 +45,9 @@ bool run_new_timer(struct timer_min_heap_t *heap,
 		free(timer);
 		return false;
 	}
+
+	uint64_t x = 1;
+	write(heap->wake_fd, &x, sizeof(x));
 	return true;
 }
 
@@ -133,9 +137,31 @@ struct timer_t *peek_min_timer(struct timer_min_heap_t *heap)
 	return heap->arr[0];
 }
 
+int get_timeout(struct timer_min_heap_t *heap)
+{
+	struct timer_t *t = peek_min_timer(heap);
+	if (!t)
+		return -1; // infinite
+
+	uint64_t now = now_ms();
+
+	if (t->expires <= now)
+		return 0;
+
+	uint64_t delta = t->expires - now;
+
+	if (delta > INT_MAX)
+		return INT_MAX;
+
+	return (int)delta;
+}
+
 void cancel_timer(struct timer_min_heap_t *heap, struct timer_t *timer)
 {
 	int i = timer->heap_index;
+	if (i >= heap->count)
+		return;
+
 	int last = --heap->count;
 
 	if (i == last)

@@ -129,6 +129,8 @@ struct nw_layer_t {
 struct interface_context_t {
 	struct nw_interface_t *interfaces;
 	size_t if_amount;
+	struct timer_min_heap_t *timers_heap;
+	int wake_fd; // eventfd to trigger polling to return early (when new timer added)
 };
 
 struct nw_interface_t {
