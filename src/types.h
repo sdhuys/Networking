@@ -94,20 +94,6 @@ typedef enum {
 	NOT_IMPLEMENTED_YET = -1
 } pkt_result;
 
-typedef enum {
-	TCP_CLOSED = 0,	  // No connection state
-	TCP_LISTEN,	  // Waiting for a connection request from any remote TCP
-	TCP_SYN_SENT,	  // Sent SYN, waiting for SYN+ACK
-	TCP_SYN_RECEIVED, // Received SYN, sent SYN+ACK
-	TCP_ESTABLISHED,  // Connection established
-	TCP_FIN_WAIT_1,	  // Application closed, sent FIN, waiting for ACK
-	TCP_FIN_WAIT_2,	  // Received ACK of FIN, waiting for remote FIN
-	TCP_CLOSE_WAIT,	  // Received FIN from remote, waiting for application close
-	TCP_CLOSING,	  // Simultaneous close, sent FIN, waiting for ACK of FIN
-	TCP_LAST_ACK,	  // Waiting for ACK of our FIN after close
-	TCP_TIME_WAIT	  // Waiting for 2*MSL (maximum segment lifetime) before releasing
-} tcp_state_t;
-
 // ===== Packet Structure =====
 struct pkt_t {
 	unsigned char *data;
@@ -322,7 +308,34 @@ struct udp_ipv4_sckt_htable_t {
 struct tcp_context_t {
 	ipv4_address stack_ipv4_addr;
 	struct socket_manager_t *socket_manager;
+	struct timer_min_heap_t *timers;
 };
+
+struct tcp_header_t {
+	uint16_t src_port;
+	uint16_t dst_port;
+	uint32_t seq_num;
+	uint32_t ack_num;
+	uint8_t data_offset; // (4bits) the number of 32 bit words in the header. 5 => no options
+	uint8_t flags;	     // rsrvd, rsrvd, URG, ACK, PSH, RST, SYN, FIN
+	uint16_t window;
+	uint16_t check;
+	uint16_t urg_ptr;
+	uint8_t options[40]; // fixed-size array for maximum possible options
+} __attribute__((packed));
+
+typedef enum {
+	LISTEN,	      // Waiting for a connection request from any remote TCP
+	SYN_SENT,     // Sent SYN, waiting for SYN+ACK
+	SYN_RECEIVED, // Received SYN, sent SYN+ACK
+	ESTABLISHED,  // Connection established
+	FIN_WAIT_1,   // Application closed, sent FIN, waiting for ACK
+	FIN_WAIT_2,   // Received ACK of FIN, waiting for remote FIN
+	CLOSE_WAIT,   // Received FIN from remote, waiting for application close
+	CLOSING,      // Simultaneous close, sent FIN, waiting for ACK of FIN
+	LAST_ACK,     // Waiting for ACK of our FIN after close
+	TIME_WAIT     // Waiting for 2*MSL (maximum segment lifetime) before releasing
+} tcp_state_t;
 
 struct tcp_ipv4_socket_t {
 	ipv4_address local_addr;

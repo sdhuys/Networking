@@ -133,6 +133,11 @@ struct stack_t construct_stack(int fd, char *if_name)
 	tcp->downs_count = 1;
 	tcp->downs = malloc(tcp->downs_count * sizeof(struct nw_layer_t *));
 	tcp->downs[0] = ip;
+	struct tcp_context_t *tcp_context = malloc(sizeof(struct tcp_context_t));
+	memcpy(tcp_context->stack_ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
+	tcp_context->timers = create_timers_min_heap();
+	tcp_context->socket_manager = socket_manager;
+	tcp->context = tcp_context;
 
 	struct stack_t stack = {.if_layer = interface,
 				.tcp_layer = tcp,

@@ -33,6 +33,7 @@ set(LIB_SOURCES
   src/stack_constructor.c
   src/stack_tx_worker.c
   src/tap.c
+  src/timer.c
   src/tcp.c
   src/udp.c
   src/udp_hashtable.c
