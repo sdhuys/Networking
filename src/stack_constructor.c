@@ -10,7 +10,8 @@ struct stack_t construct_stack(int fd, char *if_name)
 	struct nw_layer_t *udp = malloc(sizeof(struct nw_layer_t));
 	struct nw_layer_t *tcp = malloc(sizeof(struct nw_layer_t));
 
-	struct timer_min_heap_t *timers_heap = create_timers_min_heap();
+	int wake_fd = eventfd(0, EFD_NONBLOCK);
+	struct timer_min_heap_t *timers_heap = create_timers_min_heap(wake_fd);
 
 	interface->name = if_name;
 	interface->send_down = &write_to_interface;
@@ -26,7 +27,7 @@ struct stack_t construct_stack(int fd, char *if_name)
 	set_net_if_struct(fd, if_name, nw_if);
 	nw_if_context->interfaces = nw_if;
 	nw_if_context->timers_heap = timers_heap;
-	nw_if_context->wake_fd = eventfd(0, EFD_NONBLOCK);
+	nw_if_context->wake_fd = wake_fd;
 	interface->context = nw_if_context;
 
 	// assign stack mac address and ip address on same subnet as interface

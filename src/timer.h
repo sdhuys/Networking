@@ -2,6 +2,7 @@
 #include "types.h"
 #include <limits.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <sys/eventfd.h>
 #include <unistd.h>
 
