@@ -32,18 +32,6 @@ struct udp_ipv4_socket_t *create_udp_socket(uint16_t port)
 	return socket;
 }
 
-struct ring_buffer_t *create_init_ring_buffer()
-{
-	struct ring_buffer_t *buff = malloc(sizeof(struct ring_buffer_t));
-	if (buff == NULL)
-		return NULL;
-
-	pthread_mutex_init(&buff->lock, NULL);
-	buff->head = 0;
-	buff->tail = 0;
-	return buff;
-}
-
 void destroy_udp_socket(struct udp_ipv4_socket_t *socket)
 {
 	pthread_mutex_destroy(&socket->lock);

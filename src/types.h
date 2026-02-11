@@ -282,31 +282,6 @@ struct udp_header_t {
 	uint16_t checksum;
 } __attribute__((packed));
 
-typedef enum { LISTENING, CLOSED } udp_socket_state_t;
-
-struct udp_ipv4_socket_t {
-	uint16_t local_port;
-	struct ring_buffer_t *rcv_buffer; // stack writes, app consumes
-	struct ring_buffer_t *snd_buffer; // app writes, stack consumes
-	udp_socket_state_t state;
-	uint8_t ref_count;
-	bool queued_for_rcv;
-	bool queued_for_snd;
-	pthread_mutex_t lock;
-	struct socket_manager_t *mgr;
-};
-
-struct udp_ipv4_sckt_htable_node_t {
-	struct udp_ipv4_socket_t *socket;
-	struct udp_ipv4_sckt_htable_node_t *next;
-};
-
-struct udp_ipv4_sckt_htable_t {
-	struct udp_ipv4_sckt_htable_node_t **buckets;
-	uint16_t buckets_amount;
-	pthread_mutex_t *bucket_locks; // One lock per bucket
-};
-
 // TCP LAYER
 struct tcp_context_t {
 	ipv4_address stack_ipv4_addr;
@@ -328,7 +303,6 @@ struct tcp_header_t {
 } __attribute__((packed));
 
 typedef enum {
-	LISTEN,	      // Waiting for a connection request from any remote TCP
 	SYN_SENT,     // Sent SYN, waiting for SYN+ACK
 	SYN_RECEIVED, // Received SYN, sent SYN+ACK
 	ESTABLISHED,  // Connection established
@@ -338,8 +312,9 @@ typedef enum {
 	CLOSING,      // Simultaneous close, sent FIN, waiting for ACK of FIN
 	LAST_ACK,     // Waiting for ACK of our FIN after close
 	TIME_WAIT     // Waiting for 2*MSL (maximum segment lifetime) before releasing
-} tcp_state_t;
+} tcp_connection_state_t;
 
+// connections
 struct tcp_ipv4_socket_t {
 	ipv4_address local_addr;
 	ipv4_address extern_addr;
@@ -347,6 +322,7 @@ struct tcp_ipv4_socket_t {
 	uint16_t extern_port;
 	struct ring_buffer_t rcv_buffer; // stack writes, app consumes
 	struct ring_buffer_t snd_buffer; // app writes, stack consumes
+	tcp_connection_state_t state;
 };
 
 struct tcp_ipv4_sckt_node_t {
@@ -354,6 +330,15 @@ struct tcp_ipv4_sckt_node_t {
 	struct tcp_ipv4_sckt_node_t *next;
 };
 
+// listener's half-open and established connections backlog queues
+struct tcp_ipv4_socket_q_t {
+	struct tcp_ipv4_sckt_node_t *head;
+	struct tcp_ipv4_sckt_node_t *tail;
+	pthread_mutex_t lock;
+	size_t len;
+};
+
+// lookup htable for established connections
 struct tcp_ipv4_socket_htable_t {
 	struct tcp_ipv4_sckt_node_t **buckets;
 	uint8_t buckets_amount;
