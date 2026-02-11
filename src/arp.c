@@ -169,6 +169,7 @@ void print_arp_header(struct arp_data_t *arp_header)
 
 struct pkt_t *create_arp_request_for(struct nw_layer_t *self, ipv4_address target_ip)
 {
+	printf("CREATE ARP REQUEST ALLOCATING \n");
 	struct pkt_t *pkt = allocate_pkt();
 	if (pkt == NULL)
 		return NULL;
@@ -199,8 +200,8 @@ struct pkt_t *create_arp_request_for(struct nw_layer_t *self, ipv4_address targe
 
 pkt_result send_arp_down(struct nw_layer_t *self, struct pkt_t *packet)
 {
-	printf("SENDING ARP DOWN \n");
-	print_arp_header((struct arp_data_t *)&packet->data[packet->offset]);
+	// printf("SENDING ARP DOWN \n");
+	// print_arp_header((struct arp_data_t *)&packet->data[packet->offset]);
 	packet->ethertype = htons(ARP);
 	packet->offset -= sizeof(struct ethernet_header_t);
 	packet->len += sizeof(struct ethernet_header_t);

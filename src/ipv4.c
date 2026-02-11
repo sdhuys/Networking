@@ -82,6 +82,7 @@ pkt_result send_ipv4_down(struct nw_layer_t *self, struct pkt_t *packet)
 		send_arp_down(arp_layer, arp_request);
 	}
 	if (dest_ip_node->status == ARP_INCOMPLETE) {
+		printf("IPV4 ARP Q RETAINING \n");
 		retain_pkt(packet);
 		return add_pkt_to_q(dest_ip_node, packet);
 	}

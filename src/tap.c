@@ -17,12 +17,15 @@ int start_listening(struct nw_layer_t *interface)
 
 		if (poll_r > 0) {
 			if ((pfd[0].revents & POLLIN)) {
+				printf("TAP ALLOCATING \n");
 				struct pkt_t *packet = allocate_pkt();
+
 				if (packet == NULL)
-					continue;
+					break;
 
 				ssize_t nread = read(fd, packet->data, MAX_ETH_FRAME_SIZE);
 				if (nread < 0) {
+					printf("NO READ RELEASING \n");
 					release_pkt(packet);
 					continue;
 				}
@@ -30,10 +33,12 @@ int start_listening(struct nw_layer_t *interface)
 				packet->len = (size_t)nread;
 				packet->offset = 0;
 				pkt_result result = interface->rcv_up(interface, packet);
-				printf("%d \n\n", result);
 
-				if (result != SENT)
+				if (result != SENT) {
+					printf("LISTEN LOOP RELEASING \n");
 					release_pkt(packet);
+				}
+				printf("%d \n\n", result);
 			}
 
 			if ((pfd[1].revents & POLLIN)) {
@@ -74,6 +79,8 @@ pkt_result write_to_interface(struct nw_layer_t *interface, struct pkt_t *packet
 		fprintf(log, "\n");
 		fclose(log);
 	}
+	printf("TAP SENT RELEASING \n");
 	release_pkt(packet);
+	printf("SENT \n");
 	return SENT;
 }

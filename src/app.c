@@ -31,8 +31,8 @@ void start_app(struct socket_manager_t *socket_manager)
 				struct send_request_t req = {
 				    .data = buffer, .dest_port = pkt->src_port, .len = pkt->len};
 				memcpy(req.dest_ip, pkt->src_ip, IPV4_ADDR_LEN);
-				app_socket_send(socket, req);
 				app_socket_release_packet(pkt);
+				app_socket_send(socket, req);
 			}
 			release_socket_from_queue(socket, true);
 		}
@@ -100,6 +100,8 @@ struct pkt_t *app_socket_receive(struct socket_handle_t sock)
 
 void app_socket_release_packet(struct pkt_t *pkt)
 {
+	printf("APP SOCKET RELEASING \n");
+
 	if (!pkt)
 		return;
 	release_pkt(pkt);

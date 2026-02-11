@@ -136,6 +136,7 @@ bool udp_write_to_snd_buffer(void *s, struct send_request_t req)
 
 	struct ring_buffer_t *buffer = socket->snd_buffer;
 
+	printf("UDP SOCKET ALLOCATING \n");
 	struct pkt_t *packet = allocate_pkt(); // caller ownership
 	if (packet == NULL)
 		return false;
@@ -148,14 +149,11 @@ bool udp_write_to_snd_buffer(void *s, struct send_request_t req)
 	packet->protocol = P_UDP;
 	memcpy((packet->data + packet->offset), req.data, req.len);
 
-	retain_pkt(packet); // increment for the buffer's ownership
 	if (!write_to_buffer(buffer, packet)) {
 		release_pkt(packet); // failure, buffer releases ownership
-		release_pkt(packet); // caller releases ownership too
 		return false;
 	}
 	notify_socket_readable_snd(socket->mgr, socket, &udp_socket_ops, SOCK_UDP);
-	release_pkt(packet); // caller releases ownership
 	return true;
 }
 

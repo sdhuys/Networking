@@ -33,6 +33,10 @@ struct pkt_t *allocate_pkt()
 	}
 
 	struct pkt_t *p = free_pkt_stack[top_free_index--];
+	printf("Allocating %d id, %d ref count, %d top_free_index \n",
+	       p->pool_index,
+	       p->ref_count,
+	       top_free_index + 1);
 	p->ref_count = 1;
 
 	pthread_mutex_unlock(&pool_mutex);
@@ -42,6 +46,7 @@ struct pkt_t *allocate_pkt()
 void release_pkt(struct pkt_t *pkt)
 {
 	int should_free = 0;
+	printf("Releasing PACKET %d id, %d ref count \n", pkt->pool_index, pkt->ref_count);
 
 	pthread_mutex_lock(&pkt->lock);
 	if (--pkt->ref_count == 0)
@@ -49,14 +54,17 @@ void release_pkt(struct pkt_t *pkt)
 	pthread_mutex_unlock(&pkt->lock);
 
 	if (should_free) {
+		printf("=> RETURN TO POOL");
 		pthread_mutex_lock(&pool_mutex);
 		free_pkt_stack[++top_free_index] = pkt;
 		pthread_mutex_unlock(&pool_mutex);
 	}
+	printf("\n\n");
 }
 
 void retain_pkt(struct pkt_t *pkt)
 {
+	printf("Retaining PACKET %d id, %d ref count \n", pkt->pool_index, pkt->ref_count);
 	pthread_mutex_lock(&pkt->lock);
 	pkt->ref_count++;
 	pthread_mutex_unlock(&pkt->lock);

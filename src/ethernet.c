@@ -3,10 +3,10 @@
 pkt_result receive_frame_up(struct nw_layer_t *self, struct pkt_t *packet)
 {
 	struct ethernet_header_t *header = (struct ethernet_header_t *)packet->data;
-	print_incoming(header);
+	// print_incoming(header);
 
 	if (relevant_destination_mac(header->dest_mac, self) == false) {
-		printf("Frame not relevant for us. Ignoring.\n");
+		// printf("Frame not relevant for us. Ignoring.\n");
 		return FRAME_TARGET_NOT_RELEVANT;
 	}
 
@@ -16,23 +16,23 @@ pkt_result receive_frame_up(struct nw_layer_t *self, struct pkt_t *packet)
 	unsigned short ethertype = ntohs(header->ethertype);
 	switch (ethertype) {
 	case IPV4:
-		printf("This is an IPv4 packet.\n");
+		// printf("This is an IPv4 packet.\n");
 		return pass_up_to_layer(self, IPV4_NAME, packet);
 		break;
 	case ARP:
-		printf("This is an ARP packet.\n");
+		// printf("This is an ARP packet.\n");
 		return pass_up_to_layer(self, ARP_NAME, packet);
 		break;
 	case IPV6:
 		return ETHERTYPE_NOT_SUPPORTED;
-		printf("This is an IPv6 packet. Not supported yet\n");
+		// printf("This is an IPv6 packet. Not supported yet\n");
 		break;
 	case VLAN:
 		return ETHERTYPE_NOT_SUPPORTED;
-		printf("This is a VLAN tagged packet. Not supported yet\n");
+		// printf("This is a VLAN tagged packet. Not supported yet\n");
 		break;
 	default:
-		printf("Unknown Ethertype: 0x%04x\n", ethertype);
+		// printf("Unknown Ethertype: 0x%04x\n", ethertype);
 		return ETHERTYPE_NOT_SUPPORTED;
 		break;
 	}
