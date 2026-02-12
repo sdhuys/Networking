@@ -1,6 +1,6 @@
 #include "tap.h"
 
-int start_listening(struct nw_layer_t *interface)
+void start_listening(struct nw_layer_t *interface)
 {
 	init_buffer_pool();
 	struct interface_context_t *interface_context =

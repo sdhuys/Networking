@@ -33,8 +33,8 @@ int set_ipv4_addr(char *name, char *address);
 
 void *start_app_wrapper(void *arg)
 {
-	struct socket_manager_t *manager = (struct socket_manager_t *)arg;
-	start_app(manager);
+	struct stack_t *stack = (struct stack_t *)arg;
+	start_app(stack);
 	return NULL;
 }
 
@@ -53,11 +53,11 @@ int main()
 
 	struct stack_t stack = construct_stack(tap_fd, TAP_NAME);
 	struct nw_layer_t *tap = stack.if_layer;
-	struct socket_manager_t *socket_manager = stack.sock_manager;
+	// struct socket_manager_t *socket_manager = stack.sock_manager;
 
 	pthread_t app_tid;
 	pthread_t stack_tx_tid;
-	pthread_create(&app_tid, NULL, start_app_wrapper, (void *)socket_manager);
+	pthread_create(&app_tid, NULL, start_app_wrapper, (void *)&stack);
 	pthread_create(&stack_tx_tid, NULL, stack_transmission_loop, (void *)&stack);
 	start_listening(tap);
 

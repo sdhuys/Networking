@@ -6,6 +6,7 @@
 #include "routing_table.h"
 #include "tap.h"
 #include "tcp.h"
+#include "tcp_listener_htable.h"
 #include "timer.h"
 #include "udp.h"
 #include <arpa/inet.h>
@@ -25,6 +26,9 @@ extern "C" {
 #endif
 
 struct stack_t construct_stack(int fd, char *if_name);
+struct udp_ipv4_sckt_htable_t *create_udp_ipv4_sckt_htable();
+struct tcp_ipv4_listener_htable_t *create_tcp_ipv4_listener_htable();
+struct tcp_ipv4_conn_htable_t *create_tcp_ipv4_conn_htable();
 void set_net_if_struct(int fd, char *if_name, struct nw_interface_t *n_if);
 void set_stack_ipv4_addr(struct nw_interface_t *n_if, ipv4_address stack_ip_addr);
 

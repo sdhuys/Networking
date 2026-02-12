@@ -106,6 +106,9 @@ struct stack_t construct_stack(int fd, char *if_name)
 	socket_manager->send_down_sock_q->len = 0;
 	pthread_cond_init(&socket_manager->send_down_sock_q->cond, NULL);
 	pthread_mutex_init(&socket_manager->send_down_sock_q->lock, NULL);
+	socket_manager->udp_ipv4_sckt_htable = create_udp_ipv4_sckt_htable();
+	socket_manager->tcp_ipv4_listener_htable = create_tcp_ipv4_listener_htable();
+	socket_manager->tcp_ipv4_conn_htable = create_tcp_ipv4_conn_htable();
 
 	udp->name = UDP_NAME;
 	udp->send_down = &send_udp_down;
@@ -117,16 +120,6 @@ struct stack_t construct_stack(int fd, char *if_name)
 	udp->downs[0] = ip;
 	struct udp_context_t *udp_context = malloc(sizeof(struct udp_context_t));
 	memcpy(udp_context->stack_ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
-	struct udp_ipv4_sckt_htable_t *udp_htable = malloc(sizeof(struct udp_ipv4_sckt_htable_t));
-	udp_htable->buckets_amount = UDP_SCKT_HTBL_SIZE;
-	pthread_mutex_t *bckt_locks = malloc(sizeof(pthread_mutex_t) * UDP_SCKT_HTBL_SIZE);
-	for (int i = 0; i < UDP_SCKT_HTBL_SIZE; i++)
-		pthread_mutex_init(&bckt_locks[i], NULL);
-	udp_htable->bucket_locks = bckt_locks;
-	struct udp_ipv4_sckt_htable_node_t **buckets =
-	    calloc(UDP_SCKT_HTBL_SIZE, sizeof(struct udp_ipv4_sckt_htable_node_t));
-	udp_htable->buckets = buckets;
-	socket_manager->udp_ipv4_sckt_htable = udp_htable;
 	udp_context->sock_manager = socket_manager;
 	udp->context = udp_context;
 
@@ -148,7 +141,42 @@ struct stack_t construct_stack(int fd, char *if_name)
 				.tcp_layer = tcp,
 				.udp_layer = udp,
 				.sock_manager = socket_manager};
+	memcpy(stack.local_address, stack_ipv4_addr, IPV4_ADDR_LEN);
 	return stack;
+}
+
+struct udp_ipv4_sckt_htable_t *create_udp_ipv4_sckt_htable()
+{
+	struct udp_ipv4_sckt_htable_t *udp_htable = malloc(sizeof(struct udp_ipv4_sckt_htable_t));
+	udp_htable->buckets_amount = UDP_SCKT_HTBL_SIZE;
+	pthread_mutex_t *bckt_locks = malloc(sizeof(pthread_mutex_t) * UDP_SCKT_HTBL_SIZE);
+	for (int i = 0; i < UDP_SCKT_HTBL_SIZE; i++)
+		pthread_mutex_init(&bckt_locks[i], NULL);
+	udp_htable->bucket_locks = bckt_locks;
+	struct udp_ipv4_sckt_htable_node_t **buckets =
+	    calloc(UDP_SCKT_HTBL_SIZE, sizeof(struct udp_ipv4_sckt_htable_node_t));
+	udp_htable->buckets = buckets;
+	return udp_htable;
+}
+
+struct tcp_ipv4_listener_htable_t *create_tcp_ipv4_listener_htable()
+{
+	struct tcp_ipv4_listener_htable_t *tcp_lstnr_htable =
+	    malloc(sizeof(struct tcp_ipv4_listener_htable_t));
+	tcp_lstnr_htable->buckets_amount = TCP_LISTNR_HTBL_SIZE;
+	pthread_mutex_t *bckt_locks = malloc(sizeof(pthread_mutex_t) * TCP_LISTNR_HTBL_SIZE);
+	for (int i = 0; i < TCP_LISTNR_HTBL_SIZE; i++)
+		pthread_mutex_init(&bckt_locks[i], NULL);
+	tcp_lstnr_htable->bucket_locks = bckt_locks;
+	struct tcp_ipv4_listener_node_t **buckets =
+	    calloc(TCP_LISTNR_HTBL_SIZE, sizeof(struct tcp_ipv4_listener_node_t));
+	tcp_lstnr_htable->buckets = buckets;
+	return tcp_lstnr_htable;
+}
+
+struct tcp_ipv4_conn_htable_t *create_tcp_ipv4_conn_htable()
+{
+	return NULL;
 }
 
 void set_net_if_struct(int fd, char *if_name, struct nw_interface_t *n_if)

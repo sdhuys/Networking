@@ -14,38 +14,16 @@ void *stack_transmission_loop(void *arg)
 		pthread_mutex_unlock(&q->lock);
 		while (1) {
 			struct socket_handle_t h = dequeue_writable_socket(mgr);
-
 			if (!h.sock)
 				break;
 
-			struct pkt_t *pkt = NULL;
-			pkt_result res;
+			struct pkt_t *pkt;
+			pkt_result res = WRITE_ERROR;
 
-			// --- TYPE-SPECIFIC DISPATCH ---
-			if (h.type == SOCK_UDP) {
-				struct udp_ipv4_socket_t *udp_sock =
-				    (struct udp_ipv4_socket_t *)h.sock;
-
-				// Drain UDP ring buffer
-				while ((pkt = read_buffer(udp_sock->snd_buffer)) != NULL) {
-
-					printf("DEBUG: read_buffer returned packet %p, pool_index: "
-					       "%d\n",
-					       (void *)pkt,
-					       pkt->pool_index);
-
-					res = stack->udp_layer->send_down(stack->udp_layer, pkt);
-				}
-
-			} else if (h.type == SOCK_TCP) {
-				struct tcp_ipv4_socket_t *tcp_sock =
-				    (struct tcp_ipv4_socket_t *)h.sock;
-
-				while ((pkt = read_buffer(&tcp_sock->snd_buffer)) != NULL) {
-					res = stack->tcp_layer->send_down(stack->tcp_layer, pkt);
-				}
+			while ((pkt = h.ops->next_snd_pkt(h.sock)) != NULL) {
+				res = h.ops->send_pkt(stack, pkt);
 			}
-			printf("STACK WORKER RESULT: %d \n", res);
+			printf("WORKER RESULT: %d", res);
 			release_socket_from_queue(h, false);
 		}
 	}

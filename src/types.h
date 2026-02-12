@@ -43,9 +43,8 @@
 #define UDP_NAME "udp"
 #define TCP_NAME "tcp"
 
-#define UDP_SCKT_HTBL_SIZE 128	// buckets for listener entries
-#define TCP_SCKT_HTBL_SIZE 1024 // buckets for listener entries + multiple connections per etry
-#define RING_BUFF_SIZE 6
+#define UDP_SCKT_HTBL_SIZE 128 // buckets for listener entries
+#define RING_BUFF_SIZE 256
 
 #define GOLDEN_RATIO_32 2654435761U
 
@@ -295,7 +294,7 @@ struct tcp_header_t {
 	uint32_t seq_num;
 	uint32_t ack_num;
 	uint8_t data_offset; // (4bits) the number of 32 bit words in the header. 5 => no options
-	uint8_t flags;	     // rsrvd, rsrvd, URG, ACK, PSH, RST, SYN, FIN
+	uint8_t flags;	     // CWR, ECE, URG, ACK, PSH, RST, SYN, FIN
 	uint16_t window;
 	uint16_t check;
 	uint16_t urg_ptr;
@@ -315,7 +314,7 @@ typedef enum {
 } tcp_connection_state_t;
 
 // connections
-struct tcp_ipv4_socket_t {
+struct tcp_ipv4_conn_t {
 	ipv4_address local_addr;
 	ipv4_address extern_addr;
 	uint16_t local_port;
@@ -325,22 +324,22 @@ struct tcp_ipv4_socket_t {
 	tcp_connection_state_t state;
 };
 
-struct tcp_ipv4_sckt_node_t {
-	struct tcp_ipv4_socket_t *socket;
-	struct tcp_ipv4_sckt_node_t *next;
+struct tcp_ipv4_conn_node_t {
+	struct tcp_ipv4_conn_t *socket;
+	struct tcp_ipv4_conn_node_t *next;
 };
 
 // listener's half-open and established connections backlog queues
-struct tcp_ipv4_socket_q_t {
-	struct tcp_ipv4_sckt_node_t *head;
-	struct tcp_ipv4_sckt_node_t *tail;
+struct tcp_ipv4_conn_q_t {
+	struct tcp_ipv4_conn_node_t *head;
+	struct tcp_ipv4_conn_node_t *tail;
 	pthread_mutex_t lock;
 	size_t len;
 };
 
 // lookup htable for established connections
-struct tcp_ipv4_socket_htable_t {
-	struct tcp_ipv4_sckt_node_t **buckets;
+struct tcp_ipv4_conn_htable_t {
+	struct tcp_ipv4_conn_node_t **buckets;
 	uint8_t buckets_amount;
 	// add add()
 	// add remove()
@@ -356,7 +355,8 @@ struct checksum_chunk {
 
 // Socket manager
 struct socket_manager_t {
-	struct tcp_ipv4_socket_htable_t *tcp_ipv4_sckt_htable;
+	struct tcp_ipv4_conn_htable_t *tcp_ipv4_conn_htable;
+	struct tcp_ipv4_listener_htable_t *tcp_ipv4_listener_htable;
 	struct udp_ipv4_sckt_htable_t *udp_ipv4_sckt_htable;
 	struct socket_h_q_t *send_down_sock_q;	// app writes, stack reads
 	struct socket_h_q_t *receive_up_sock_q; // stack writes, app reads
@@ -368,6 +368,7 @@ struct stack_t {
 	struct nw_layer_t *udp_layer;
 	struct nw_layer_t *tcp_layer;
 	struct socket_manager_t *sock_manager;
+	ipv4_address local_address;
 };
 
 // App send request
@@ -394,14 +395,17 @@ struct socket_ops_t {
 
 	void (*unlock)(void *sock);
 	void (*lock)(void *sock);
+
+	struct pkt_t *(*next_snd_pkt)(void *);
+	pkt_result (*send_pkt)(struct stack_t *, struct pkt_t *);
+
+	void (*close)(void *sock);
 };
 
 // Transport-protocol-agnostic socket handle
-typedef enum { SOCK_UDP, SOCK_TCP } socket_type_t;
 
 struct socket_handle_t {
 	void *sock;
-	socket_type_t type;		// for debugging/logging
 	const struct socket_ops_t *ops; // should contain all type-specific actions
 };
 

@@ -63,7 +63,7 @@ pkt_result send_ipv4_down(struct nw_layer_t *self, struct pkt_t *packet)
 
 	// Write header
 	struct ipv4_header_t *header = (struct ipv4_header_t *)(packet->data + packet->offset);
-	write_ipv4_header(ipv4_cntxt, header, packet);
+	write_ipv4_header(header, packet);
 
 	// Prepare offset/length for lower layer (HAS TO HAPPEN BEFORE QUEUING!)
 	packet->offset -= sizeof(struct ethernet_header_t);
@@ -90,9 +90,7 @@ pkt_result send_ipv4_down(struct nw_layer_t *self, struct pkt_t *packet)
 	return self->downs[0]->send_down(self->downs[0], packet);
 }
 
-void write_ipv4_header(struct ipv4_context_t *context,
-		       struct ipv4_header_t *header,
-		       struct pkt_t *packet)
+void write_ipv4_header(struct ipv4_header_t *header, struct pkt_t *packet)
 {
 	header->version_ihl = (IPV4_V << 4) + IPV4_HEADER_NO_OPTIONS_LEN;
 	header->dscp_ecn = 0; // could be set by metadata provided by application socket call
@@ -106,7 +104,7 @@ void write_ipv4_header(struct ipv4_context_t *context,
 	// Because we're using a TAP device, we set source as stack's ip instead of interface's
 	// ip
 	// otherwise the stack never receives any replies
-	memcpy(header->src_ip, context->stack_ipv4_addr, IPV4_ADDR_LEN);
+	memcpy(header->src_ip, packet->src_ip, IPV4_ADDR_LEN);
 	memcpy(header->dest_ip, packet->dest_ip, IPV4_ADDR_LEN);
 }
 

@@ -19,7 +19,6 @@ pkt_result receive_icmp_up(struct nw_layer_t *self, struct pkt_t *packet)
 	case ECHO_REPLY:
 		return ICMP_ECHO_REPLY_RCVD;
 	case ECHO_REQUEST:
-		memcpy(packet->dest_ip, packet->src_ip, IPV4_ADDR_LEN);
 		echo_request_to_reply(packet, header);
 		return send_icmp_down(self, packet);
 	default:
@@ -29,7 +28,10 @@ pkt_result receive_icmp_up(struct nw_layer_t *self, struct pkt_t *packet)
 
 void echo_request_to_reply(struct pkt_t *packet, struct icmp_header_t *header)
 {
+	ipv4_address temp;
+	memcpy(temp, packet->dest_ip, IPV4_ADDR_LEN);
 	memcpy(packet->dest_ip, packet->src_ip, IPV4_ADDR_LEN);
+	memcpy(packet->src_ip, temp, IPV4_ADDR_LEN);
 	packet->protocol = P_ICMP;
 	header->type = 0;
 	header->code = 0;

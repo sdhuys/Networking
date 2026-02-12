@@ -1,14 +1,17 @@
 #include "app.h"
 #include "socket_manager.h"
+#include "tcp_listener_htable.h"
+#include "tcp_listener_socket.h"
 #include "types.h"
 #include "udp_hashtable.h"
 #include "udp_socket.h"
 #include <stdio.h>
 #include <unistd.h>
 
-void start_app(struct socket_manager_t *socket_manager)
+void start_app(struct stack_t *stack)
 {
-	app_socket_open(socket_manager, SOCK_UDP, 9000);
+	struct socket_manager_t *socket_manager = stack->sock_manager;
+	app_socket_open(stack, SOCK_UDP, 9000);
 
 	struct socket_h_q_t *read_queue = socket_manager->receive_up_sock_q;
 	pthread_mutex_lock(&read_queue->lock);
@@ -26,7 +29,6 @@ void start_app(struct socket_manager_t *socket_manager)
 			struct pkt_t *pkt;
 			while ((pkt = app_socket_receive(socket)) != NULL) {
 				unsigned char *buffer = malloc(pkt->len);
-
 				memcpy(buffer, (pkt->data + pkt->offset), pkt->len);
 				struct send_request_t req = {
 				    .data = buffer, .dest_port = pkt->src_port, .len = pkt->len};
@@ -39,46 +41,43 @@ void start_app(struct socket_manager_t *socket_manager)
 	}
 }
 
-struct socket_handle_t app_socket_open(struct socket_manager_t *socket_manager,
+struct socket_handle_t app_socket_open(struct stack_t *stack,
 				       socket_type_t type,
 				       uint16_t local_port)
 {
+	struct socket_manager_t *socket_manager = stack->sock_manager;
 	struct socket_handle_t handle = {0};
 
 	switch (type) {
 	case SOCK_UDP:
-		struct udp_ipv4_socket_t *sock = create_udp_socket(local_port);
+		struct udp_ipv4_socket_t *sock = create_udp_socket(local_port, stack);
 		if (!sock)
 			return handle;
-		sock->mgr = socket_manager;
 		handle.sock = sock;
-		handle.type = SOCK_UDP;
 		handle.ops = &udp_socket_ops;
 		handle.ops->retain(sock); // app owns initial reference
 
-		add_to_hashtable(socket_manager->udp_ipv4_sckt_htable, sock); // second ref
-
+		add_to_udp_hashtable(socket_manager->udp_ipv4_sckt_htable, sock); // second ref
 		break;
 
 	case SOCK_TCP:
-
-		// ADD TO TCP SOCKET HASHTABLE
+		struct tcp_ipv4_listener_t *listener = create_tcp_listener(local_port, stack);
+		if (!listener)
+			return handle;
+		handle.sock = listener;
 		break;
 	}
 
 	return handle;
 }
 
-void app_socket_close(struct socket_manager_t *socket_manager, struct socket_handle_t socket_h)
+void app_socket_close(struct socket_handle_t socket_h)
 {
-	if (!socket_h.sock || !socket_h.ops)
+	if (!socket_h.sock || !socket_h.ops || !socket_h.ops->close)
 		return;
-	if (socket_h.type == SOCK_UDP)
-		remove_from_udp_hashtable(socket_manager->udp_ipv4_sckt_htable, socket_h.sock);
-	else if (socket_h.type == SOCK_TCP)
-		// remove_from_tcp_hashtable(socket_manager->tcp_ipv4_sckt_htable, socket_h.sock);
 
-		socket_h.ops->release(socket_h.sock);
+	socket_h.ops->close(socket_h.sock);
+	socket_h.ops->release(socket_h.sock);
 }
 
 pkt_result app_socket_send(struct socket_handle_t sock, struct send_request_t req)

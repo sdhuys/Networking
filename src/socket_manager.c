@@ -1,17 +1,17 @@
 #include "socket_manager.h"
+#include <assert.h>
 #include <stdio.h>
 
 void notify_socket_readable_rcv(struct socket_manager_t *mgr,
 				void *sock,
-				const struct socket_ops_t *ops,
-				socket_type_t type)
+				const struct socket_ops_t *ops)
 {
 	ops->lock(sock);
 	if (!ops->is_rcv_queued(sock)) {
 		ops->set_rcv_queued(sock, true);
 		ops->unlock(sock);
 		ops->retain(sock);
-		struct socket_handle_t h = {.sock = sock, .type = type, .ops = ops};
+		struct socket_handle_t h = {.sock = sock, .ops = ops};
 		enqueue_socket(mgr->receive_up_sock_q, h);
 	} else {
 		ops->unlock(sock);
@@ -20,15 +20,14 @@ void notify_socket_readable_rcv(struct socket_manager_t *mgr,
 
 void notify_socket_readable_snd(struct socket_manager_t *mgr,
 				void *sock,
-				const struct socket_ops_t *ops,
-				socket_type_t type)
+				const struct socket_ops_t *ops)
 {
 	ops->lock(sock);
 	if (!ops->is_snd_queued(sock)) {
 		ops->set_snd_queued(sock, true);
 		ops->unlock(sock);
 		ops->retain(sock);
-		struct socket_handle_t h = {.sock = sock, .type = type, .ops = ops};
+		struct socket_handle_t h = {.sock = sock, .ops = ops};
 		enqueue_socket(mgr->send_down_sock_q, h);
 	} else {
 		ops->unlock(sock);

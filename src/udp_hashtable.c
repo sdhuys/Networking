@@ -1,9 +1,10 @@
 #include "udp_hashtable.h"
+#include "udp_socket.h"
 #include <stdio.h>
 
-bool add_to_hashtable(struct udp_ipv4_sckt_htable_t *htable, struct udp_ipv4_socket_t *socket)
+bool add_to_udp_hashtable(struct udp_ipv4_sckt_htable_t *htable, struct udp_ipv4_socket_t *socket)
 {
-	uint32_t hash = calc_hash(socket->local_port, htable);
+	uint32_t hash = calc_udp_hash(socket->local_port, socket->local_addr, htable);
 	printf("%d => %d \n", socket->local_port, hash);
 
 	pthread_mutex_lock(&htable->bucket_locks[hash]);
@@ -29,16 +30,18 @@ bool add_to_hashtable(struct udp_ipv4_sckt_htable_t *htable, struct udp_ipv4_soc
 	return true;
 }
 
-struct udp_ipv4_socket_t *query_hashtable(struct udp_ipv4_sckt_htable_t *htable, uint16_t dest_port)
+struct udp_ipv4_socket_t *query_udp_hashtable(struct udp_ipv4_sckt_htable_t *htable,
+					      uint16_t port,
+					      ipv4_address addr)
 {
-	uint32_t hash = calc_hash(dest_port, htable);
+	uint32_t hash = calc_udp_hash(port, addr, htable);
 	struct udp_ipv4_sckt_htable_node_t *bucket_node = htable->buckets[hash];
 
 	pthread_mutex_t *lock = &(htable->bucket_locks[hash]);
 	pthread_mutex_lock(lock);
 	while (bucket_node != NULL) {
 		struct udp_ipv4_socket_t *socket = bucket_node->socket;
-		if (socket->local_port == dest_port && socket->state != CLOSED) {
+		if (socket->local_port == port && socket->state != UDP_CLOSED) {
 			retain_udp_socket(socket);
 			pthread_mutex_unlock(lock);
 			return bucket_node->socket;
@@ -52,7 +55,7 @@ struct udp_ipv4_socket_t *query_hashtable(struct udp_ipv4_sckt_htable_t *htable,
 bool remove_from_udp_hashtable(struct udp_ipv4_sckt_htable_t *htable,
 			       struct udp_ipv4_socket_t *socket)
 {
-	uint32_t hash = calc_hash(socket->local_port, htable);
+	uint32_t hash = calc_udp_hash(socket->local_port, socket->local_addr, htable);
 
 	pthread_mutex_t *lock = &(htable->bucket_locks[hash]);
 	pthread_mutex_lock(lock);
@@ -67,7 +70,7 @@ bool remove_from_udp_hashtable(struct udp_ipv4_sckt_htable_t *htable,
 				htable->buckets[hash] = node->next;
 
 			pthread_mutex_lock(&socket->lock);
-			socket->state = CLOSED;
+			socket->state = UDP_CLOSED;
 			pthread_mutex_unlock(&socket->lock);
 
 			release_udp_socket(node->socket);
@@ -82,7 +85,12 @@ bool remove_from_udp_hashtable(struct udp_ipv4_sckt_htable_t *htable,
 	return false;
 }
 
-uint32_t calc_hash(uint16_t port, struct udp_ipv4_sckt_htable_t *htable)
+uint32_t calc_udp_hash(uint16_t port, ipv4_address ip, struct udp_ipv4_sckt_htable_t *htable)
 {
-	return (uint32_t)(port * GOLDEN_RATIO_32) & (htable->buckets_amount - 1);
+	uint32_t ip_val;
+	memcpy(&ip_val, ip, sizeof(uint32_t));
+	uint32_t hash = port * GOLDEN_RATIO_32;
+	hash = (hash ^ ip_val) * GOLDEN_RATIO_32;
+	hash ^= hash >> 16;
+	return (uint32_t)hash & (htable->buckets_amount - 1);
 }
