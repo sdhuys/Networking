@@ -91,22 +91,23 @@ pkt_result write_up_to_rcv_buffer(struct udp_ipv4_socket_t *socket, struct pkt_t
 	return SENT_UP_TO_APPLICATION;
 }
 
-// socket handle operations (app side)
+////  socket handle operations (app side) ////
+// caller must hold lock!
 bool udp_is_rcv_queued(void *s)
 {
 	return ((struct udp_ipv4_socket_t *)s)->queued_for_rcv;
 }
-
+// caller must hold lock!
 void udp_set_rcv_queued(void *s, bool v)
 {
 	((struct udp_ipv4_socket_t *)s)->queued_for_rcv = v;
 }
-
+// caller must hold lock!
 bool udp_is_snd_queued(void *s)
 {
 	return ((struct udp_ipv4_socket_t *)s)->queued_for_snd;
 }
-
+// caller must hold lock!
 void udp_set_snd_queued(void *s, bool v)
 {
 	((struct udp_ipv4_socket_t *)s)->queued_for_snd = v;

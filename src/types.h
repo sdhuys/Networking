@@ -99,7 +99,7 @@ typedef enum {
 struct pkt_t {
 	unsigned char *data;
 	size_t offset; // Offset to the start of the current layer's header
-	size_t len;  // Packet length from current offset (current layer's length)
+	size_t len;    // Packet length from current offset (current layer's length)
 	uint8_t ref_count;
 	int if_index;
 	ether_type ethertype;
