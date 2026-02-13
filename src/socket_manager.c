@@ -61,11 +61,12 @@ struct socket_handle_t dequeue_writable_socket(struct socket_manager_t *mgr)
 
 void release_socket_from_queue(struct socket_handle_t sock, bool rx)
 {
+	sock.ops->lock(sock.sock);
 	if (rx)
 		sock.ops->set_rcv_queued(sock.sock, false);
 	else
 		sock.ops->set_snd_queued(sock.sock, false);
-
+	sock.ops->unlock(sock.sock);
 	sock.ops->release(sock.sock);
 }
 

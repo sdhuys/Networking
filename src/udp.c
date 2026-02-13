@@ -1,4 +1,5 @@
 #include "udp.h"
+#include <assert.h>
 #include <execinfo.h>
 #include <stdio.h>
 #include <string.h>
@@ -25,6 +26,9 @@ pkt_result receive_udp_up(struct nw_layer_t *self, struct pkt_t *packet)
 {
 	struct udp_header_t *header = (struct udp_header_t *)(packet->data + packet->offset);
 
+	if (ntohs(header->length) != packet->len)
+		return UDP_MALFORMED;
+		
 	if (header->checksum != 0)
 		if (compute_checksum_internal(header, packet) != 0)
 			return UDP_CHECKSUM_ERROR;
@@ -32,8 +36,8 @@ pkt_result receive_udp_up(struct nw_layer_t *self, struct pkt_t *packet)
 	struct udp_context_t *context = (struct udp_context_t *)self->context;
 	packet->dest_port = ntohs(header->dest_port);
 	packet->src_port = ntohs(header->src_port);
-	struct udp_ipv4_socket_t *socket =
-	    query_hashtable(context->sock_manager->udp_ipv4_sckt_htable, packet->dest_port);
+	struct udp_ipv4_socket_t *socket = query_udp_hashtable(
+	    context->sock_manager->udp_ipv4_sckt_htable, packet->dest_port, packet->dest_ip);
 
 	if (socket == NULL)
 		return UDP_PORT_NO_LISTENER;

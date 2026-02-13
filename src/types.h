@@ -85,8 +85,9 @@ typedef enum {
 	ICMP_CHECKSUM_ERROR = -351,
 	ICMP_TYPE_NOT_SUPPORTED = -352,
 	UDP_CHECKSUM_ERROR = -401,
-	UDP_PORT_NO_LISTENER = -402,
-	UDP_SOCKET_CLOSED = -403,
+	UDP_MALFORMED = -402,
+	UDP_PORT_NO_LISTENER = -403,
+	UDP_SOCKET_CLOSED = -404,
 
 	RING_BUFFER_FULL = -501,
 
@@ -98,7 +99,7 @@ typedef enum {
 struct pkt_t {
 	unsigned char *data;
 	size_t offset; // Offset to the start of the current layer's header
-	uint16_t len;  // Packet length from current offset (current layer's length)
+	size_t len;  // Packet length from current offset (current layer's length)
 	uint8_t ref_count;
 	int if_index;
 	ether_type ethertype;
