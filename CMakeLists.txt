@@ -34,6 +34,8 @@ set(LIB_SOURCES
   src/stack_tx_worker.c
   src/tap.c
   src/tcp.c
+  src/tcp_conn_socket.c
+  src/tcp_conn_htable.c
   src/tcp_listener_htable.c
   src/tcp_listener_socket.c
   src/timer.c
