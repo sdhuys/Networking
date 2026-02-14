@@ -59,8 +59,10 @@ struct stack_t construct_stack(int fd, char *if_name)
 	arp->downs = malloc(arp->downs_count * sizeof(struct nw_layer_t *));
 	arp->downs[0] = eth;
 	struct arp_context_t *arp_ctx = malloc(sizeof(struct arp_context_t));
-	struct arp_table_t *arp_table_head = malloc(sizeof(struct arp_table_t));
-	arp_ctx->arp_table = arp_table_head;
+	struct arp_table_t *arp_table = malloc(sizeof(struct arp_table_t));
+	arp_table->head = NULL;
+	arp_ctx->arp_table = arp_table;
+	
 	memcpy(arp_ctx->ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
 	memcpy(arp_ctx->mac_addr, stack_mac_addr, MAC_ADDR_LEN);
 	arp->context = arp_ctx;
