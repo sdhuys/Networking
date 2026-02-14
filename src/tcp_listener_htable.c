@@ -80,15 +80,13 @@ bool remove_from_tcp_lstnr_hashtable(struct tcp_ipv4_listener_htable_t *htable,
 	return false;
 }
 
-// succeptible to hash flooding attack
 uint32_t calc_tcp_lstnr_hash(uint16_t port,
 			     ipv4_address ip,
 			     struct tcp_ipv4_listener_htable_t *htable)
 {
-	uint32_t ip_val;
-	memcpy(&ip_val, ip, sizeof(uint32_t));
-	uint32_t hash = port * GOLDEN_RATIO_32;
-	hash = (hash ^ ip_val) * GOLDEN_RATIO_32;
-	hash ^= hash >> 16;
-	return (uint32_t)hash & (htable->buckets_amount - 1);
+	unsigned char data[6];
+	data[0] = port & 0xFF;
+	data[1] = (port >> 8) & 0xFF;
+	memcpy(&data[2], ip, IPV4_ADDR_LEN);
+	return hash_table(data, sizeof(data)) & (htable->buckets_amount - 1);
 }

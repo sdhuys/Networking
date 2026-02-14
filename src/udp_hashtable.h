@@ -1,4 +1,5 @@
 #pragma once
+#include "hash.h"
 #include "types.h"
 #include <stdlib.h>
 

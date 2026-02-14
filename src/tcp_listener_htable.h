@@ -1,4 +1,5 @@
 #pragma once
+#include "hash.h"
 #include "tcp_listener_socket.h"
 #include "types.h"
 #include <stdlib.h>

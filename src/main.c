@@ -1,4 +1,5 @@
 #include "app.h"
+#include "hash.h"
 #include "stack_constructor.h"
 #include "stack_tx_worker.h"
 #include <arpa/inet.h>
@@ -47,6 +48,7 @@ void *start_listening_wrapper(void *arg)
 
 int main()
 {
+	hash_init();
 	int tap_fd;
 	if ((tap_fd = tap_setup()) < 0)
 		return 1;

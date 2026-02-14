@@ -24,6 +24,7 @@ set(LIB_SOURCES
   src/checksum.c
   src/constants.c
   src/ethernet.c
+  src/hash.c
   src/icmp.c
   src/ipv4.c
   src/layer_router.c
@@ -56,8 +57,8 @@ set(TEST_SOURCES
 )
 
 # ---- Main executable ----
-add_executable(networking.elf ${MAIN_SOURCES})
-target_compile_options(networking.elf PRIVATE -Wall -Wextra -rdynamic)
+add_executable(networking ${MAIN_SOURCES})
+target_compile_options(networking PRIVATE -Wall -Wextra -rdynamic)
 
 # ---- Tests ----
 if(BUILD_TESTING)
