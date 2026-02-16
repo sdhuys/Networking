@@ -28,7 +28,7 @@ pkt_result receive_udp_up(struct nw_layer_t *self, struct pkt_t *packet)
 
 	if (ntohs(header->length) != packet->len)
 		return UDP_MALFORMED;
-		
+
 	if (header->checksum != 0)
 		if (compute_checksum_internal(header, packet) != 0)
 			return UDP_CHECKSUM_ERROR;

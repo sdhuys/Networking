@@ -1,5 +1,7 @@
 #include "app.h"
 #include "socket_manager.h"
+#include "tcp_conn_htable.h"
+#include "tcp_conn_socket.h"
 #include "tcp_listener_htable.h"
 #include "tcp_listener_socket.h"
 #include "types.h"
@@ -12,6 +14,7 @@ void start_app(struct stack_t *stack)
 {
 	struct socket_manager_t *socket_manager = stack->sock_manager;
 	app_socket_open(stack, SOCK_UDP, 9000);
+	app_socket_open(stack, SOCK_TCP, 9001);
 
 	struct socket_h_q_t *read_queue = socket_manager->receive_up_sock_q;
 	pthread_mutex_lock(&read_queue->lock);
@@ -23,9 +26,11 @@ void start_app(struct stack_t *stack)
 
 		while (1) {
 			struct socket_handle_t socket = dequeue_readable_socket(socket_manager);
-			if (!socket.sock)
+			if (!socket.sock) {
+				printf("NO READABLE SOCKET \n");
 				break;
-
+			}
+			
 			struct pkt_t *pkt;
 			while ((pkt = app_socket_receive(socket)) != NULL) {
 				unsigned char *buffer = malloc(pkt->len);
@@ -56,7 +61,6 @@ struct socket_handle_t app_socket_open(struct stack_t *stack,
 		handle.sock = sock;
 		handle.ops = &udp_socket_ops;
 		handle.ops->retain(sock); // app owns initial reference
-
 		add_to_udp_hashtable(socket_manager->udp_ipv4_sckt_htable, sock); // second ref
 		break;
 
@@ -65,6 +69,9 @@ struct socket_handle_t app_socket_open(struct stack_t *stack,
 		if (!listener)
 			return handle;
 		handle.sock = listener;
+		handle.ops = &tcp_listener_ops;
+		handle.ops->retain(listener);
+		add_to_tcp_listener_hashtable(socket_manager->tcp_ipv4_listener_htable, listener);
 		break;
 	}
 

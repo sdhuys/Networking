@@ -5,6 +5,8 @@
 #include "types.h"
 #include <stdlib.h>
 
+#define UDP_RING_BUFF_SIZE 256
+
 extern const struct socket_ops_t udp_socket_ops;
 
 struct udp_ipv4_socket_t *create_udp_socket(uint16_t port, struct stack_t *stack);
@@ -33,8 +35,8 @@ typedef enum { UDP_LISTEN, UDP_CLOSED } udp_socket_state_t;
 struct udp_ipv4_socket_t {
 	uint16_t local_port;
 	ipv4_address local_addr;
-	struct ring_buffer_t *rcv_buffer; // stack writes, app consumes
-	struct ring_buffer_t *snd_buffer; // app writes, stack consumes
+	struct udp_ring_buffer_t *rcv_buffer; // stack writes, app consumes
+	struct udp_ring_buffer_t *snd_buffer; // app writes, stack consumes
 	udp_socket_state_t state;
 	uint8_t ref_count;
 	bool queued_for_rcv;

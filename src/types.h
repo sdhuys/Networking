@@ -43,11 +43,6 @@
 #define UDP_NAME "udp"
 #define TCP_NAME "tcp"
 
-#define UDP_SCKT_HTBL_SIZE 128 // buckets for listener entries
-#define RING_BUFF_SIZE 256
-
-#define GOLDEN_RATIO_32 2654435761U
-
 extern const unsigned char IPV4_BROADCAST_MAC[MAC_ADDR_LEN];
 extern const unsigned char IPV4_BROADCAST_IP[IPV4_ADDR_LEN];
 
@@ -98,7 +93,7 @@ typedef enum {
 struct pkt_t {
 	unsigned char *data;
 	size_t offset; // Offset to the start of the current layer's header
-	size_t len;  // Packet length from current offset (current layer's length)
+	size_t len;    // Packet length from current offset (current layer's length)
 	uint8_t ref_count;
 	int if_index;
 	ether_type ethertype;
@@ -260,13 +255,6 @@ struct icmp_header_t {
 } __attribute__((packed));
 
 //// TRANSPORT LAYERS ////
-// RING BUFFER
-struct ring_buffer_t {
-	struct pkt_t *packets[RING_BUFF_SIZE];
-	uint32_t head;
-	uint32_t tail;
-	pthread_mutex_t lock;
-};
 
 // UDP LAYER
 struct udp_context_t {
@@ -301,51 +289,6 @@ struct tcp_header_t {
 	uint8_t options[40]; // fixed-size array for maximum possible options
 } __attribute__((packed));
 
-typedef enum {
-	SYN_SENT,     // Sent SYN, waiting for SYN+ACK
-	SYN_RECEIVED, // Received SYN, sent SYN+ACK
-	ESTABLISHED,  // Connection established
-	FIN_WAIT_1,   // Application closed, sent FIN, waiting for ACK
-	FIN_WAIT_2,   // Received ACK of FIN, waiting for remote FIN
-	CLOSE_WAIT,   // Received FIN from remote, waiting for application close
-	CLOSING,      // Simultaneous close, sent FIN, waiting for ACK of FIN
-	LAST_ACK,     // Waiting for ACK of our FIN after close
-	TIME_WAIT     // Waiting for 2*MSL (maximum segment lifetime) before releasing
-} tcp_connection_state_t;
-
-// connections
-struct tcp_ipv4_conn_t {
-	ipv4_address local_addr;
-	ipv4_address extern_addr;
-	uint16_t local_port;
-	uint16_t extern_port;
-	struct ring_buffer_t rcv_buffer; // stack writes, app consumes
-	struct ring_buffer_t snd_buffer; // app writes, stack consumes
-	tcp_connection_state_t state;
-};
-
-struct tcp_ipv4_conn_node_t {
-	struct tcp_ipv4_conn_t *socket;
-	struct tcp_ipv4_conn_node_t *next;
-};
-
-// listener's half-open and established connections backlog queues
-struct tcp_ipv4_conn_q_t {
-	struct tcp_ipv4_conn_node_t *head;
-	struct tcp_ipv4_conn_node_t *tail;
-	pthread_mutex_t lock;
-	size_t len;
-};
-
-// lookup htable for established connections
-struct tcp_ipv4_conn_htable_t {
-	struct tcp_ipv4_conn_node_t **buckets;
-	uint8_t buckets_amount;
-	// add add()
-	// add remove()
-	// add query_connected()
-	// add query_listening()
-};
 
 // Checksum data
 struct checksum_chunk {
@@ -355,8 +298,9 @@ struct checksum_chunk {
 
 // Socket manager
 struct socket_manager_t {
-	struct tcp_ipv4_conn_htable_t *tcp_ipv4_conn_htable;
 	struct tcp_ipv4_listener_htable_t *tcp_ipv4_listener_htable;
+	struct tcp_ipv4_conn_htable_t *tcp_ipv4_conn_htable;
+	struct tcp_ipv4_conn_htable_t *tcp_ipv4_conn_time_wait_htable;
 	struct udp_ipv4_sckt_htable_t *udp_ipv4_sckt_htable;
 	struct socket_h_q_t *send_down_sock_q;	// app writes, stack reads
 	struct socket_h_q_t *receive_up_sock_q; // stack writes, app reads

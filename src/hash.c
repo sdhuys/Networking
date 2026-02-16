@@ -38,8 +38,8 @@ static inline uint64_t load_le64(const unsigned char *p)
 	       ((uint64_t)p[6] << 48) | ((uint64_t)p[7] << 56);
 }
 
-#define SIPROUND()                                                                         \
-	do {                                                                                   \
+#define SIPROUND()                                                                                 \
+	do {                                                                                       \
 		v0 += v1;                                                                          \
 		v1 = rotl64(v1, 13);                                                               \
 		v1 ^= v0;                                                                          \
@@ -79,22 +79,22 @@ static uint64_t siphash24(const unsigned char *in, size_t len, const uint64_t ke
 	switch (len & 7) {
 	case 7:
 		m |= (uint64_t)in[6] << 48;
-		    // fallthrough
+		// fallthrough
 	case 6:
 		m |= (uint64_t)in[5] << 40;
-		    // fallthrough
+		// fallthrough
 	case 5:
 		m |= (uint64_t)in[4] << 32;
-		    // fallthrough
+		// fallthrough
 	case 4:
 		m |= (uint64_t)in[3] << 24;
-		    // fallthrough
+		// fallthrough
 	case 3:
 		m |= (uint64_t)in[2] << 16;
-		    // fallthrough
+		// fallthrough
 	case 2:
 		m |= (uint64_t)in[1] << 8;
-		    // fallthrough
+		// fallthrough
 	case 1:
 		m |= (uint64_t)in[0];
 	}

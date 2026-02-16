@@ -27,8 +27,8 @@ struct udp_ipv4_socket_t *create_udp_socket(uint16_t port, struct stack_t *stack
 	socket->ref_count = 0;
 	socket->queued_for_rcv = false;
 	socket->queued_for_snd = false;
-	struct ring_buffer_t *rcv_b = create_init_ring_buffer();
-	struct ring_buffer_t *snd_b = create_init_ring_buffer();
+	struct udp_ring_buffer_t *rcv_b = create_init_udp_ring_buffer(UDP_RING_BUFF_SIZE);
+	struct udp_ring_buffer_t *snd_b = create_init_udp_ring_buffer(UDP_RING_BUFF_SIZE);
 	socket->rcv_buffer = rcv_b;
 	socket->snd_buffer = snd_b;
 	pthread_mutex_init(&socket->lock, NULL);
@@ -77,7 +77,7 @@ pkt_result write_up_to_rcv_buffer(struct udp_ipv4_socket_t *socket, struct pkt_t
 	}
 	pthread_mutex_unlock(&(socket->lock));
 
-	if (!write_to_buffer(socket->rcv_buffer, packet))
+	if (!write_to_udp_buffer(socket->rcv_buffer, packet))
 		return RING_BUFFER_FULL;
 
 	notify_socket_readable_rcv(socket->mgr, socket, &udp_socket_ops);
@@ -127,7 +127,7 @@ bool udp_write_to_snd_buffer(void *s, struct send_request_t req)
 	}
 	pthread_mutex_unlock(&socket->lock);
 
-	struct ring_buffer_t *buffer = socket->snd_buffer;
+	struct udp_ring_buffer_t *buffer = socket->snd_buffer;
 
 	printf("UDP SOCKET ALLOCATING \n");
 	struct pkt_t *packet = allocate_pkt(); // caller ownership
@@ -143,7 +143,7 @@ bool udp_write_to_snd_buffer(void *s, struct send_request_t req)
 	packet->protocol = P_UDP;
 	memcpy((packet->data + packet->offset), req.data, req.len);
 
-	if (!write_to_buffer(buffer, packet)) {
+	if (!write_to_udp_buffer(buffer, packet)) {
 		release_pkt(packet); // failure, buffer releases ownership
 		return false;
 	}
@@ -154,8 +154,8 @@ bool udp_write_to_snd_buffer(void *s, struct send_request_t req)
 struct pkt_t *udp_read_rcv_buffer(void *s)
 {
 	struct udp_ipv4_socket_t *socket = (struct udp_ipv4_socket_t *)s;
-	struct ring_buffer_t *rcv_buffer = socket->rcv_buffer;
-	struct pkt_t *pkt = read_buffer(rcv_buffer);
+	struct udp_ring_buffer_t *rcv_buffer = socket->rcv_buffer;
+	struct pkt_t *pkt = read_udp_buffer(rcv_buffer);
 	return pkt;
 }
 
@@ -174,7 +174,7 @@ void unlock_socket(void *s)
 struct pkt_t *udp_next_snd_pkt(void *s)
 {
 	struct udp_ipv4_socket_t *sock = s;
-	return read_buffer(sock->snd_buffer);
+	return read_udp_buffer(sock->snd_buffer);
 }
 
 pkt_result udp_send_pkt(struct stack_t *stack, struct pkt_t *pkt)

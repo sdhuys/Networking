@@ -93,3 +93,38 @@ uint32_t calc_udp_hash(uint16_t port, ipv4_address ip, struct udp_ipv4_sckt_htab
 	memcpy(&data[2], ip, IPV4_ADDR_LEN);
 	return hash_table(data, sizeof(data)) & (htable->buckets_amount - 1);
 }
+
+struct udp_ipv4_sckt_htable_t *create_udp_ipv4_sckt_htable(size_t size)
+{
+	// enforce only power of 2 sizes
+	if (size == 0 || (size & (size - 1)) != 0)
+		return NULL;
+
+	struct udp_ipv4_sckt_htable_t *udp_htable = malloc(sizeof(*udp_htable));
+	if (!udp_htable)
+		return NULL;
+
+	udp_htable->buckets_amount = size;
+
+	pthread_mutex_t *bckt_locks = malloc(sizeof(pthread_mutex_t) * size);
+	if (!bckt_locks) {
+		free(udp_htable);
+		return NULL;
+	}
+
+	for (size_t i = 0; i < size; i++)
+		pthread_mutex_init(&bckt_locks[i], NULL);
+
+	udp_htable->bucket_locks = bckt_locks;
+
+	struct udp_ipv4_sckt_htable_node_t **buckets =
+	    calloc(size, sizeof(struct udp_ipv4_sckt_htable_node_t *));
+	if (!buckets) {
+		free(bckt_locks);
+		free(udp_htable);
+		return NULL;
+	}
+
+	udp_htable->buckets = buckets;
+	return udp_htable;
+}

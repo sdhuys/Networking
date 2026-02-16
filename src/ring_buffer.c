@@ -1,10 +1,10 @@
 #include "ring_buffer.h"
 
-bool write_to_buffer(struct ring_buffer_t *buff, struct pkt_t *packet)
+bool write_to_udp_buffer(struct udp_ring_buffer_t *buff, struct pkt_t *packet)
 {
 	// printf("WRITE FROM HEAD %d \n", buff->head);
 	pthread_mutex_lock(&buff->lock);
-	uint32_t next_head = (buff->head + 1) % RING_BUFF_SIZE;
+	uint32_t next_head = (buff->head + 1) & (buff->length - 1);
 	if (next_head == buff->tail) {
 		pthread_mutex_unlock(&buff->lock);
 		return false;
@@ -17,7 +17,7 @@ bool write_to_buffer(struct ring_buffer_t *buff, struct pkt_t *packet)
 	return true;
 }
 
-struct pkt_t *read_buffer(struct ring_buffer_t *buff)
+struct pkt_t *read_udp_buffer(struct udp_ring_buffer_t *buff)
 {
 	pthread_mutex_lock(&buff->lock);
 	if (buff->head == buff->tail) {
@@ -26,19 +26,23 @@ struct pkt_t *read_buffer(struct ring_buffer_t *buff)
 	}
 
 	struct pkt_t *pkt = buff->packets[buff->tail];
-	buff->tail = (buff->tail + 1) % RING_BUFF_SIZE;
+	buff->tail = (buff->tail + 1) & (buff->length - 1);
 	pthread_mutex_unlock(&buff->lock);
 	// printf("READ: NEW TAIL: %d \n", buff->tail);
 
 	return pkt;
 }
 
-struct ring_buffer_t *create_init_ring_buffer()
+struct udp_ring_buffer_t *create_init_udp_ring_buffer(size_t count)
 {
-	struct ring_buffer_t *buff = malloc(sizeof(struct ring_buffer_t));
-	if (buff == NULL)
+	if (count == 0 || (count & (count - 1)) != 0)
 		return NULL;
 
+	struct udp_ring_buffer_t *buff = malloc(sizeof(struct udp_ring_buffer_t));
+	if (buff == NULL)
+		return NULL;
+	buff->packets = calloc(count, sizeof(struct pkt_t));
+	buff->length = count;
 	pthread_mutex_init(&buff->lock, NULL);
 	buff->head = 0;
 	buff->tail = 0;

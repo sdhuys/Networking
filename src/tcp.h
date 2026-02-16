@@ -2,9 +2,6 @@
 #include "layer_router.h"
 #include "types.h"
 
-#define TCP_LISTNR_HTBL_SIZE 128
-#define TCP_CONN_HTBL_SIZE 1024
-
 #ifdef __cplusplus
 extern "C" {
 #endif

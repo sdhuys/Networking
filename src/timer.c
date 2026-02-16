@@ -46,6 +46,7 @@ bool run_new_timer(struct timer_min_heap_t *heap,
 		return false;
 	}
 
+	// trigger event, in case this new timer will be the new time_out value for polling!
 	uint64_t x = 1;
 	write(heap->wake_fd, &x, sizeof(x));
 	return true;

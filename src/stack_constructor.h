@@ -6,9 +6,11 @@
 #include "routing_table.h"
 #include "tap.h"
 #include "tcp.h"
+#include "tcp_conn_htable.h"
 #include "tcp_listener_htable.h"
 #include "timer.h"
 #include "udp.h"
+#include "udp_hashtable.h"
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <netinet/in.h>
@@ -21,14 +23,17 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#define TCP_LISTNR_HTBL_SIZE 1024
+#define UDP_SCKT_HTBL_SIZE 1024
+
+#define TCP_EST_CONN_HTBL_SIZE 4096
+#define TCP_WAIT_CONN_HTBLE_SIZE 1280
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 struct stack_t construct_stack(int fd, char *if_name);
-struct udp_ipv4_sckt_htable_t *create_udp_ipv4_sckt_htable();
-struct tcp_ipv4_listener_htable_t *create_tcp_ipv4_listener_htable();
-struct tcp_ipv4_conn_htable_t *create_tcp_ipv4_conn_htable();
 void set_net_if_struct(int fd, char *if_name, struct nw_interface_t *n_if);
 void set_stack_ipv4_addr(struct nw_interface_t *n_if, ipv4_address stack_ip_addr);
 
