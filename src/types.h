@@ -289,21 +289,10 @@ struct tcp_header_t {
 	uint8_t options[40]; // fixed-size array for maximum possible options
 } __attribute__((packed));
 
-
 // Checksum data
 struct checksum_chunk {
 	const void *data;
 	size_t len;
-};
-
-// Socket manager
-struct socket_manager_t {
-	struct tcp_ipv4_listener_htable_t *tcp_ipv4_listener_htable;
-	struct tcp_ipv4_conn_htable_t *tcp_ipv4_conn_htable;
-	struct tcp_ipv4_conn_htable_t *tcp_ipv4_conn_time_wait_htable;
-	struct udp_ipv4_sckt_htable_t *udp_ipv4_sckt_htable;
-	struct socket_h_q_t *send_down_sock_q;	// app writes, stack reads
-	struct socket_h_q_t *receive_up_sock_q; // stack writes, app reads
 };
 
 // STACK: contains everything for stack rcv + snd and app rcv + snd
@@ -321,48 +310,4 @@ struct send_request_t {
 	size_t len;
 	ipv4_address dest_ip; // optional, only for UDP
 	uint16_t dest_port;   // optional, only for UDP
-};
-
-// Protocol agnostic socket operations
-struct socket_ops_t {
-	bool (*is_rcv_queued)(void *sock);
-	void (*set_rcv_queued)(void *sock, bool);
-
-	bool (*is_snd_queued)(void *sock);
-	void (*set_snd_queued)(void *sock, bool);
-
-	void (*retain)(void *sock);
-	void (*release)(void *sock);
-
-	bool (*write_to_snd_buffer)(void *sock, struct send_request_t req);
-	struct pkt_t *(*read_rcv_buffer)(void *sock);
-
-	void (*unlock)(void *sock);
-	void (*lock)(void *sock);
-
-	struct pkt_t *(*next_snd_pkt)(void *);
-	pkt_result (*send_pkt)(struct stack_t *, struct pkt_t *);
-
-	void (*close)(void *sock);
-};
-
-// Transport-protocol-agnostic socket handle
-
-struct socket_handle_t {
-	void *sock;
-	const struct socket_ops_t *ops; // should contain all type-specific actions
-};
-
-// Socket handle queue
-struct socket_h_q_t {
-	struct socket_h_q_node_t *head;
-	struct socket_h_q_node_t *tail;
-	pthread_mutex_t lock;
-	pthread_cond_t cond;
-	size_t len;
-};
-
-struct socket_h_q_node_t {
-	struct socket_handle_t socket;
-	struct socket_h_q_node_t *next;
 };

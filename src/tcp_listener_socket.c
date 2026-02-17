@@ -1,11 +1,10 @@
 #include "tcp_listener_socket.h"
+#include "socket_manager.h"
 #include "tcp_conn_htable.h"
 #include "tcp_conn_socket.h"
 #include "tcp_listener_htable.h"
 
-const struct socket_ops_t tcp_listener_ops = {.is_rcv_queued = NULL,
-					      .set_rcv_queued = NULL,
-					      .is_snd_queued = NULL,
+const struct socket_ops_t tcp_listener_ops = {.is_snd_queued = NULL,
 					      .set_snd_queued = NULL,
 					      .retain = tcp_retain_listener,
 					      .release = tcp_release_listener,

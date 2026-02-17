@@ -22,15 +22,19 @@ void destroy_ready_q(struct tcp_ipv4_conn_q_t *q);
 typedef enum { TCP_LIS_LISTEN, TCP_LIS_CLOSED } tcp_listener_state_t;
 
 struct tcp_ipv4_listener_t {
+	pthread_cond_t accept_cond;
+	pthread_mutex_t lock;
+
 	ipv4_address local_addr;
 	uint16_t local_port;
 	tcp_listener_state_t state;
+
 	struct tcp_ipv4_conn_htable_t *half_opens;
 	uint16_t half_open_limit;
 	struct tcp_ipv4_conn_q_t *ready_q;
-	pthread_mutex_t lock;
+
 	struct socket_manager_t *mgr;
-	uint8_t ref_count;
+	uint32_t ref_count;
 };
 
 struct tcp_ipv4_conn_q_node_t {

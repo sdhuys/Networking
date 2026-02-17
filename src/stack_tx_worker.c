@@ -13,18 +13,18 @@ void *stack_transmission_loop(void *arg)
 		}
 		pthread_mutex_unlock(&q->lock);
 		while (1) {
-			struct socket_handle_t h = dequeue_writable_socket(mgr);
+			struct socket_handle_t h = dequeue_sock_snd_down_q(mgr);
 			if (!h.sock)
 				break;
 
 			struct pkt_t *pkt;
-			pkt_result res = WRITE_ERROR;
+			pkt_result res;
 
 			while ((pkt = h.ops->next_snd_pkt(h.sock)) != NULL) {
 				res = h.ops->send_pkt(stack, pkt);
 			}
 			printf("WORKER RESULT: %d", res);
-			release_socket_from_queue(h, false);
+			release_socket_from_queue(h);
 		}
 	}
 	return NULL;

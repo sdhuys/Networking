@@ -4,6 +4,8 @@
 #include "icmp.h"
 #include "ipv4.h"
 #include "routing_table.h"
+#include "socket_manager.h"
+#include "sockfd_manager.h"
 #include "tap.h"
 #include "tcp.h"
 #include "tcp_conn_htable.h"

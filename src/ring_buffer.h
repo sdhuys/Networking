@@ -8,12 +8,14 @@ struct udp_ring_buffer_t {
 	uint32_t head;
 	uint32_t tail;
 	pthread_mutex_t lock;
+	pthread_cond_t cond; // only used in receive buffers! (send buffers go through send q)
 	size_t length;
 };
 
 struct udp_ring_buffer_t *create_init_udp_ring_buffer(size_t size);
 bool write_to_udp_buffer(struct udp_ring_buffer_t *buff, struct pkt_t *packet);
 struct pkt_t *read_udp_buffer(struct udp_ring_buffer_t *buff);
+struct pkt_t *read_udp_buffer_blocking(struct udp_ring_buffer_t *buff);
 
 struct tcp_snd_ring_buffer_t {
 	struct pkt_t **packets;

@@ -2,14 +2,13 @@
 #include "udp_hashtable.h"
 #include <stdio.h>
 
-const struct socket_ops_t udp_socket_ops = {.is_rcv_queued = udp_is_rcv_queued,
-					    .set_rcv_queued = udp_set_rcv_queued,
-					    .is_snd_queued = udp_is_snd_queued,
+const struct socket_ops_t udp_socket_ops = {.is_snd_queued = udp_is_snd_queued,
 					    .set_snd_queued = udp_set_snd_queued,
 					    .retain = udp_retain,
 					    .release = udp_release,
 					    .write_to_snd_buffer = udp_write_to_snd_buffer,
 					    .read_rcv_buffer = udp_read_rcv_buffer,
+					    .read_rcv_buffer_from = udp_read_rcv_buffer_from,
 					    .unlock = unlock_socket,
 					    .lock = lock_socket,
 					    .next_snd_pkt = udp_next_snd_pkt,
@@ -37,12 +36,18 @@ struct udp_ipv4_socket_t *create_udp_socket(uint16_t port, struct stack_t *stack
 	return socket;
 }
 
+void broadcast_udp_rcv_readable(struct udp_ipv4_socket_t *socket)
+{
+	pthread_cond_broadcast(&socket->rcv_buffer->cond);
+}
+
 void destroy_udp_socket(struct udp_ipv4_socket_t *socket)
 {
 	pthread_mutex_destroy(&socket->lock);
 	free(socket->rcv_buffer);
 	free(socket->snd_buffer);
 	free(socket);
+	printf("UDP SOCK DESTROYED \n");
 }
 
 void retain_udp_socket(struct udp_ipv4_socket_t *socket)
@@ -80,21 +85,11 @@ pkt_result write_up_to_rcv_buffer(struct udp_ipv4_socket_t *socket, struct pkt_t
 	if (!write_to_udp_buffer(socket->rcv_buffer, packet))
 		return RING_BUFFER_FULL;
 
-	notify_socket_readable_rcv(socket->mgr, socket, &udp_socket_ops);
+	broadcast_udp_rcv_readable(socket);
 	return SENT_UP_TO_APPLICATION;
 }
 
 // socket handle operations (app side)
-bool udp_is_rcv_queued(void *s)
-{
-	return ((struct udp_ipv4_socket_t *)s)->queued_for_rcv;
-}
-
-void udp_set_rcv_queued(void *s, bool v)
-{
-	((struct udp_ipv4_socket_t *)s)->queued_for_rcv = v;
-}
-
 bool udp_is_snd_queued(void *s)
 {
 	return ((struct udp_ipv4_socket_t *)s)->queued_for_snd;
@@ -151,12 +146,31 @@ bool udp_write_to_snd_buffer(void *s, struct send_request_t req)
 	return true;
 }
 
-struct pkt_t *udp_read_rcv_buffer(void *s)
+int udp_read_rcv_buffer(void *s, size_t len, unsigned char *buff)
 {
 	struct udp_ipv4_socket_t *socket = (struct udp_ipv4_socket_t *)s;
 	struct udp_ring_buffer_t *rcv_buffer = socket->rcv_buffer;
-	struct pkt_t *pkt = read_udp_buffer(rcv_buffer);
-	return pkt;
+	struct pkt_t *pkt = read_udp_buffer_blocking(rcv_buffer);
+	size_t copy_len = pkt->len > len ? len : pkt->len;
+	memcpy(buff, (pkt->data + pkt->offset), copy_len);
+	printf("APP SOCKET RELEASING \n");
+	release_pkt(pkt);
+	return copy_len;
+}
+
+int udp_read_rcv_buffer_from(
+    void *s, size_t len, unsigned char *buff, ipv4_address addr_out, uint16_t *port_out)
+{
+	struct udp_ipv4_socket_t *socket = (struct udp_ipv4_socket_t *)s;
+	struct udp_ring_buffer_t *rcv_buffer = socket->rcv_buffer;
+	struct pkt_t *pkt = read_udp_buffer_blocking(rcv_buffer);
+	size_t copy_len = pkt->len > len ? len : pkt->len;
+	memcpy(buff, (pkt->data + pkt->offset), copy_len);
+	printf("APP SOCKET RELEASING \n");
+	release_pkt(pkt);
+	memcpy(addr_out, pkt->src_ip, IPV4_ADDR_LEN);
+	memcpy(port_out, &pkt->src_port, sizeof(uint16_t));
+	return copy_len;
 }
 
 void lock_socket(void *s)

@@ -16,14 +16,14 @@ void release_udp_socket(struct udp_ipv4_socket_t *socket);
 
 pkt_result write_up_to_rcv_buffer(struct udp_ipv4_socket_t *socket, struct pkt_t *packet);
 
-bool udp_is_rcv_queued(void *s);
-void udp_set_rcv_queued(void *s, bool v);
 bool udp_is_snd_queued(void *s);
 void udp_set_snd_queued(void *s, bool v);
 void udp_retain(void *s);
 void udp_release(void *s);
 bool udp_write_to_snd_buffer(void *s, struct send_request_t req);
-struct pkt_t *udp_read_rcv_buffer(void *s);
+int udp_read_rcv_buffer(void *s, size_t len, unsigned char *buff);
+int udp_read_rcv_buffer_from(
+    void *s, size_t len, unsigned char *buff, ipv4_address addr_out, uint16_t *port_out);
 void lock_socket(void *s);
 void unlock_socket(void *s);
 struct pkt_t *udp_next_snd_pkt(void *s);
@@ -38,7 +38,7 @@ struct udp_ipv4_socket_t {
 	struct udp_ring_buffer_t *rcv_buffer; // stack writes, app consumes
 	struct udp_ring_buffer_t *snd_buffer; // app writes, stack consumes
 	udp_socket_state_t state;
-	uint8_t ref_count;
+	uint32_t ref_count;
 	bool queued_for_rcv;
 	bool queued_for_snd;
 	pthread_mutex_t lock;

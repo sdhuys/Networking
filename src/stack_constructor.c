@@ -96,13 +96,7 @@ struct stack_t construct_stack(int fd, char *if_name)
 	icmp->downs[0] = ip;
 
 	struct socket_manager_t *socket_manager = malloc(sizeof(struct socket_manager_t));
-	socket_manager->receive_up_sock_q = malloc(sizeof(struct socket_h_q_t));
 	socket_manager->send_down_sock_q = malloc(sizeof(struct socket_h_q_t));
-	socket_manager->receive_up_sock_q->head = NULL;
-	socket_manager->receive_up_sock_q->tail = NULL;
-	socket_manager->receive_up_sock_q->len = 0;
-	pthread_cond_init(&socket_manager->receive_up_sock_q->cond, NULL);
-	pthread_mutex_init(&socket_manager->receive_up_sock_q->lock, NULL);
 	socket_manager->send_down_sock_q->head = NULL;
 	socket_manager->send_down_sock_q->tail = NULL;
 	socket_manager->send_down_sock_q->len = 0;
@@ -112,7 +106,10 @@ struct stack_t construct_stack(int fd, char *if_name)
 	socket_manager->tcp_ipv4_listener_htable =
 	    create_tcp_ipv4_listener_htable(TCP_LISTNR_HTBL_SIZE);
 	socket_manager->tcp_ipv4_conn_htable = create_tcp_ipv4_conn_htable(TCP_EST_CONN_HTBL_SIZE);
-	socket_manager->tcp_ipv4_conn_time_wait_htable = create_tcp_ipv4_conn_htable(TCP_WAIT_CONN_HTBLE_SIZE);
+	socket_manager->tcp_ipv4_conn_time_wait_htable =
+	    create_tcp_ipv4_conn_htable(TCP_WAIT_CONN_HTBLE_SIZE);
+	socket_manager->sockfd_manager = malloc(sizeof(struct sockfd_manager_t));
+	sockfd_manager_init(socket_manager->sockfd_manager);
 
 	udp->name = UDP_NAME;
 	udp->send_down = &send_udp_down;

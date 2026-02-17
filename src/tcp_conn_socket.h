@@ -17,6 +17,8 @@ typedef enum {
 
 struct tcp_ipv4_conn_t {
 	pthread_mutex_t lock;
+	pthread_cond_t read_cond;
+
 	struct tcp_ooo_ring_buffer_t ooo_buffer;
 	struct tcp_rcv_ring_buffer_t rcv_buffer;
 	struct tcp_snd_ring_buffer_t snd_buffer;
@@ -25,17 +27,18 @@ struct tcp_ipv4_conn_t {
 	ipv4_address local_addr;
 	ipv4_address extern_addr;
 
+	uint32_t ref_count;
+
 	uint32_t iss, irs;
 	uint32_t snd_una, snd_nxt, rcv_nxt;
 	uint32_t snd_wnd, rcv_wnd;
 	uint32_t cwnd, ssthresh;
-	uint32_t mss;	    
-	
+	uint32_t mss;
+
 	uint16_t local_port;
 	uint16_t extern_port;
 	tcp_connection_state_t state;
 
-	uint8_t ref_count; 
 	uint8_t snd_wscale;
 	uint8_t rcv_wscale;
 	uint8_t dup_ack_cnt;
