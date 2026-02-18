@@ -2,15 +2,15 @@
 #include "socket_manager.h"
 #include "sockfd_manager.h"
 
-int open_listener(struct stack_t *stack, socket_type_t type, uint16_t local_port)
+int open_listener(struct stack *stack, socket_type type, uint16_t local_port)
 {
-	struct sockfd_manager_t *sockfd_mgr = stack->sock_manager->sockfd_manager;
+	struct sockfd_manager *sockfd_mgr = stack->sock_manager->sockfd_manager;
 
 	int fd = get_sockfd(sockfd_mgr);
 	if (fd == -1)
 		return -1;
 
-	struct socket_handle_t h;
+	struct socket_handle h;
 	int r = create_socket_handle(stack, type, local_port, &h);
 	if (r < 0) {
 		sockfd_free(sockfd_mgr, fd);
@@ -21,9 +21,9 @@ int open_listener(struct stack_t *stack, socket_type_t type, uint16_t local_port
 	return fd;
 }
 
-int receive(struct stack_t *stack, int sockfd, unsigned char *buff, size_t len)
+int receive(struct stack *stack, int sockfd, unsigned char *buff, size_t len)
 {
-	struct socket_handle_t h;
+	struct socket_handle h;
 	int r = get_socket_handle(stack->sock_manager->sockfd_manager, sockfd, &h);
 	if (r < 0)
 		return -1; // INVALID FD
@@ -31,14 +31,14 @@ int receive(struct stack_t *stack, int sockfd, unsigned char *buff, size_t len)
 	return bytes_read;
 }
 
-int receive_from(struct stack_t *stack,
+int receive_from(struct stack *stack,
 		 int sockfd,
 		 unsigned char *buff,
 		 size_t len,
 		 ipv4_address addr_out,
 		 uint16_t *port_out)
 {
-	struct socket_handle_t h;
+	struct socket_handle h;
 	int r = get_socket_handle(stack->sock_manager->sockfd_manager, sockfd, &h);
 	if (r < 0)
 		return -1; // INVALID FD
@@ -50,9 +50,9 @@ int receive_from(struct stack_t *stack,
 	return bytes_read;
 }
 
-int send_down(struct stack_t *stack, int sockfd, struct send_request_t req)
+int send_down(struct stack *stack, int sockfd, struct send_request req)
 {
-	struct socket_handle_t h;
+	struct socket_handle h;
 	int r = get_socket_handle(stack->sock_manager->sockfd_manager, sockfd, &h);
 	if (r < 0)
 		return r;
@@ -60,18 +60,18 @@ int send_down(struct stack_t *stack, int sockfd, struct send_request_t req)
 	if (!h.ops->write_to_snd_buffer)
 		return -2; // INVALID SOCK TYPE!
 
-	bool success = h.ops->write_to_snd_buffer(h.sock, req);
+	bool success = h.ops->write_to_snd_buffer(stack, h.sock, req);
 	return success ? 0 : WRITE_ERROR;
 }
 
-int close_socket(struct stack_t *stack, int sockfd)
+int close_socket(struct stack *stack, int sockfd)
 {
-	struct socket_handle_t h;
+	struct socket_handle h;
 	int r = get_socket_handle(stack->sock_manager->sockfd_manager, sockfd, &h);
 	if (r < 0)
 		return r;
 
-	h.ops->close(h.sock);
+	h.ops->close(stack, h.sock);
 	h.ops->release(h.sock); // not for tcp??
 
 	sockfd_free(stack->sock_manager->sockfd_manager, sockfd);

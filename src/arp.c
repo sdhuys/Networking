@@ -1,8 +1,8 @@
 #include "arp.h"
 
-pkt_result receive_arp_up(struct nw_layer_t *self, struct pkt_t *packet)
+pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet)
 {
-	struct arp_data_t *arp_data = (struct arp_data_t *)(packet->data + packet->offset);
+	struct arp_data *arp_data = (struct arp_data *)(packet->data + packet->offset);
 	uint16_t hw_type = ntohs(arp_data->hw_type);
 
 	// ONLY SUPPORTING ETHERNET
@@ -20,7 +20,7 @@ pkt_result receive_arp_up(struct nw_layer_t *self, struct pkt_t *packet)
 	if (proto_addr_len != IPV4_ADDR_LEN || hw_addr_len != MAC_ADDR_LEN)
 		return ARP_MALFORMED;
 
-	struct arp_context_t *cntx = (struct arp_context_t *)self->context;
+	struct arp_context *cntx = (struct arp_context *)self->context;
 
 	if (op == ARP_REQUEST) {
 		if (memcmp(arp_data->target_ip, cntx->ipv4_addr, proto_addr_len) != 0)
@@ -31,7 +31,7 @@ pkt_result receive_arp_up(struct nw_layer_t *self, struct pkt_t *packet)
 	}
 
 	else if (op == ARP_REPLY) {
-		struct arp_table_node_t *arp_entry =
+		struct arp_table_node *arp_entry =
 		    query_arp_table(cntx->arp_table, arp_data->src_ip);
 
 		// Unsolicited ARP responses dropped
@@ -47,10 +47,10 @@ pkt_result receive_arp_up(struct nw_layer_t *self, struct pkt_t *packet)
 		return ARP_UNKNOWN_OPERATION;
 }
 
-void flush_q(struct nw_layer_t *self, struct arp_table_node_t *arp_entry)
+void flush_q(struct nw_layer *self, struct arp_table_node *arp_entry)
 {
-	struct queue_entry_t *current = arp_entry->pending_packets;
-	struct queue_entry_t *next;
+	struct queue_entry *current = arp_entry->pending_packets;
+	struct queue_entry *next;
 	while (current != NULL) {
 		next = current->next;
 		memcpy(current->packet->dest_mac, arp_entry->mac_addr, MAC_ADDR_LEN);
@@ -64,9 +64,9 @@ void flush_q(struct nw_layer_t *self, struct arp_table_node_t *arp_entry)
 	arp_entry->pending_tail = NULL;
 }
 
-struct arp_table_node_t *insert_incomplete_for_ip(struct arp_table_t *table, ipv4_address dest_ip)
+struct arp_table_node *insert_incomplete_for_ip(struct arp_table *table, ipv4_address dest_ip)
 {
-	struct arp_table_node_t *new = malloc(sizeof(struct arp_table_node_t));
+	struct arp_table_node *new = malloc(sizeof(struct arp_table_node));
 	if (new == NULL)
 		return NULL;
 
@@ -80,14 +80,14 @@ struct arp_table_node_t *insert_incomplete_for_ip(struct arp_table_t *table, ipv
 	return new;
 }
 
-pkt_result add_pkt_to_q(struct arp_table_node_t *node, struct pkt_t *packet)
+pkt_result add_pkt_to_q(struct arp_table_node *node, struct pkt *packet)
 {
 	// freed after flushing
-	struct queue_entry_t *new = malloc(sizeof(struct queue_entry_t));
+	struct queue_entry *new = malloc(sizeof(struct queue_entry));
 	new->next = NULL;
 	new->packet = packet;
 
-	struct queue_entry_t *curr = node->pending_packets;
+	struct queue_entry *curr = node->pending_packets;
 	if (curr == NULL)
 		node->pending_packets = new;
 	else
@@ -97,9 +97,9 @@ pkt_result add_pkt_to_q(struct arp_table_node_t *node, struct pkt_t *packet)
 	return PACKET_QUEUED;
 }
 
-struct arp_table_node_t *query_arp_table(struct arp_table_t *table, ipv4_address ip)
+struct arp_table_node *query_arp_table(struct arp_table *table, ipv4_address ip)
 {
-	struct arp_table_node_t *node = table->head;
+	struct arp_table_node *node = table->head;
 	for (; node != NULL; node = node->next)
 		if (memcmp(ip, node->ipv4_addr, IPV4_ADDR_LEN) == 0)
 			return node;
@@ -107,16 +107,16 @@ struct arp_table_node_t *query_arp_table(struct arp_table_t *table, ipv4_address
 	return NULL;
 }
 
-void complete_arp_table_node(struct arp_table_node_t *entry, mac_address src_mac)
+void complete_arp_table_node(struct arp_table_node *entry, mac_address_t src_mac)
 {
 	memcpy(entry->mac_addr, src_mac, MAC_ADDR_LEN);
 	entry->last_updated = time(NULL);
 	entry->status = ARP_REACHABLE;
 }
 
-void inc_arp_request_to_reply(struct pkt_t *packet,
-			      struct arp_data_t *header,
-			      mac_address requested_address)
+void inc_arp_request_to_reply(struct pkt *packet,
+			      struct arp_data *header,
+			      mac_address_t requested_address)
 {
 	memcpy(packet->dest_mac, header->src_mac, header->hw_addr_len);
 
@@ -129,7 +129,7 @@ void inc_arp_request_to_reply(struct pkt_t *packet,
 	memcpy(header->src_ip, temp_ip, header->proto_addr_len);
 }
 
-void print_arp_header(struct arp_data_t *arp_header)
+void print_arp_header(struct arp_data *arp_header)
 {
 	printf("ARP Header:\n");
 	printf("  Hardware Type: %u\n", ntohs(arp_header->hw_type));
@@ -167,22 +167,22 @@ void print_arp_header(struct arp_data_t *arp_header)
 	       arp_header->target_ip[3]);
 }
 
-struct pkt_t *create_arp_request_for(struct nw_layer_t *self, ipv4_address target_ip)
+struct pkt *create_arp_request_for(struct nw_layer *self, ipv4_address target_ip)
 {
 	printf("CREATE ARP REQUEST ALLOCATING \n");
-	struct pkt_t *pkt = allocate_pkt();
+	struct pkt *pkt = allocate_pkt();
 	if (pkt == NULL)
 		return NULL;
 
-	size_t eth_sz = sizeof(struct ethernet_header_t);
-	size_t arp_sz = sizeof(struct arp_data_t);
+	size_t eth_sz = sizeof(struct ethernet_header);
+	size_t arp_sz = sizeof(struct arp_data);
 	pkt->offset = eth_sz;
 	pkt->len = eth_sz + arp_sz;
 
 	memcpy(pkt->dest_mac, IPV4_BROADCAST_MAC, MAC_ADDR_LEN);
 
-	struct arp_context_t *arp_context = (struct arp_context_t *)self->context;
-	struct arp_data_t *arp = (struct arp_data_t *)(pkt->data + pkt->offset);
+	struct arp_context *arp_context = (struct arp_context *)self->context;
+	struct arp_data *arp = (struct arp_data *)(pkt->data + pkt->offset);
 
 	arp->hw_type = htons(ETHERNET);
 	arp->proto_type = htons(IPV4);
@@ -198,12 +198,12 @@ struct pkt_t *create_arp_request_for(struct nw_layer_t *self, ipv4_address targe
 	return pkt;
 }
 
-pkt_result send_arp_down(struct nw_layer_t *self, struct pkt_t *packet)
+pkt_result send_arp_down(struct nw_layer *self, struct pkt *packet)
 {
 	// printf("SENDING ARP DOWN \n");
 	// print_arp_header((struct arp_data_t *)&packet->data[packet->offset]);
 	packet->ethertype = htons(ARP);
-	packet->offset -= sizeof(struct ethernet_header_t);
-	packet->len += sizeof(struct ethernet_header_t);
+	packet->offset -= sizeof(struct ethernet_header);
+	packet->len += sizeof(struct ethernet_header);
 	return self->downs[0]->send_down(self->downs[0], packet);
 }

@@ -1,8 +1,8 @@
 #include "ethernet.h"
 
-pkt_result receive_frame_up(struct nw_layer_t *self, struct pkt_t *packet)
+pkt_result receive_frame_up(struct nw_layer *self, struct pkt *packet)
 {
-	struct ethernet_header_t *header = (struct ethernet_header_t *)packet->data;
+	struct ethernet_header *header = (struct ethernet_header *)packet->data;
 	// print_incoming(header);
 
 	if (relevant_destination_mac(header->dest_mac, self) == false) {
@@ -10,8 +10,8 @@ pkt_result receive_frame_up(struct nw_layer_t *self, struct pkt_t *packet)
 		return FRAME_TARGET_NOT_RELEVANT;
 	}
 
-	packet->offset += sizeof(struct ethernet_header_t);
-	packet->len -= sizeof(struct ethernet_header_t);
+	packet->offset += sizeof(struct ethernet_header);
+	packet->len -= sizeof(struct ethernet_header);
 
 	unsigned short ethertype = ntohs(header->ethertype);
 	switch (ethertype) {
@@ -38,11 +38,10 @@ pkt_result receive_frame_up(struct nw_layer_t *self, struct pkt_t *packet)
 	}
 }
 
-pkt_result send_frame_down(struct nw_layer_t *self, struct pkt_t *packet)
+pkt_result send_frame_down(struct nw_layer *self, struct pkt *packet)
 {
-	struct ethernet_header_t *header =
-	    (struct ethernet_header_t *)(packet->data + packet->offset);
-	struct ethernet_context_t *context = (struct ethernet_context_t *)self->context;
+	struct ethernet_header *header = (struct ethernet_header *)(packet->data + packet->offset);
+	struct ethernet_context *context = (struct ethernet_context *)self->context;
 
 	header->ethertype = packet->ethertype;
 	memcpy(header->dest_mac, packet->dest_mac, MAC_ADDR_LEN);
@@ -53,9 +52,9 @@ pkt_result send_frame_down(struct nw_layer_t *self, struct pkt_t *packet)
 
 // Only procees frames sent to stack's MAC or ipv4 broadcast
 // No ipv6 mulicast support yet
-bool relevant_destination_mac(mac_address dest_mac, struct nw_layer_t *self)
+bool relevant_destination_mac(mac_address_t dest_mac, struct nw_layer *self)
 {
-	struct ethernet_context_t *context = (struct ethernet_context_t *)self->context;
+	struct ethernet_context *context = (struct ethernet_context *)self->context;
 
 	if (memcmp(dest_mac, IPV4_BROADCAST_MAC, MAC_ADDR_LEN) == 0 ||
 	    memcmp(dest_mac, context->mac_addr, MAC_ADDR_LEN) == 0)
@@ -63,7 +62,7 @@ bool relevant_destination_mac(mac_address dest_mac, struct nw_layer_t *self)
 	return false;
 }
 
-void print_incoming(struct ethernet_header_t *header)
+void print_incoming(struct ethernet_header *header)
 {
 	printf("Incoming Ethernet Frame:\n");
 	printf("Source MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",

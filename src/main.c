@@ -34,14 +34,14 @@ int set_ipv4_addr(char *name, char *address);
 
 void *start_app_wrapper(void *arg)
 {
-	struct stack_t *stack = (struct stack_t *)arg;
+	struct stack *stack = (struct stack *)arg;
 	start_app(stack);
 	return NULL;
 }
 
 void *start_listening_wrapper(void *arg)
 {
-	struct nw_layer_t *tap = (struct nw_layer_t *)arg;
+	struct nw_layer *tap = (struct nw_layer *)arg;
 	start_listening(tap);
 	return NULL;
 }
@@ -53,9 +53,9 @@ int main()
 	if ((tap_fd = tap_setup()) < 0)
 		return 1;
 
-	struct stack_t stack = construct_stack(tap_fd, TAP_NAME);
-	struct nw_layer_t *tap = stack.if_layer;
-	// struct socket_manager_t *socket_manager = stack.sock_manager;
+	struct stack stack = construct_stack(tap_fd, TAP_NAME);
+	struct nw_layer *tap = stack.if_layer;
+	// struct socket_manager *socket_manager = stack.sock_manager;
 
 	pthread_t app_tid;
 	pthread_t stack_tx_tid;

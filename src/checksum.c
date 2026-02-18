@@ -42,7 +42,7 @@ uint16_t calc_checksum(const struct checksum_chunk *chunks, size_t amount)
 }
 
 // length as given in ipv4 header = in 32bit words => no odd trailing byte possible
-uint16_t calc_ipv4_checksum(struct ipv4_header_t *header, size_t header_len)
+uint16_t calc_ipv4_checksum(struct ipv4_header *header, size_t header_len)
 {
 	// calc sum of all 16 bit words in header
 	uint32_t sum = 0;

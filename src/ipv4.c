@@ -1,9 +1,9 @@
 #include "ipv4.h"
 #include <stdio.h>
 
-pkt_result receive_ipv4_up(struct nw_layer_t *self, struct pkt_t *packet)
+pkt_result receive_ipv4_up(struct nw_layer *self, struct pkt *packet)
 {
-	struct ipv4_header_t *header = (struct ipv4_header_t *)(packet->data + packet->offset);
+	struct ipv4_header *header = (struct ipv4_header *)(packet->data + packet->offset);
 
 	if (header->version_ihl >> 4 != IPV4_V)
 		return IP_VERSION_MISMATCH;
@@ -44,17 +44,17 @@ pkt_result receive_ipv4_up(struct nw_layer_t *self, struct pkt_t *packet)
 	};
 }
 
-pkt_result send_ipv4_down(struct nw_layer_t *self, struct pkt_t *packet)
+pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 {
 	packet->ethertype = htons(IPV4);
 
-	struct ipv4_context_t *ipv4_cntxt = (struct ipv4_context_t *)self->context;
-	struct nw_layer_t *arp_layer = ipv4_cntxt->arp_layer;
-	struct arp_context_t *arp_cntxt = arp_layer->context;
-	struct arp_table_t *arp_tbl = arp_cntxt->arp_table;
+	struct ipv4_context *ipv4_cntxt = (struct ipv4_context *)self->context;
+	struct nw_layer *arp_layer = ipv4_cntxt->arp_layer;
+	struct arp_context *arp_cntxt = arp_layer->context;
+	struct arp_table *arp_tbl = arp_cntxt->arp_table;
 
 	// Find route
-	struct route_t *next_hop_route = NULL;
+	struct route *next_hop_route = NULL;
 	get_route(self, packet->dest_ip, &next_hop_route);
 
 	if (next_hop_route == NULL)
@@ -62,23 +62,23 @@ pkt_result send_ipv4_down(struct nw_layer_t *self, struct pkt_t *packet)
 	packet->if_index = next_hop_route->iface_id;
 
 	// Write header
-	struct ipv4_header_t *header = (struct ipv4_header_t *)(packet->data + packet->offset);
+	struct ipv4_header *header = (struct ipv4_header *)(packet->data + packet->offset);
 	write_ipv4_header(header, packet);
 
 	// Prepare offset/length for lower layer (HAS TO HAPPEN BEFORE QUEUING!)
-	packet->offset -= sizeof(struct ethernet_header_t);
-	packet->len += sizeof(struct ethernet_header_t);
+	packet->offset -= sizeof(struct ethernet_header);
+	packet->len += sizeof(struct ethernet_header);
 
 	// Prepare MAC metadata for lower layer
 	unsigned char *next_hop = (next_hop_route->type == ROUTE_VIA)
 				      ? (unsigned char *)&next_hop_route->gateway
 				      : packet->dest_ip;
 
-	struct arp_table_node_t *dest_ip_node = query_arp_table(arp_tbl, next_hop);
+	struct arp_table_node *dest_ip_node = query_arp_table(arp_tbl, next_hop);
 
 	if (dest_ip_node == NULL) {
 		dest_ip_node = insert_incomplete_for_ip(arp_tbl, next_hop);
-		struct pkt_t *arp_request = create_arp_request_for(arp_layer, next_hop);
+		struct pkt *arp_request = create_arp_request_for(arp_layer, next_hop);
 		send_arp_down(arp_layer, arp_request);
 	}
 	if (dest_ip_node->status == ARP_INCOMPLETE) {
@@ -90,7 +90,7 @@ pkt_result send_ipv4_down(struct nw_layer_t *self, struct pkt_t *packet)
 	return self->downs[0]->send_down(self->downs[0], packet);
 }
 
-void write_ipv4_header(struct ipv4_header_t *header, struct pkt_t *packet)
+void write_ipv4_header(struct ipv4_header *header, struct pkt *packet)
 {
 	header->version_ihl = (IPV4_V << 4) + IPV4_HEADER_NO_OPTIONS_LEN;
 	header->dscp_ecn = 0; // could be set by metadata provided by application socket call
@@ -108,9 +108,9 @@ void write_ipv4_header(struct ipv4_header_t *header, struct pkt_t *packet)
 	memcpy(header->dest_ip, packet->dest_ip, IPV4_ADDR_LEN);
 }
 
-bool relevant_destination_ip(ipv4_address dest_ip, struct nw_layer_t *self)
+bool relevant_destination_ip(ipv4_address dest_ip, struct nw_layer *self)
 {
-	struct ipv4_context_t *context = (struct ipv4_context_t *)self->context;
+	struct ipv4_context *context = (struct ipv4_context *)self->context;
 
 	if (memcmp(dest_ip, IPV4_BROADCAST_IP, IPV4_ADDR_LEN) == 0 ||
 	    memcmp(dest_ip, context->stack_ipv4_addr, IPV4_ADDR_LEN) == 0)
@@ -118,10 +118,10 @@ bool relevant_destination_ip(ipv4_address dest_ip, struct nw_layer_t *self)
 	return false;
 }
 
-void get_route(struct nw_layer_t *self, ipv4_address dest_ip, struct route_t **route_out)
+void get_route(struct nw_layer *self, ipv4_address dest_ip, struct route **route_out)
 {
-	struct ipv4_context_t *context = (struct ipv4_context_t *)self->context;
-	struct route_t *routes = context->routing_table;
+	struct ipv4_context *context = (struct ipv4_context *)self->context;
+	struct route *routes = context->routing_table;
 
 	int longest_prefix = -1;
 
@@ -129,7 +129,7 @@ void get_route(struct nw_layer_t *self, ipv4_address dest_ip, struct route_t **r
 	memcpy(&int_ip, dest_ip, IPV4_ADDR_LEN);
 
 	for (size_t i = 0; i < context->routes_amount; i++) {
-		struct route_t *route = &routes[i];
+		struct route *route = &routes[i];
 
 		if (route->prefix_len > longest_prefix &&
 		    ((int_ip & route->subnet_mask)) == route->prefix) {

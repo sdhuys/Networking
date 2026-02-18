@@ -2,16 +2,16 @@
 #include <assert.h>
 #include <stdio.h>
 
-void notify_socket_readable_snd(struct socket_manager_t *mgr,
+void notify_socket_readable_snd(struct socket_manager *mgr,
 				void *sock,
-				const struct socket_ops_t *ops)
+				const struct socket_ops *ops)
 {
 	ops->lock(sock);
 	if (!ops->is_snd_queued(sock)) {
 		ops->set_snd_queued(sock, true);
 		ops->unlock(sock);
 		ops->retain(sock);
-		struct socket_handle_t h = {.sock = sock, .ops = ops};
+		struct socket_handle h = {.sock = sock, .ops = ops};
 		enqueue_socket(mgr->send_down_sock_q, h);
 	} else {
 		ops->unlock(sock);
@@ -19,10 +19,10 @@ void notify_socket_readable_snd(struct socket_manager_t *mgr,
 }
 
 // CONSUMER: Stack side (TX)
-struct socket_handle_t dequeue_sock_snd_down_q(struct socket_manager_t *mgr)
+struct socket_handle dequeue_sock_snd_down_q(struct socket_manager *mgr)
 {
-	struct socket_h_q_node_t *node = dequeue_q_node(mgr->send_down_sock_q);
-	struct socket_handle_t sock = {0};
+	struct socket_h_q_node *node = dequeue_q_node(mgr->send_down_sock_q);
+	struct socket_handle sock = {0};
 	if (node) {
 		sock = node->socket;
 		free(node);
@@ -30,7 +30,7 @@ struct socket_handle_t dequeue_sock_snd_down_q(struct socket_manager_t *mgr)
 	return sock;
 }
 
-void release_socket_from_queue(struct socket_handle_t sock)
+void release_socket_from_queue(struct socket_handle sock)
 {
 	sock.ops->lock(sock.sock);
 
@@ -39,7 +39,7 @@ void release_socket_from_queue(struct socket_handle_t sock)
 	sock.ops->release(sock.sock);
 }
 
-struct socket_h_q_node_t *dequeue_q_node(struct socket_h_q_t *q)
+struct socket_h_q_node *dequeue_q_node(struct socket_h_q *q)
 {
 	pthread_mutex_lock(&q->lock);
 	if (!q->head) {
@@ -47,7 +47,7 @@ struct socket_h_q_node_t *dequeue_q_node(struct socket_h_q_t *q)
 		return NULL;
 	}
 
-	struct socket_h_q_node_t *node = q->head;
+	struct socket_h_q_node *node = q->head;
 	q->head = node->next;
 	if (!q->head)
 		q->tail = NULL;
@@ -57,9 +57,9 @@ struct socket_h_q_node_t *dequeue_q_node(struct socket_h_q_t *q)
 	return node;
 }
 
-void enqueue_socket(struct socket_h_q_t *q, struct socket_handle_t sock)
+void enqueue_socket(struct socket_h_q *q, struct socket_handle sock)
 {
-	struct socket_h_q_node_t *node = malloc(sizeof(*node));
+	struct socket_h_q_node *node = malloc(sizeof(*node));
 	if (!node)
 		return;
 
@@ -79,16 +79,16 @@ void enqueue_socket(struct socket_h_q_t *q, struct socket_handle_t sock)
 	pthread_mutex_unlock(&q->lock);
 }
 
-int create_socket_handle(struct stack_t *stack,
-			 socket_type_t type,
+int create_socket_handle(struct stack *stack,
+			 socket_type type,
 			 uint16_t local_port,
-			 struct socket_handle_t *out)
+			 struct socket_handle *out)
 {
-	struct socket_manager_t *socket_manager = stack->sock_manager;
+	struct socket_manager *socket_manager = stack->sock_manager;
 
 	switch (type) {
 	case SOCK_UDP:
-		struct udp_ipv4_socket_t *sock = create_udp_socket(local_port, stack);
+		struct udp_ipv4_socket *sock = create_udp_socket(local_port, stack);
 		if (!sock)
 			return -2; // ALLOCATION FAILURE
 		retain_udp_socket(sock);
@@ -101,7 +101,7 @@ int create_socket_handle(struct stack_t *stack,
 		break;
 
 	case SOCK_TCP:
-		struct tcp_ipv4_listener_t *listener = create_tcp_listener(local_port, stack);
+		struct tcp_ipv4_listener *listener = create_tcp_listener(local_port, stack);
 		if (!listener)
 			return -2; // ALLOCATION FAILURE
 		retain_tcp_listener(listener);

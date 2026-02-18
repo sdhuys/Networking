@@ -1,8 +1,8 @@
 #include "sockfd_manager.h"
 
-int sockfd_manager_init(struct sockfd_manager_t *fd_mgr)
+int sockfd_manager_init(struct sockfd_manager *fd_mgr)
 {
-	fd_mgr->fd_sockets = calloc(MAX_SOCKETS, sizeof(struct socket_handle_t *));
+	fd_mgr->fd_sockets = calloc(MAX_SOCKETS, sizeof(struct socket_handle *));
 	if (!fd_mgr->fd_sockets)
 		return -1;
 
@@ -19,7 +19,7 @@ int sockfd_manager_init(struct sockfd_manager_t *fd_mgr)
 	return 0;
 }
 
-int get_sockfd(struct sockfd_manager_t *fd_mgr)
+int get_sockfd(struct sockfd_manager *fd_mgr)
 {
 	pthread_mutex_lock(&fd_mgr->fds_lock);
 
@@ -33,7 +33,7 @@ int get_sockfd(struct sockfd_manager_t *fd_mgr)
 	return fd;
 }
 
-void sockfd_free(struct sockfd_manager_t *fd_mgr, int fd)
+void sockfd_free(struct sockfd_manager *fd_mgr, int fd)
 {
 	pthread_mutex_lock(&fd_mgr->fds_lock);
 
@@ -44,21 +44,21 @@ void sockfd_free(struct sockfd_manager_t *fd_mgr, int fd)
 	pthread_mutex_unlock(&fd_mgr->fds_lock);
 }
 
-void assign_sock_h(struct sockfd_manager_t *fd_mgr, int fd, struct socket_handle_t h)
+void assign_sock_h(struct sockfd_manager *fd_mgr, int fd, struct socket_handle h)
 {
 	pthread_mutex_lock(&fd_mgr->fds_lock);
 	fd_mgr->fd_sockets[fd] = h;
 	pthread_mutex_unlock(&fd_mgr->fds_lock);
 }
 
-int get_socket_handle(struct sockfd_manager_t *fd_mgr, int fd, struct socket_handle_t *out)
+int get_socket_handle(struct sockfd_manager *fd_mgr, int fd, struct socket_handle *out)
 {
 	if (fd < 0 || fd >= MAX_SOCKETS)
 		return -1;
 
 	pthread_mutex_lock(&fd_mgr->fds_lock);
 
-	struct socket_handle_t h = fd_mgr->fd_sockets[fd];
+	struct socket_handle h = fd_mgr->fd_sockets[fd];
 	if (!h.sock || !h.ops) {
 		pthread_mutex_unlock(&fd_mgr->fds_lock);
 		return -1;

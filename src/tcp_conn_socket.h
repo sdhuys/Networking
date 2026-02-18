@@ -13,16 +13,16 @@ typedef enum {
 	CLOSING,      // Simultaneous close, sent FIN, waiting for ACK of FIN
 	LAST_ACK,     // Waiting for ACK of our FIN after close
 	TIME_WAIT     // Waiting for 2*MSL (maximum segment lifetime) before releasing
-} tcp_connection_state_t;
+} tcp_connection_state;
 
-struct tcp_ipv4_conn_t {
+struct tcp_ipv4_conn {
 	pthread_mutex_t lock;
 	pthread_cond_t read_cond;
 
-	struct tcp_ooo_ring_buffer_t ooo_buffer;
-	struct tcp_rcv_ring_buffer_t rcv_buffer;
-	struct tcp_snd_ring_buffer_t snd_buffer;
-	struct timer_t rto_timer;
+	struct tcp_ooo_ring_buffer ooo_buffer;
+	struct ring_buffer rcv_buffer;
+	struct ring_buffer snd_buffer;
+	struct timer rto_timer;
 
 	ipv4_address local_addr;
 	ipv4_address extern_addr;
@@ -37,7 +37,7 @@ struct tcp_ipv4_conn_t {
 
 	uint16_t local_port;
 	uint16_t extern_port;
-	tcp_connection_state_t state;
+	tcp_connection_state state;
 
 	uint8_t snd_wscale;
 	uint8_t rcv_wscale;
@@ -47,4 +47,4 @@ struct tcp_ipv4_conn_t {
 	bool ece_enabled;
 };
 
-void destroy_tcp_conn(struct tcp_ipv4_conn_t *connection);
+void destroy_tcp_conn(struct tcp_ipv4_conn *connection);

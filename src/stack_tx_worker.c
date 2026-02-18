@@ -3,9 +3,9 @@
 
 void *stack_transmission_loop(void *arg)
 {
-	struct stack_t *stack = (struct stack_t *)arg;
-	struct socket_manager_t *mgr = stack->sock_manager;
-	struct socket_h_q_t *q = mgr->send_down_sock_q;
+	struct stack *stack = (struct stack *)arg;
+	struct socket_manager *mgr = stack->sock_manager;
+	struct socket_h_q *q = mgr->send_down_sock_q;
 	while (1) {
 		pthread_mutex_lock(&q->lock);
 		while (q->len == 0) {
@@ -13,11 +13,11 @@ void *stack_transmission_loop(void *arg)
 		}
 		pthread_mutex_unlock(&q->lock);
 		while (1) {
-			struct socket_handle_t h = dequeue_sock_snd_down_q(mgr);
+			struct socket_handle h = dequeue_sock_snd_down_q(mgr);
 			if (!h.sock)
 				break;
 
-			struct pkt_t *pkt;
+			struct pkt *pkt;
 			pkt_result res;
 
 			while ((pkt = h.ops->next_snd_pkt(h.sock)) != NULL) {

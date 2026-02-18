@@ -1,12 +1,12 @@
 #include "tap.h"
 
-void start_listening(struct nw_layer_t *interface)
+void start_listening(struct nw_layer *interface)
 {
 	init_buffer_pool();
-	struct interface_context_t *interface_context =
-	    ((struct interface_context_t *)interface->context);
+	struct interface_context *interface_context =
+	    ((struct interface_context *)interface->context);
 	int fd = interface_context->interfaces[0].fd;
-	struct timer_min_heap_t *timers_heap = interface_context->timers_heap;
+	struct timer_min_heap *timers_heap = interface_context->timers_heap;
 
 	for (;;) {
 		uint64_t timeout_ms = get_timeout(timers_heap);
@@ -18,7 +18,7 @@ void start_listening(struct nw_layer_t *interface)
 		if (poll_r > 0) {
 			if ((pfd[0].revents & POLLIN)) {
 				printf("TAP ALLOCATING \n");
-				struct pkt_t *packet = allocate_pkt();
+				struct pkt *packet = allocate_pkt();
 
 				if (packet == NULL)
 					break;
@@ -51,17 +51,17 @@ void start_listening(struct nw_layer_t *interface)
 }
 
 // No demuxing at this layer, no need for "pass_up_to_layer" usage
-pkt_result send_up_to_ethernet(struct nw_layer_t *interface, struct pkt_t *packet)
+pkt_result send_up_to_ethernet(struct nw_layer *interface, struct pkt *packet)
 {
 	return interface->ups[0]->rcv_up(interface->ups[0], packet);
 }
 
-pkt_result write_to_interface(struct nw_layer_t *interface, struct pkt_t *packet)
+pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
 {
 	// context could contain array of interfaces
-	struct interface_context_t *if_cntx = (struct interface_context_t *)interface->context;
-	struct nw_interface_t *nw_interfaces = if_cntx->interfaces;
-	struct nw_interface_t nw_if = nw_interfaces[packet->if_index];
+	struct interface_context *if_cntx = (struct interface_context *)interface->context;
+	struct nw_interface *nw_interfaces = if_cntx->interfaces;
+	struct nw_interface nw_if = nw_interfaces[packet->if_index];
 	int fd = nw_if.fd;
 	ssize_t nwrite = write(fd, (packet->data + packet->offset), packet->len);
 

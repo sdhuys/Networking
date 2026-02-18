@@ -1,7 +1,7 @@
 #include "app.h"
 #include <stdio.h>
 
-void start_app(struct stack_t *stack)
+void start_app(struct stack *stack)
 {
 	int udp_9000 = open_listener(stack, SOCK_UDP, 9000);
 	int udp_9001 = open_listener(stack, SOCK_TCP, 9001);
@@ -12,7 +12,7 @@ void start_app(struct stack_t *stack)
 		uint16_t port;
 		int r = receive_from(stack, udp_9000, buff, sizeof(buff), addr, &port);
 		if (r >= 0) {
-			struct send_request_t req;
+			struct send_request req;
 			req.data = buff;
 			memcpy(req.dest_ip, addr, IPV4_ADDR_LEN);
 			req.dest_port = port;

@@ -4,21 +4,21 @@
 #include "tcp_conn_socket.h"
 #include "tcp_listener_htable.h"
 
-const struct socket_ops_t tcp_listener_ops = {.is_snd_queued = NULL,
-					      .set_snd_queued = NULL,
-					      .retain = tcp_retain_listener,
-					      .release = tcp_release_listener,
-					      .write_to_snd_buffer = NULL,
-					      .read_rcv_buffer = NULL,
-					      .unlock = tcp_unlock_listner,
-					      .lock = tcp_lock_listner,
-					      .next_snd_pkt = NULL,
-					      .send_pkt = NULL,
-					      .close = tcp_close_listener};
+const struct socket_ops tcp_listener_ops = {.is_snd_queued = NULL,
+					    .set_snd_queued = NULL,
+					    .retain = tcp_retain_listener,
+					    .release = tcp_release_listener,
+					    .write_to_snd_buffer = NULL,
+					    .read_rcv_buffer = NULL,
+					    .unlock = tcp_unlock_listner,
+					    .lock = tcp_lock_listner,
+					    .next_snd_pkt = NULL,
+					    .send_pkt = NULL,
+					    .close = tcp_close_listener};
 
-struct tcp_ipv4_listener_t *create_tcp_listener(uint16_t port, struct stack_t *stack)
+struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack)
 {
-	struct tcp_ipv4_listener_t *listener = malloc(sizeof(struct tcp_ipv4_listener_t));
+	struct tcp_ipv4_listener *listener = malloc(sizeof(struct tcp_ipv4_listener));
 	if (listener == NULL)
 		return NULL;
 
@@ -33,18 +33,17 @@ struct tcp_ipv4_listener_t *create_tcp_listener(uint16_t port, struct stack_t *s
 	memcpy(listener->local_addr, stack->local_address, IPV4_ADDR_LEN);
 	listener->state = TCP_LIS_LISTEN;
 	pthread_mutex_init(&listener->lock, NULL);
-	listener->mgr = stack->sock_manager;
 	return listener;
 }
 
-void retain_tcp_listener(struct tcp_ipv4_listener_t *listener)
+void retain_tcp_listener(struct tcp_ipv4_listener *listener)
 {
 	pthread_mutex_lock(&(listener->lock));
 	listener->ref_count++;
 	pthread_mutex_unlock(&(listener->lock));
 }
 
-void release_tcp_listener(struct tcp_ipv4_listener_t *listener)
+void release_tcp_listener(struct tcp_ipv4_listener *listener)
 {
 	bool should_destroy = false;
 	pthread_mutex_lock(&(listener->lock));
@@ -58,7 +57,7 @@ void release_tcp_listener(struct tcp_ipv4_listener_t *listener)
 		destroy_tcp_listener(listener);
 }
 
-void destroy_tcp_listener(struct tcp_ipv4_listener_t *listener)
+void destroy_tcp_listener(struct tcp_ipv4_listener *listener)
 {
 	pthread_mutex_lock(&listener->lock);
 	listener->state = TCP_LIS_CLOSED;
@@ -70,37 +69,37 @@ void destroy_tcp_listener(struct tcp_ipv4_listener_t *listener)
 
 void tcp_release_listener(void *s)
 {
-	struct tcp_ipv4_listener_t *listener = (struct tcp_ipv4_listener_t *)s;
+	struct tcp_ipv4_listener *listener = (struct tcp_ipv4_listener *)s;
 	release_tcp_listener(listener);
 }
 
 void tcp_retain_listener(void *s)
 {
-	struct tcp_ipv4_listener_t *listener = (struct tcp_ipv4_listener_t *)s;
+	struct tcp_ipv4_listener *listener = (struct tcp_ipv4_listener *)s;
 	retain_tcp_listener(listener);
 }
 
-void tcp_close_listener(void *s)
+void tcp_close_listener(struct stack *stack, void *s)
 {
-	struct tcp_ipv4_listener_t *listener = (struct tcp_ipv4_listener_t *)s;
-	remove_from_tcp_listener_hashtable(listener->mgr->tcp_ipv4_listener_htable, listener);
+	struct tcp_ipv4_listener *listener = (struct tcp_ipv4_listener *)s;
+	remove_from_tcp_listener_hashtable(stack->sock_manager->tcp_ipv4_listener_htable, listener);
 }
 
 void tcp_lock_listner(void *s)
 {
-	struct tcp_ipv4_listener_t *listener = (struct tcp_ipv4_listener_t *)s;
+	struct tcp_ipv4_listener *listener = (struct tcp_ipv4_listener *)s;
 	pthread_mutex_lock(&listener->lock);
 }
 
 void tcp_unlock_listner(void *s)
 {
-	struct tcp_ipv4_listener_t *listener = (struct tcp_ipv4_listener_t *)s;
+	struct tcp_ipv4_listener *listener = (struct tcp_ipv4_listener *)s;
 	pthread_mutex_unlock(&listener->lock);
 }
 
-struct tcp_ipv4_conn_q_t *create_ready_q()
+struct tcp_ipv4_conn_q *create_ready_q()
 {
-	struct tcp_ipv4_conn_q_t *q = malloc(sizeof(struct tcp_ipv4_conn_q_t));
+	struct tcp_ipv4_conn_q *q = malloc(sizeof(struct tcp_ipv4_conn_q));
 	if (!q)
 		return NULL;
 
@@ -110,11 +109,11 @@ struct tcp_ipv4_conn_q_t *create_ready_q()
 	return q;
 }
 
-void destroy_ready_q(struct tcp_ipv4_conn_q_t *q)
+void destroy_ready_q(struct tcp_ipv4_conn_q *q)
 {
-	struct tcp_ipv4_conn_q_node_t *node = q->head;
+	struct tcp_ipv4_conn_q_node *node = q->head;
 	while (node) {
-		struct tcp_ipv4_conn_q_node_t *next = node->next;
+		struct tcp_ipv4_conn_q_node *next = node->next;
 		destroy_tcp_conn(node->conn);
 		free(node);
 		node = next;

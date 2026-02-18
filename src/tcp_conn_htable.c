@@ -1,30 +1,29 @@
 #include "tcp_conn_htable.h"
 
-bool add_to_tcp_conn_hashtable(struct tcp_ipv4_conn_htable_t *htable, struct tcp_ipv4_conn_t *conn)
+bool add_to_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct tcp_ipv4_conn *conn)
 {
 	uint32_t hash = calc_tcp_conn_hash(
 	    htable, conn->local_port, conn->local_addr, conn->extern_port, conn->extern_addr);
 
 	pthread_mutex_lock(&htable->bucket_locks[hash]);
 
-	struct tcp_ipv4_conn_htbl_node_t *node = htable->buckets[hash];
+	struct tcp_ipv4_conn_htbl_node *node = htable->buckets[hash];
 	while (node != NULL) {
-		struct tcp_ipv4_conn_t *conn = node->conn;
+		struct tcp_ipv4_conn *node_conn = node->conn;
 		if (is_tcp_conn_match(conn,
-				      conn->local_port,
-				      conn->local_addr,
-				      conn->extern_port,
-				      conn->extern_addr)) {
+				      node_conn->local_port,
+				      node_conn->local_addr,
+				      node_conn->extern_port,
+				      node_conn->extern_addr)) {
 			pthread_mutex_unlock(&htable->bucket_locks[hash]);
 			return false;
 		}
 		node = node->next;
 	}
 
-	struct tcp_ipv4_conn_htbl_node_t *new_node =
-	    malloc(sizeof(struct tcp_ipv4_conn_htbl_node_t));
+	struct tcp_ipv4_conn_htbl_node *new_node = malloc(sizeof(struct tcp_ipv4_conn_htbl_node));
 	if (new_node == NULL)
-		return NULL;
+		return false;
 
 	new_node->conn = conn;
 	new_node->next = htable->buckets[hash];
@@ -34,19 +33,19 @@ bool add_to_tcp_conn_hashtable(struct tcp_ipv4_conn_htable_t *htable, struct tcp
 }
 
 // does not check state (different hashtables, each different state requirements!)
-struct tcp_ipv4_conn_t *query_tcp_conn_hashtable(struct tcp_ipv4_conn_htable_t *htable,
-						 uint16_t loc_port,
-						 ipv4_address loc_addr,
-						 uint16_t extern_port,
-						 ipv4_address extern_addr)
+struct tcp_ipv4_conn *query_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable,
+					       uint16_t loc_port,
+					       ipv4_address loc_addr,
+					       uint16_t extern_port,
+					       ipv4_address extern_addr)
 {
 	uint32_t hash = calc_tcp_conn_hash(htable, loc_port, loc_addr, extern_port, extern_addr);
-	struct tcp_ipv4_conn_htbl_node_t *bucket_node = htable->buckets[hash];
+	struct tcp_ipv4_conn_htbl_node *bucket_node = htable->buckets[hash];
 
 	pthread_mutex_t *lock = &(htable->bucket_locks[hash]);
 	pthread_mutex_lock(lock);
 	while (bucket_node != NULL) {
-		struct tcp_ipv4_conn_t *conn = bucket_node->conn;
+		struct tcp_ipv4_conn *conn = bucket_node->conn;
 		if (is_tcp_conn_match(conn, loc_port, loc_addr, extern_port, extern_addr)) {
 			pthread_mutex_unlock(lock);
 			return bucket_node->conn;
@@ -58,8 +57,7 @@ struct tcp_ipv4_conn_t *query_tcp_conn_hashtable(struct tcp_ipv4_conn_htable_t *
 }
 
 // does not change state (different hashtables, each different state requirements!)
-bool remove_from_tcp_conn_hashtable(struct tcp_ipv4_conn_htable_t *htable,
-				    struct tcp_ipv4_conn_t *conn)
+bool remove_from_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct tcp_ipv4_conn *conn)
 {
 	uint32_t hash = calc_tcp_conn_hash(
 	    htable, conn->local_port, conn->local_addr, conn->extern_port, conn->extern_addr);
@@ -67,8 +65,8 @@ bool remove_from_tcp_conn_hashtable(struct tcp_ipv4_conn_htable_t *htable,
 	pthread_mutex_t *lock = &(htable->bucket_locks[hash]);
 	pthread_mutex_lock(lock);
 
-	struct tcp_ipv4_conn_htbl_node_t *node = htable->buckets[hash];
-	struct tcp_ipv4_conn_htbl_node_t *prev = NULL;
+	struct tcp_ipv4_conn_htbl_node *node = htable->buckets[hash];
+	struct tcp_ipv4_conn_htbl_node *prev = NULL;
 	while (node != NULL) {
 		if (node->conn == conn) {
 			if (prev != NULL)
@@ -93,7 +91,7 @@ bool remove_from_tcp_conn_hashtable(struct tcp_ipv4_conn_htable_t *htable,
 	return false;
 }
 
-uint32_t calc_tcp_conn_hash(struct tcp_ipv4_conn_htable_t *htable,
+uint32_t calc_tcp_conn_hash(struct tcp_ipv4_conn_htable *htable,
 			    uint16_t local_port,
 			    ipv4_address local_addr,
 			    uint16_t extern_port,
@@ -109,13 +107,13 @@ uint32_t calc_tcp_conn_hash(struct tcp_ipv4_conn_htable_t *htable,
 	return hash_table(data, sizeof(data)) & (htable->buckets_amount - 1);
 }
 
-struct tcp_ipv4_conn_htable_t *create_tcp_ipv4_conn_htable(size_t size)
+struct tcp_ipv4_conn_htable *create_tcp_ipv4_conn_htable(size_t size)
 {
 	// enforce only power of 2 sizes
 	if (size == 0 || (size & (size - 1)) != 0)
 		return NULL;
 
-	struct tcp_ipv4_conn_htable_t *tcp_conn_htable = malloc(sizeof(*tcp_conn_htable));
+	struct tcp_ipv4_conn_htable *tcp_conn_htable = malloc(sizeof(*tcp_conn_htable));
 	if (!tcp_conn_htable)
 		return NULL;
 
@@ -132,7 +130,7 @@ struct tcp_ipv4_conn_htable_t *create_tcp_ipv4_conn_htable(size_t size)
 
 	tcp_conn_htable->bucket_locks = bckt_locks;
 
-	struct tcp_ipv4_conn_htbl_node_t **buckets = calloc(size, sizeof(*buckets));
+	struct tcp_ipv4_conn_htbl_node **buckets = calloc(size, sizeof(*buckets));
 	if (!buckets) {
 		free(bckt_locks);
 		free(tcp_conn_htable);
@@ -144,7 +142,7 @@ struct tcp_ipv4_conn_htable_t *create_tcp_ipv4_conn_htable(size_t size)
 	return tcp_conn_htable;
 }
 
-bool is_tcp_conn_match(struct tcp_ipv4_conn_t *conn,
+bool is_tcp_conn_match(struct tcp_ipv4_conn *conn,
 		       uint16_t loc_port,
 		       ipv4_address loc_addr,
 		       uint16_t extern_port,

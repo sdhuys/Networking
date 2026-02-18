@@ -1,16 +1,16 @@
 #include "icmp.h"
 #include <stdio.h>
 
-pkt_result send_icmp_down(struct nw_layer_t *self, struct pkt_t *packet)
+pkt_result send_icmp_down(struct nw_layer *self, struct pkt *packet)
 {
-	packet->offset -= sizeof(struct ipv4_header_t);
-	packet->len += sizeof(struct ipv4_header_t);
+	packet->offset -= sizeof(struct ipv4_header);
+	packet->len += sizeof(struct ipv4_header);
 	return self->downs[0]->send_down(self->downs[0], packet);
 }
 
-pkt_result receive_icmp_up(struct nw_layer_t *self, struct pkt_t *packet)
+pkt_result receive_icmp_up(struct nw_layer *self, struct pkt *packet)
 {
-	struct icmp_header_t *header = (struct icmp_header_t *)(packet->data + packet->offset);
+	struct icmp_header *header = (struct icmp_header *)(packet->data + packet->offset);
 	struct checksum_chunk chunk = {.data = header, .len = packet->len};
 	if (calc_checksum(&chunk, 1) != 0)
 		return ICMP_CHECKSUM_ERROR;
@@ -26,7 +26,7 @@ pkt_result receive_icmp_up(struct nw_layer_t *self, struct pkt_t *packet)
 	}
 }
 
-void echo_request_to_reply(struct pkt_t *packet, struct icmp_header_t *header)
+void echo_request_to_reply(struct pkt *packet, struct icmp_header *header)
 {
 	ipv4_address temp;
 	memcpy(temp, packet->dest_ip, IPV4_ADDR_LEN);
