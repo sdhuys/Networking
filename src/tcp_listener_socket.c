@@ -12,8 +12,7 @@ const struct socket_ops tcp_listener_ops = {.is_snd_queued = NULL,
 					    .send_pkt = NULL,
 					    .close = tcp_close_listener};
 
-pkt_result process_incoming_syn(struct tcp_ipv4_listener *listener,
-				struct tcp_segment seg)
+pkt_result process_incoming_syn(struct tcp_ipv4_listener *listener, struct tcp_segment seg)
 {
 	// create connection
 	// add connection to listener's half-open htable

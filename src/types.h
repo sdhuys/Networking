@@ -117,8 +117,7 @@ struct pkt {
 	uint32_t tcp_seq;
 	uint32_t tcp_ack;
 	uint8_t tcp_flags;
-	uint8_t
-	    tcp_data_offset; // (4bits) number of words in header (5 = no options)
+	uint8_t tcp_data_offset; // (4bits) number of words in header (5 = no options)
 	uint16_t window;
 	// ADD TCP OPTIONS!
 };

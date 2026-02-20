@@ -11,7 +11,6 @@
 
 extern const struct socket_ops tcp_listener_ops;
 
-
 struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack);
 void destroy_tcp_listener(struct tcp_ipv4_listener *listener);
 void retain_tcp_listener(struct tcp_ipv4_listener *listener);

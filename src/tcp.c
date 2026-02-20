@@ -97,43 +97,45 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 }
 
 pkt_result tcp_reply_rst(struct nw_layer *tcp,
-             struct tcp_ipv4_conn *conn,
-             struct pkt *packet,
-             struct tcp_header_no_options *header)
+			 struct tcp_ipv4_conn *conn,
+			 struct pkt *packet,
+			 struct tcp_header_no_options *header)
 {
-    uint32_t incoming_seq = ntohl(header->seq_num);
-    uint32_t incoming_ack = ntohl(header->ack_num);
-    packet->dest_port = ntohs(header->src_port);
-    packet->src_port = ntohs(header->dest_port);
+	uint32_t incoming_seq = ntohl(header->seq_num);
+	uint32_t incoming_ack = ntohl(header->ack_num);
+	packet->dest_port = ntohs(header->src_port);
+	packet->src_port = ntohs(header->dest_port);
 
-    ipv4_address t;
-    memcpy(t, packet->dest_ip, IPV4_ADDR_LEN);
-    memcpy(packet->dest_ip, packet->src_ip, IPV4_ADDR_LEN);
-    memcpy(packet->src_ip, t, IPV4_ADDR_LEN);
+	ipv4_address t;
+	memcpy(t, packet->dest_ip, IPV4_ADDR_LEN);
+	memcpy(packet->dest_ip, packet->src_ip, IPV4_ADDR_LEN);
+	memcpy(packet->src_ip, t, IPV4_ADDR_LEN);
 
-    packet->tcp_data_offset = sizeof(*header) / 4;
+	packet->tcp_data_offset = sizeof(*header) / 4;
 
-    if (header->flags & TCP_ACK) {
-        packet->tcp_flags = TCP_RST;
-        packet->tcp_seq = incoming_ack;
-        packet->tcp_ack = 0; 
-    } else {
-        uint32_t seglen = packet->len;
-        if (header->flags & TCP_SYN) seglen++;
-        if (header->flags & TCP_FIN) seglen++;
+	if (header->flags & TCP_ACK) {
+		packet->tcp_flags = TCP_RST;
+		packet->tcp_seq = incoming_ack;
+		packet->tcp_ack = 0;
+	} else {
+		uint32_t seglen = packet->len;
+		if (header->flags & TCP_SYN)
+			seglen++;
+		if (header->flags & TCP_FIN)
+			seglen++;
 
-        packet->tcp_flags = TCP_RST | TCP_ACK;
-        packet->tcp_seq = 0;
-        packet->tcp_ack = incoming_seq + seglen;
-    }
+		packet->tcp_flags = TCP_RST | TCP_ACK;
+		packet->tcp_seq = 0;
+		packet->tcp_ack = incoming_seq + seglen;
+	}
 
-    if (conn != NULL)
-        destroy_tcp_conn(conn);
+	if (conn != NULL)
+		destroy_tcp_conn(conn);
 
-    packet->len = sizeof(*header); 
-    packet->offset = MAX_ETH_FRAME_SIZE - sizeof(*header);
+	packet->len = sizeof(*header);
+	packet->offset = MAX_ETH_FRAME_SIZE - sizeof(*header);
 
-    return tcp->send_down(tcp, packet);
+	return tcp->send_down(tcp, packet);
 }
 
 // nonsonsical combinations regardsless of listener or connection state

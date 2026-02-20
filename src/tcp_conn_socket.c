@@ -1,8 +1,7 @@
 #include "tcp_conn_socket.h"
 #include "tcp.h"
 
-pkt_result process_tcp_segment(struct tcp_segment seg,
-			       struct tcp_ipv4_conn *connection)
+pkt_result process_tcp_segment(struct tcp_segment seg, struct tcp_ipv4_conn *connection)
 {
 	uint32_t seq = ntohl(seg.header->seq_num);
 	if (seg.header->flags & TCP_RST) {
