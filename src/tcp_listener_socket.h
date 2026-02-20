@@ -1,4 +1,8 @@
 #pragma once
+#include "socket_manager.h"
+#include "tcp_conn_htable.h"
+#include "tcp_conn_socket.h"
+#include "tcp_listener_htable.h"
 #include "types.h"
 #include <stdlib.h>
 
@@ -7,17 +11,22 @@
 
 extern const struct socket_ops tcp_listener_ops;
 
+
 struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack);
 void destroy_tcp_listener(struct tcp_ipv4_listener *listener);
 void retain_tcp_listener(struct tcp_ipv4_listener *listener);
 void release_tcp_listener(struct tcp_ipv4_listener *listener);
 void tcp_close_listener(struct stack *stack, void *s);
-void tcp_lock_listner(void *s);
-void tcp_unlock_listner(void *s);
+void tcp_lock_listener(void *s);
+void tcp_unlock_listener(void *s);
 void tcp_retain_listener(void *s);
 void tcp_release_listener(void *s);
 struct tcp_ipv4_conn_q *create_ready_q();
 void destroy_ready_q(struct tcp_ipv4_conn_q *q);
+pkt_result process_incoming_syn(struct tcp_ipv4_listener *listener, struct tcp_segment seg);
+pkt_result process_tcp_segment_half_open(struct tcp_segment seg,
+					 struct tcp_ipv4_conn *half_open,
+					 struct tcp_ipv4_listener *lstnr);
 
 typedef enum { TCP_LIS_LISTEN, TCP_LIS_CLOSED } tcp_listener_state;
 

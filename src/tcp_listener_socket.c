@@ -1,8 +1,4 @@
 #include "tcp_listener_socket.h"
-#include "socket_manager.h"
-#include "tcp_conn_htable.h"
-#include "tcp_conn_socket.h"
-#include "tcp_listener_htable.h"
 
 const struct socket_ops tcp_listener_ops = {.is_snd_queued = NULL,
 					    .set_snd_queued = NULL,
@@ -10,11 +6,27 @@ const struct socket_ops tcp_listener_ops = {.is_snd_queued = NULL,
 					    .release = tcp_release_listener,
 					    .write_to_snd_buffer = NULL,
 					    .read_rcv_buffer = NULL,
-					    .unlock = tcp_unlock_listner,
-					    .lock = tcp_lock_listner,
+					    .unlock = tcp_unlock_listener,
+					    .lock = tcp_lock_listener,
 					    .next_snd_pkt = NULL,
 					    .send_pkt = NULL,
 					    .close = tcp_close_listener};
+
+pkt_result process_incoming_syn(struct tcp_ipv4_listener *listener,
+				struct tcp_segment seg)
+{
+	// create connection
+	// add connection to listener's half-open htable
+	// send SYN ACK
+	return NOT_IMPLEMENTED_YET;
+}
+
+pkt_result process_tcp_segment_half_open(struct tcp_segment seg,
+					 struct tcp_ipv4_conn *half_open,
+					 struct tcp_ipv4_listener *lstnr)
+{
+	return NOT_IMPLEMENTED_YET;
+}
 
 struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack)
 {
@@ -85,13 +97,13 @@ void tcp_close_listener(struct stack *stack, void *s)
 	remove_from_tcp_listener_hashtable(stack->sock_manager->tcp_ipv4_listener_htable, listener);
 }
 
-void tcp_lock_listner(void *s)
+void tcp_lock_listener(void *s)
 {
 	struct tcp_ipv4_listener *listener = (struct tcp_ipv4_listener *)s;
 	pthread_mutex_lock(&listener->lock);
 }
 
-void tcp_unlock_listner(void *s)
+void tcp_unlock_listener(void *s)
 {
 	struct tcp_ipv4_listener *listener = (struct tcp_ipv4_listener *)s;
 	pthread_mutex_unlock(&listener->lock);

@@ -3,26 +3,14 @@
 static uint64_t table_key[2];
 static uint64_t cookie_key[2];
 
-static void get_random(void *p, size_t n)
-{
-	FILE *f = fopen("/dev/urandom", "rb");
-	if (!f) {
-		perror("urandom open");
-		exit(1);
-	}
-	if (fread(p, n, 1, f) != 1) {
-		perror("urandom read");
-		exit(1);
-	}
-	fclose(f);
-}
-
 void hash_init(void)
 {
-	get_random(table_key, sizeof(table_key));
-	get_random(cookie_key, sizeof(cookie_key));
-}
+	if (getrandom(table_key, sizeof(table_key), 0) != sizeof(table_key))
+		abort();
 
+	if (getrandom(cookie_key, sizeof(cookie_key), 0) != sizeof(cookie_key))
+		abort();
+}
 /* ---------------- SipHash-2-4 ---------------- */
 
 static inline uint64_t rotl64(uint64_t x, int b)
@@ -114,13 +102,13 @@ static uint64_t siphash24(const unsigned char *in, size_t len, const uint64_t ke
 }
 
 // -----  public --------
-uint32_t hash_table(const unsigned char *data, size_t len)
+uint32_t hash_table(const void *data, size_t len)
 {
 	uint64_t h = siphash24(data, len, table_key);
 	return (uint32_t)(h ^ (h >> 32));
 }
 
-uint32_t hash_syncookie(const unsigned char *data, size_t len, uint32_t time)
+uint32_t hash_syncookie(const void *data, size_t len, uint32_t time)
 {
 	unsigned char buf[256];
 	if (len + sizeof(time) > sizeof(buf))

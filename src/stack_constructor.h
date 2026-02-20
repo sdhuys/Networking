@@ -29,7 +29,8 @@
 #define UDP_SCKT_HTBL_SIZE 1024
 
 #define TCP_EST_CONN_HTBL_SIZE 4096
-#define TCP_WAIT_CONN_HTBLE_SIZE 1280
+#define TCP_WAIT_CONN_HTBLE_SIZE 2048
+
 
 #ifdef __cplusplus
 extern "C" {

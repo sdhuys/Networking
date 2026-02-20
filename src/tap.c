@@ -68,7 +68,6 @@ pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
 	if (nwrite < 0) {
 		perror("Writing to TAP interface");
 		close(fd);
-
 		return WRITE_ERROR;
 	}
 

@@ -1,6 +1,6 @@
-#include "ring_buffer.h"
+#include "pkt_ring_buffer.h"
 
-bool write_to_buffer(struct ring_buffer *buff, struct pkt *packet)
+bool write_to_pkt_buffer(struct pkt_ring_buffer *buff, struct pkt *packet)
 {
 	// printf("WRITE FROM HEAD %d \n", buff->head);
 	pthread_mutex_lock(&buff->lock);
@@ -17,7 +17,7 @@ bool write_to_buffer(struct ring_buffer *buff, struct pkt *packet)
 	return true;
 }
 
-struct pkt *read_buffer(struct ring_buffer *buff)
+struct pkt *read_pkt_buffer(struct pkt_ring_buffer *buff)
 {
 	pthread_mutex_lock(&buff->lock);
 	if (buff->head == buff->tail) {
@@ -33,7 +33,7 @@ struct pkt *read_buffer(struct ring_buffer *buff)
 	return pkt;
 }
 
-struct pkt *read_buffer_blocking(struct ring_buffer *buff)
+struct pkt *read_pkt_buffer_blocking(struct pkt_ring_buffer *buff)
 {
 	pthread_mutex_lock(&buff->lock);
 	while (buff->head == buff->tail) {
@@ -48,19 +48,30 @@ struct pkt *read_buffer_blocking(struct ring_buffer *buff)
 	return pkt;
 }
 
-struct ring_buffer *create_init_ring_buffer(size_t count)
+struct pkt_ring_buffer *create_init_pkt_ring_buffer(size_t capacity)
 {
-	if (count == 0 || (count & (count - 1)) != 0)
+	if (capacity == 0 || (capacity & (capacity - 1)) != 0)
 		return NULL;
 
-	struct ring_buffer *buff = malloc(sizeof(struct ring_buffer));
+	struct pkt_ring_buffer *buff = malloc(sizeof(struct pkt_ring_buffer));
 	if (buff == NULL)
 		return NULL;
-	buff->packets = calloc(count, sizeof(struct pkt));
-	buff->length = count;
+	buff->packets = calloc(capacity, sizeof(struct pkt));
+	buff->length = capacity;
 	pthread_mutex_init(&buff->lock, NULL);
 	pthread_cond_init(&buff->cond, NULL);
 	buff->head = 0;
 	buff->tail = 0;
 	return buff;
+}
+
+void destroy_pkt_ring_buffer(struct pkt_ring_buffer *b)
+{
+	if (!b)
+		return;
+
+	pthread_mutex_destroy(&b->lock);
+	pthread_cond_destroy(&b->cond);
+	free(b->packets);
+	free(b);
 }

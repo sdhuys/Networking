@@ -7,14 +7,12 @@
 
 pkt_result send_udp_down(struct nw_layer *self, struct pkt *packet)
 {
-	packet->len += sizeof(struct udp_header);
-
 	struct udp_header *header = (struct udp_header *)(packet->data + packet->offset);
 	header->dest_port = htons(packet->dest_port);
 	header->src_port = htons(packet->src_port);
 	header->length = htons(packet->len);
 	header->checksum = 0;
-	header->checksum = compute_checksum_internal(header, packet);
+	header->checksum = calc_udp_checksum(header, packet);
 
 	packet->offset -= sizeof(struct ipv4_header);
 	packet->len += sizeof(struct ipv4_header);
@@ -24,13 +22,16 @@ pkt_result send_udp_down(struct nw_layer *self, struct pkt *packet)
 
 pkt_result receive_udp_up(struct nw_layer *self, struct pkt *packet)
 {
+	if (packet->len < sizeof(struct udp_header))
+		return UDP_HEADER_MALFORMED;
+
 	struct udp_header *header = (struct udp_header *)(packet->data + packet->offset);
 
 	if (ntohs(header->length) != packet->len)
-		return UDP_MALFORMED;
+		return UDP_HEADER_MALFORMED;
 
 	if (header->checksum != 0)
-		if (compute_checksum_internal(header, packet) != 0)
+		if (calc_udp_checksum(header, packet) != 0)
 			return UDP_CHECKSUM_ERROR;
 
 	struct udp_context *context = (struct udp_context *)self->context;
@@ -51,19 +52,18 @@ pkt_result receive_udp_up(struct nw_layer *self, struct pkt *packet)
 	return r;
 }
 
-uint16_t compute_checksum_internal(struct udp_header *header, struct pkt *packet)
+uint16_t calc_udp_checksum(struct udp_header *header, struct pkt *packet)
 {
-	struct ipv4_pseudo_header pseudo_h = {
-	    .len = header->length, // Already in network byte order
-	    .padding = 0,
-	    .protocol = P_UDP,
-	};
+	struct ipv4_pseudo_header pseudo_h = {.len =
+						  header->length, // Already in network byte order
+					      .padding = 0,
+					      .protocol = P_UDP};
 	memcpy(pseudo_h.dest_ip, packet->dest_ip, IPV4_ADDR_LEN);
 	memcpy(pseudo_h.src_ip, packet->src_ip, IPV4_ADDR_LEN);
 
 	struct checksum_chunk chunks[2] = {
 	    {.data = &pseudo_h, .len = sizeof(struct ipv4_pseudo_header)},
-	    {.data = (uint8_t *)packet->data + packet->offset, .len = packet->len}};
+	    {.data = packet->data + packet->offset, .len = packet->len}};
 
 	return calc_checksum(chunks, 2);
 }

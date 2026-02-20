@@ -13,6 +13,7 @@ void start_app(struct stack *stack)
 		int r = receive_from(stack, udp_9000, buff, sizeof(buff), addr, &port);
 		if (r >= 0) {
 			struct send_request req;
+			req.len = r;
 			req.data = buff;
 			memcpy(req.dest_ip, addr, IPV4_ADDR_LEN);
 			req.dest_port = port;

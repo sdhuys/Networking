@@ -79,10 +79,15 @@ typedef enum {
 	ICMP_CHECKSUM_ERROR = -351,
 	ICMP_TYPE_NOT_SUPPORTED = -352,
 	UDP_CHECKSUM_ERROR = -401,
-	UDP_MALFORMED = -402,
+	UDP_HEADER_MALFORMED = -402,
 	UDP_PORT_NO_LISTENER = -403,
 	UDP_SOCKET_CLOSED = -404,
-
+	TCP_HEADER_MALFORMED = -411,
+	TCP_BOGUS_FLAGS = -412,
+	TCP_CHECKSUM_ERROR = -413,
+	TCP_SEQ_DUPLICATE = -412,
+	TCP_SEQ_OUT_OF_WNDW_RANGE_RST = -415,
+	TCP_NO_CONNECTION = -416,
 	RING_BUFFER_FULL = -501,
 
 	LAYER_NAME_NOT_FOUND = -2,
@@ -94,17 +99,28 @@ struct pkt {
 	unsigned char *data;
 	size_t offset; // Offset to the start of the current layer's header
 	size_t len;    // Packet length from current offset (current layer's length)
+
+	pthread_mutex_t lock;
+	uint16_t pool_index; // for debugging
 	uint8_t ref_count;
+
 	int if_index;
 	ether_type ethertype;
 	uint8_t protocol;
 	mac_address_t dest_mac;
+
 	ipv4_address src_ip;
 	ipv4_address dest_ip;
+
 	uint16_t src_port;
 	uint16_t dest_port;
-	pthread_mutex_t lock;
-	uint16_t pool_index; // for debugging
+	uint32_t tcp_seq;
+	uint32_t tcp_ack;
+	uint8_t tcp_flags;
+	uint8_t
+	    tcp_data_offset; // (4bits) number of words in header (5 = no options)
+	uint16_t window;
+	// ADD TCP OPTIONS!
 };
 
 // ===== General Network Layer Structure =====
@@ -276,18 +292,32 @@ struct tcp_context {
 	struct timer_min_heap *timers;
 };
 
-struct tcp_header {
+struct tcp_header_no_options {
 	uint16_t src_port;
-	uint16_t dst_port;
+	uint16_t dest_port;
 	uint32_t seq_num;
 	uint32_t ack_num;
 	uint8_t data_offset; // (4bits) the number of 32 bit words in the header. 5 => no options
 	uint8_t flags;	     // CWR, ECE, URG, ACK, PSH, RST, SYN, FIN
 	uint16_t window;
-	uint16_t check;
+	uint16_t checksum;
 	uint16_t urg_ptr;
-	uint8_t options[40]; // fixed-size array for maximum possible options
 } __attribute__((packed));
+
+struct tcp_segment {
+	struct tcp_header_no_options *header;
+	unsigned char *options;
+	size_t options_len;
+	unsigned char *payload;
+	size_t payload_len;
+};
+
+struct tcp_conn_id {
+	uint16_t loc_port;
+	ipv4_address loc_addr;
+	uint16_t extern_port;
+	ipv4_address extern_addr;
+};
 
 // Checksum data
 struct checksum_chunk {

@@ -1,6 +1,6 @@
 #pragma once
 #include "buffer_pool.h"
-#include "ring_buffer.h"
+#include "pkt_ring_buffer.h"
 #include "socket_manager.h"
 #include "types.h"
 #include <stdlib.h>
@@ -35,11 +35,10 @@ typedef enum { UDP_LISTEN, UDP_CLOSED } udp_socket_state;
 struct udp_ipv4_socket {
 	uint16_t local_port;
 	ipv4_address local_addr;
-	struct ring_buffer *rcv_buffer; // stack writes, app consumes
-	struct ring_buffer *snd_buffer; // app writes, stack consumes
+	struct pkt_ring_buffer *rcv_buffer; // stack writes, app consumes
+	struct pkt_ring_buffer *snd_buffer; // app writes, stack consumes
 	udp_socket_state state;
 	uint32_t ref_count;
-	bool queued_for_rcv;
 	bool queued_for_snd;
 	pthread_mutex_t lock;
 };

@@ -22,6 +22,7 @@ set(LIB_SOURCES
   src/app.c
   src/arp.c
   src/buffer_pool.c
+  src/byte_ring_buffers.c
   src/checksum.c
   src/constants.c
   src/ethernet.c
@@ -29,7 +30,7 @@ set(LIB_SOURCES
   src/icmp.c
   src/ipv4.c
   src/layer_router.c
-  src/ring_buffer.c
+  src/pkt_ring_buffer.c
   src/routing_table.c
   src/socket_manager.c
   src/sockfd_manager.c
