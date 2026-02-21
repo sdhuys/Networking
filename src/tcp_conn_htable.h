@@ -7,12 +7,19 @@ struct tcp_ipv4_conn_htable {
 	struct tcp_ipv4_conn_htbl_node **buckets;
 	uint32_t buckets_amount;
 	pthread_mutex_t *bucket_locks; // lock per bucket
-	size_t count;
+	// ADD ATOMIC COUNT instead of count in listener relying on listener's mutex
 };
 
 struct tcp_ipv4_conn_htbl_node {
 	struct tcp_ipv4_conn *conn;
 	struct tcp_ipv4_conn_htbl_node *next;
+};
+
+struct tcp_conn_id {
+	uint16_t loc_port;
+	ipv4_address loc_addr;
+	uint16_t extern_port;
+	ipv4_address extern_addr;
 };
 
 bool add_to_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct tcp_ipv4_conn *conn);

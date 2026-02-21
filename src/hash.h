@@ -9,4 +9,4 @@
 
 void hash_init(void);
 uint32_t hash_table(const void *data, size_t len);
-uint32_t hash_syncookie(const void *data, size_t len, uint32_t time);
+uint32_t hash_syncookie(const void *data, size_t len, uint64_t time);

@@ -23,12 +23,17 @@ pkt_result process_tcp_segment(struct tcp_segment seg, struct tcp_ipv4_conn *con
 	return NOT_IMPLEMENTED_YET;
 }
 
-uint32_t tcp_generate_iss()
+uint32_t generate_random_iss()
 {
 	uint32_t x;
 	if (getrandom(&x, sizeof(x), 0) != sizeof(x))
 		abort();
 	return x;
+}
+
+struct tcp_ipv4_conn *create_ipv4_connection(struct tcp_segment seg, uint32_t iss)
+{
+	// create stuff
 }
 
 void destroy_tcp_conn(struct tcp_ipv4_conn *connection)
@@ -69,4 +74,16 @@ uint16_t calculate_rcv_wnd_sws(struct tcp_ipv4_conn *conn)
 
 	conn->rcv_wnd = (uint16_t)scaled_window;
 	return (uint16_t)scaled_window;
+}
+
+uint32_t seg_len(struct tcp_segment seg)
+{
+	uint32_t len = seg.payload_len;
+
+	if (seg.header->flags & TCP_SYN)
+		len++;
+	if (seg.header->flags & TCP_FIN)
+		len++;
+
+	return len;
 }

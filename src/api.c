@@ -75,5 +75,5 @@ int close_socket(struct stack *stack, int sockfd)
 	h.ops->release(h.sock); // not for tcp??
 
 	sockfd_free(stack->sock_manager->sockfd_manager, sockfd);
-	return 0;
+	return 1;
 }

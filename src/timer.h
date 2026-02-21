@@ -22,7 +22,8 @@ void heapify_down(struct timer_min_heap *heap, uint16_t i);
 void heapify_up(struct timer_min_heap *heap, uint16_t i);
 void cancel_timer(struct timer_min_heap *heap, struct timer *timer);
 int get_timeout(struct timer_min_heap *heap);
-uint64_t now_ms(void);
+uint64_t now_ms();
+uint64_t now_s();
 
 struct timer {
 	uint64_t expires;

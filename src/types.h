@@ -1,4 +1,5 @@
 #pragma once
+#include "address_types.h"
 #include <net/if.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -8,8 +9,6 @@
 #include <time.h>
 
 // ===== Definitions & Constants =====
-#define MAC_ADDR_LEN 6
-#define IPV4_ADDR_LEN 4
 
 #define IPV4_V 4
 #define IPV4_HEADER_NO_OPTIONS_LEN 5 // length in 32bits (5 = 5 * 32 bits)
@@ -43,17 +42,14 @@
 #define UDP_NAME "udp"
 #define TCP_NAME "tcp"
 
-extern const unsigned char IPV4_BROADCAST_MAC[MAC_ADDR_LEN];
-extern const unsigned char IPV4_BROADCAST_IP[IPV4_ADDR_LEN];
-
 // ===== Common Types =====
-typedef unsigned char mac_address_t[MAC_ADDR_LEN];
-typedef unsigned char ipv4_address[IPV4_ADDR_LEN];
+
 typedef uint16_t ether_type;
 
 // ===== Result Codes ====
 typedef enum {
 	SENT = 10,
+	ARP_REPLY_SENT = 20,
 	ARP_TABLE_UPDATED_Q_FLUSHED = 25,
 	PACKET_QUEUED = 26,
 	SENT_UP_TO_APPLICATION = 40,
@@ -85,9 +81,11 @@ typedef enum {
 	TCP_HEADER_MALFORMED = -411,
 	TCP_BOGUS_FLAGS = -412,
 	TCP_CHECKSUM_ERROR = -413,
-	TCP_SEQ_DUPLICATE = -412,
-	TCP_SEQ_OUT_OF_WNDW_RANGE_RST = -415,
-	TCP_NO_CONNECTION = -416,
+	TCP_OPTIONS_MALFORMED = -414,
+	TCP_SEQ_DUPLICATE = -415,
+	TCP_SEQ_OUT_OF_WNDW_RANGE_RST = -416,
+	TCP_NO_CONNECTION = -417,
+	TCP_CONN_CREATION_ERROR = -418,
 	RING_BUFFER_FULL = -501,
 
 	LAYER_NAME_NOT_FOUND = -2,
@@ -283,40 +281,6 @@ struct udp_header {
 	uint16_t length;
 	uint16_t checksum;
 } __attribute__((packed));
-
-// TCP LAYER
-struct tcp_context {
-	ipv4_address stack_ipv4_addr;
-	struct socket_manager *socket_manager;
-	struct timer_min_heap *timers;
-};
-
-struct tcp_header_no_options {
-	uint16_t src_port;
-	uint16_t dest_port;
-	uint32_t seq_num;
-	uint32_t ack_num;
-	uint8_t data_offset; // (4bits) the number of 32 bit words in the header. 5 => no options
-	uint8_t flags;	     // CWR, ECE, URG, ACK, PSH, RST, SYN, FIN
-	uint16_t window;
-	uint16_t checksum;
-	uint16_t urg_ptr;
-} __attribute__((packed));
-
-struct tcp_segment {
-	struct tcp_header_no_options *header;
-	unsigned char *options;
-	size_t options_len;
-	unsigned char *payload;
-	size_t payload_len;
-};
-
-struct tcp_conn_id {
-	uint16_t loc_port;
-	ipv4_address loc_addr;
-	uint16_t extern_port;
-	ipv4_address extern_addr;
-};
 
 // Checksum data
 struct checksum_chunk {

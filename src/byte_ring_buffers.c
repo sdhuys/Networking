@@ -68,7 +68,6 @@ struct byte_snd_buffer *create_init_byte_snd_buffer(size_t capacity, uint32_t in
 	b->next_to_send = 0;
 	b->tail = 0;
 
-	// SACK Tracking (fixed array inside struct, no malloc needed)
 	b->sack_blocks_count = 0;
 	memset(b->sack_blocks, 0, sizeof(b->sack_blocks));
 
@@ -88,4 +87,16 @@ void destroy_byte_snd_buffer(struct byte_snd_buffer *b)
 
 	free(b->data);
 	free(b);
+}
+
+void sndbuf_insert_syn(struct byte_snd_buffer *b)
+{
+	b->ctrl[b->ctrl_count++] = (struct ctrl_seg){.seq = b->snd_nxt, .flags = TCP_SYN};
+	b->snd_nxt++;
+}
+
+void sndbuf_insert_fin(struct byte_snd_buffer *b)
+{
+	b->ctrl[b->ctrl_count++] =
+	    (struct ctrl_seg){.seq = b->snd_nxt + b->used_bytes, .flags = TCP_FIN};
 }

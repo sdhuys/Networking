@@ -108,9 +108,9 @@ uint32_t hash_table(const void *data, size_t len)
 	return (uint32_t)(h ^ (h >> 32));
 }
 
-uint32_t hash_syncookie(const void *data, size_t len, uint32_t time)
+uint32_t hash_syncookie(const void *data, size_t len, uint64_t time)
 {
-	unsigned char buf[256];
+	unsigned char buf[16];
 	if (len + sizeof(time) > sizeof(buf))
 		abort();
 

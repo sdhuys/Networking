@@ -42,6 +42,7 @@ set(LIB_SOURCES
   src/tcp_conn_htable.c
   src/tcp_listener_htable.c
   src/tcp_listener_socket.c
+  src/tcp_options.c
   src/timer.c
   src/udp.c
   src/udp_hashtable.c
@@ -89,22 +90,18 @@ if(BUILD_TESTING)
 endif()
 
 # ---- Formatting ----
-find_program(CLANG_FORMAT clang-format)
-if(CLANG_FORMAT)
-  file(GLOB_RECURSE ALL_SOURCE_FILES
-    src/*.c
-    src/*.h
-  )
-  add_custom_target(format
-    COMMAND ${CLANG_FORMAT} -i ${ALL_SOURCE_FILES}
-    COMMENT "Running clang-format on all source files"
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  )
-  add_custom_target(check-format
-    COMMAND ${CLANG_FORMAT} --dry-run --Werror ${ALL_SOURCE_FILES}
-    COMMENT "Checking if source files are formatted correctly"
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  )
-else()
-  message(WARNING "clang-format not found. Format targets will not be available.")
-endif()
+find_program(CLANG_FORMAT clang-format REQUIRED)
+
+file(GLOB_RECURSE ALL_SOURCE_FILES
+     CONFIGURE_DEPENDS
+     ${CMAKE_SOURCE_DIR}/src/*.c
+     ${CMAKE_SOURCE_DIR}/src/*.h
+)
+
+add_custom_target(format
+  COMMAND ${CLANG_FORMAT} -style=file -i ${ALL_SOURCE_FILES}
+)
+
+add_custom_target(check-format
+  COMMAND ${CLANG_FORMAT} -style=file --dry-run --Werror ${ALL_SOURCE_FILES}
+)

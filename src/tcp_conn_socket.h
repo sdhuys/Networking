@@ -1,8 +1,8 @@
 #pragma once
 #include "byte_ring_buffers.h"
 #include "pkt_ring_buffer.h"
+#include "tcp_common_types.h"
 #include "timer.h"
-#include "types.h"
 #include <arpa/inet.h>
 #include <sys/random.h>
 
@@ -40,18 +40,29 @@ struct tcp_ipv4_conn {
 	uint32_t cwnd;
 	uint32_t ssthresh;
 	uint32_t mss;
-	uint32_t snd_wnd; // peer's advertised window (calculated with scale)
-	uint32_t rcv_wnd; // last advertised rcv_window
+	uint32_t snd_wnd;     // peer's advertised window (calculated with scale)
+	uint32_t rcv_wnd;     // last advertised rcv_window
+	uint32_t ts_recent;   // the last TSval received from peer (to echo back in TSecr)
+	uint32_t ts_last_ack; // the last TSecr we received (to validate ACKs)
 
 	// features & options
+
+	// RTT Estimation (RFC 6298)
+	uint32_t srtt;	 // Smoothed Round-Trip Time (in microseconds or ticks)
+	uint32_t rttvar; // RTT Variation (mean deviation)
+	uint32_t rto;	 // Current Retransmission Timeout value
+
 	uint8_t snd_wscale;
 	uint8_t rcv_wscale;
 	uint8_t dup_ack_cnt;
 	bool sack_enabled;
-	bool ts_enabled;
 	bool ece_enabled;
+
+	bool ts_enabled;
 };
+struct tcp_ipv4_conn *create_ipv4_connection(struct tcp_segment seg, uint32_t iss);
 void destroy_tcp_conn(struct tcp_ipv4_conn *connection);
-uint32_t tcp_generate_iss();
+uint32_t generate_random_iss();
 pkt_result process_tcp_segment(struct tcp_segment seg, struct tcp_ipv4_conn *connection);
 uint16_t calculate_rcv_wnd_sws(struct tcp_ipv4_conn *conn);
+uint32_t seg_len(struct tcp_segment seg);

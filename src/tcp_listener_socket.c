@@ -1,4 +1,11 @@
 #include "tcp_listener_socket.h"
+#include "time.h"
+
+#define TCP_LSTNR_HALF_OPENS_BCKT_COUNT 1024
+#define TCP_LSTNR_HALF_OPENS_LIMIT 256
+
+static const uint16_t mss_enc_table[8] = {
+    TCP_MSS_DEFAULT_FALLBACK, 872, 1064, 1192, 1320, TCP_MSS_TS, TCP_MSS_MAX};
 
 const struct socket_ops tcp_listener_ops = {.is_snd_queued = NULL,
 					    .set_snd_queued = NULL,
@@ -12,17 +19,75 @@ const struct socket_ops tcp_listener_ops = {.is_snd_queued = NULL,
 					    .send_pkt = NULL,
 					    .close = tcp_close_listener};
 
-pkt_result process_incoming_syn(struct tcp_ipv4_listener *listener, struct tcp_segment seg)
+pkt_result process_incoming_syn(struct tcp_ipv4_listener *listener,
+				struct tcp_segment seg_in,
+				struct pkt *p)
 {
-	// create connection
-	// add connection to listener's half-open htable
-	// send SYN ACK
+	uint32_t iss;
+	uint32_t ack = seg_in.header->seq_num + seg_len(seg_in);
+	bool use_syn_cookie = listener->half_open_count >= listener->half_open_limit;
+	if (use_syn_cookie) {
+		iss = generate_syn_cookie_iss(listener, seg_in, p);
+		// SEND SYN ACK
+		return NOT_IMPLEMENTED_YET;
+	}
+
+	else {
+		iss = generate_random_iss();
+		struct tcp_ipv4_conn *conn = create_ipv4_connection(seg_in, iss);
+		if (conn == NULL)
+			return TCP_CONN_CREATION_ERROR;
+		// add connection to listener's half-open htable
+		// send SYN ACK
+	}
 	return NOT_IMPLEMENTED_YET;
 }
 
-pkt_result process_tcp_segment_half_open(struct tcp_segment seg,
-					 struct tcp_ipv4_conn *half_open,
-					 struct tcp_ipv4_listener *lstnr)
+uint32_t generate_syn_cookie_iss(struct tcp_ipv4_listener *listener,
+				 struct tcp_segment seg,
+				 struct pkt *p)
+{
+	uint32_t mss = seg.options.mss_present ? seg.options.mss : TCP_MSS_DEFAULT_FALLBACK;
+	unsigned char data[(2 * sizeof(ipv4_address)) + (2 * sizeof(uint16_t))];
+
+	memcpy(data, listener->local_addr, IPV4_ADDR_LEN);
+	memcpy(data + IPV4_ADDR_LEN, &listener->local_port, sizeof(uint16_t));
+	memcpy(data + IPV4_ADDR_LEN + sizeof(uint16_t), &p->src_ip, IPV4_ADDR_LEN);
+	memcpy(data + IPV4_ADDR_LEN + sizeof(uint16_t) + IPV4_ADDR_LEN,
+	       &seg.header->src_port,
+	       sizeof(uint16_t));
+	uint64_t time = now_s() >> 6;
+
+	uint32_t hash = hash_syncookie(data, sizeof(*data), time) & ((1 << 24) - 1);
+
+	uint32_t iss = time % 32;
+	iss = (iss << 3) | mss_encode(mss);
+	iss = (iss << 24) | hash;
+	return iss;
+}
+
+uint8_t mss_encode(uint16_t mss)
+{
+	for (int i = 7; i >= 0; i--) {
+		if (mss >= mss_enc_table[i])
+			return i;
+	}
+	return 0;
+}
+
+uint16_t mss_decode(uint8_t enc)
+{
+	return mss_enc_table[enc & 7];
+}
+
+pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener, struct tcp_segment seg)
+{
+	return NOT_IMPLEMENTED_YET;
+}
+
+pkt_result half_open_check_ack(struct tcp_segment seg,
+			       struct tcp_ipv4_conn *half_open,
+			       struct tcp_ipv4_listener *lstnr)
 {
 	return NOT_IMPLEMENTED_YET;
 }

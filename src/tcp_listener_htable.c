@@ -8,10 +8,10 @@ bool add_to_tcp_listener_hashtable(struct tcp_ipv4_listener_htable *htable,
 	pthread_mutex_lock(&htable->bucket_locks[hash]);
 
 	struct tcp_ipv4_listener_node *node = htable->buckets[hash];
-	printf("NODE \n\n");
-
 	while (node != NULL) {
-		if (node->listener->local_port == listener->local_port) {
+		struct tcp_ipv4_listener *bucket_lstnr = node->listener;
+		if (is_tcp_lstnr_match(
+			listener, bucket_lstnr->local_port, bucket_lstnr->local_addr)) {
 			pthread_mutex_unlock(&htable->bucket_locks[hash]);
 			return false;
 		}
@@ -21,7 +21,7 @@ bool add_to_tcp_listener_hashtable(struct tcp_ipv4_listener_htable *htable,
 	retain_tcp_listener(listener);
 	struct tcp_ipv4_listener_node *new_node = malloc(sizeof(struct tcp_ipv4_listener_node));
 	if (new_node == NULL)
-		return NULL;
+		return false;
 
 	new_node->listener = listener;
 	new_node->next = htable->buckets[hash];
@@ -35,13 +35,13 @@ struct tcp_ipv4_listener *query_tcp_listener_hashtable(struct tcp_ipv4_listener_
 						       ipv4_address addr)
 {
 	uint32_t hash = calc_tcp_listener_hash(port, addr, htable);
-	struct tcp_ipv4_listener_node *bucket_node = htable->buckets[hash];
-
 	pthread_mutex_t *lock = &(htable->bucket_locks[hash]);
 	pthread_mutex_lock(lock);
+	struct tcp_ipv4_listener_node *bucket_node = htable->buckets[hash];
+
 	while (bucket_node != NULL) {
 		struct tcp_ipv4_listener *listener = bucket_node->listener;
-		if (listener->local_port == port && listener->state != TCP_LIS_CLOSED) {
+		if (is_tcp_lstnr_match(listener, port, addr) && listener->state != TCP_LIS_CLOSED) {
 			retain_tcp_listener(listener);
 			pthread_mutex_unlock(lock);
 			return listener;
@@ -127,4 +127,10 @@ struct tcp_ipv4_listener_htable *create_tcp_ipv4_listener_htable(size_t size)
 
 	tcp_lstnr_htable->buckets = buckets;
 	return tcp_lstnr_htable;
+}
+
+bool is_tcp_lstnr_match(struct tcp_ipv4_listener *lstnr, uint16_t loc_port, ipv4_address loc_addr)
+{
+	return lstnr->local_port == loc_port &&
+	       memcmp(lstnr->local_addr, loc_addr, IPV4_ADDR_LEN) == 0;
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include "buffer_pool.h"
+#include "constants.h"
 #include "types.h"
 #include <arpa/inet.h>
 #include <stdio.h>

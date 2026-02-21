@@ -205,5 +205,9 @@ pkt_result send_arp_down(struct nw_layer *self, struct pkt *packet)
 	packet->ethertype = htons(ARP);
 	packet->offset -= sizeof(struct ethernet_header);
 	packet->len += sizeof(struct ethernet_header);
-	return self->downs[0]->send_down(self->downs[0], packet);
+	pkt_result r = self->downs[0]->send_down(self->downs[0], packet);
+	if (r == SENT)
+		return ARP_REPLY_SENT;
+	else
+		return r;
 }

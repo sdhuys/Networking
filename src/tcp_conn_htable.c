@@ -39,10 +39,10 @@ struct tcp_ipv4_conn *query_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htab
 					       struct tcp_conn_id id)
 {
 	uint32_t hash = calc_tcp_conn_hash(htable, id);
-	struct tcp_ipv4_conn_htbl_node *bucket_node = htable->buckets[hash];
-
 	pthread_mutex_t *lock = &(htable->bucket_locks[hash]);
 	pthread_mutex_lock(lock);
+	struct tcp_ipv4_conn_htbl_node *bucket_node = htable->buckets[hash];
+
 	while (bucket_node != NULL) {
 		struct tcp_ipv4_conn *conn = bucket_node->conn;
 
@@ -129,7 +129,6 @@ struct tcp_ipv4_conn_htable *create_tcp_ipv4_conn_htable(size_t size)
 	}
 
 	tcp_conn_htable->buckets = buckets;
-	tcp_conn_htable->count = 0;
 	return tcp_conn_htable;
 }
 

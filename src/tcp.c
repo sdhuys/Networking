@@ -37,8 +37,13 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 		return TCP_CHECKSUM_ERROR;
 
 	size_t options_len = tcp_header_len - sizeof(struct tcp_header_no_options);
-	unsigned char *options =
-	    (packet->data + packet->offset + sizeof(struct tcp_header_no_options));
+	unsigned char *options_start =
+	    packet->data + packet->offset + sizeof(struct tcp_header_no_options);
+	struct tcp_options options;
+
+	bool valid_options = parse_tcp_options(options_start, options_len, &options);
+	if (!valid_options)
+		return TCP_OPTIONS_MALFORMED;
 
 	struct tcp_context *context = (struct tcp_context *)self->context;
 	struct socket_manager *mgr = context->socket_manager;
@@ -55,20 +60,18 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 
 	struct tcp_conn_id id = {.extern_port = packet->src_port, .loc_port = packet->dest_port};
 	memcpy(id.extern_addr, packet->src_ip, IPV4_ADDR_LEN);
-	memcpy(id.loc_addr, packet->src_ip, IPV4_ADDR_LEN);
-	// query established connections
+	memcpy(id.loc_addr, packet->dest_ip, IPV4_ADDR_LEN);
+	// query established connections (also includes half-opens app started as client)
 	struct tcp_ipv4_conn *conn = query_tcp_conn_hashtable(mgr->tcp_ipv4_conn_htable, id);
-	printf("YELOOOOOOOOOOOOOO1 %d\n\n", mgr->tcp_ipv4_conn_htable == NULL);
 
 	// if not established, try time_wait connections
 	if (conn == NULL) {
 		conn = query_tcp_conn_hashtable(mgr->tcp_ipv4_conn_time_wait_htable, id);
-		printf("YELOOOOOOOOOOOOOO2\n\n");
 	}
 	if (conn != NULL) {
 		pkt_result r = process_tcp_segment(seg, conn);
 		if (r == TCP_SEQ_OUT_OF_WNDW_RANGE_RST)
-			tcp_reply_rst(self, conn, packet, header);
+			tcp_reply_rst(self, conn, packet, seg);
 		return r;
 	}
 
@@ -78,20 +81,28 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 	if (lstnr != NULL) {
 		// find half-open connection
 		conn = query_tcp_conn_hashtable(lstnr->half_opens, id);
-		if (conn != NULL) {
-			return process_tcp_segment_half_open(seg, conn, lstnr);
+		// only ACK's are relevant for half-open connections
+		if (conn != NULL && header->flags == TCP_ACK) {
+			return half_open_check_ack(seg, conn, lstnr);
 		}
 
+		// NO TCP_CONNECTION_SOCKET OBJECT EXISTS YET:
 		// if proper SYN without ACK, open new connection
+		// can include ECE, CWR
 		if ((header->flags & TCP_SYN) != 0 && (header->flags & TCP_ACK) == 0) {
-			return process_incoming_syn(lstnr, seg);
+			return process_incoming_syn(lstnr, seg, packet);
+		}
+
+		// if ACK, check for valid SYN cookie
+		if (header->flags == TCP_ACK) {
+			return syn_cookie_check_ack(lstnr, seg);
 		}
 	}
-	printf("FLAGS: %d \n\n", header->flags & TCP_RST);
+	printf("FLAGS: %d \n\n", header->flags);
 
 	// no connection, not a listener SYN
 	if ((header->flags & TCP_RST) == 0) {
-		tcp_reply_rst(self, NULL, packet, header);
+		tcp_reply_rst(self, NULL, packet, seg);
 	}
 	return TCP_NO_CONNECTION;
 }
@@ -99,43 +110,43 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 pkt_result tcp_reply_rst(struct nw_layer *tcp,
 			 struct tcp_ipv4_conn *conn,
 			 struct pkt *packet,
-			 struct tcp_header_no_options *header)
+			 struct tcp_segment seg)
 {
-	uint32_t incoming_seq = ntohl(header->seq_num);
-	uint32_t incoming_ack = ntohl(header->ack_num);
-	packet->dest_port = ntohs(header->src_port);
-	packet->src_port = ntohs(header->dest_port);
+	uint32_t incoming_seq = ntohl(seg.header->seq_num);
+	uint32_t incoming_ack = ntohl(seg.header->ack_num);
 
-	ipv4_address t;
-	memcpy(t, packet->dest_ip, IPV4_ADDR_LEN);
-	memcpy(packet->dest_ip, packet->src_ip, IPV4_ADDR_LEN);
-	memcpy(packet->src_ip, t, IPV4_ADDR_LEN);
+	init_reply_packet_from_incoming(packet, seg);
 
-	packet->tcp_data_offset = sizeof(*header) / 4;
-
-	if (header->flags & TCP_ACK) {
+	if (seg.header->flags & TCP_ACK) {
 		packet->tcp_flags = TCP_RST;
 		packet->tcp_seq = incoming_ack;
 		packet->tcp_ack = 0;
 	} else {
-		uint32_t seglen = packet->len;
-		if (header->flags & TCP_SYN)
-			seglen++;
-		if (header->flags & TCP_FIN)
-			seglen++;
-
 		packet->tcp_flags = TCP_RST | TCP_ACK;
 		packet->tcp_seq = 0;
-		packet->tcp_ack = incoming_seq + seglen;
+		packet->tcp_ack = incoming_seq + seg_len(seg);
 	}
 
 	if (conn != NULL)
 		destroy_tcp_conn(conn);
 
-	packet->len = sizeof(*header);
-	packet->offset = MAX_ETH_FRAME_SIZE - sizeof(*header);
-
 	return tcp->send_down(tcp, packet);
+}
+
+// recycle incoming packet for a quick reply (not going through global TX q)
+void init_reply_packet_from_incoming(struct pkt *pkt, const struct tcp_segment seg)
+{
+	pkt->dest_port = ntohs(seg.header->src_port);
+	pkt->src_port = ntohs(seg.header->dest_port);
+
+	ipv4_address tmp;
+	memcpy(tmp, pkt->dest_ip, IPV4_ADDR_LEN);
+	memcpy(pkt->dest_ip, pkt->src_ip, IPV4_ADDR_LEN);
+	memcpy(pkt->src_ip, tmp, IPV4_ADDR_LEN);
+
+	pkt->tcp_data_offset = sizeof(*seg.header) / 4;
+	pkt->len = sizeof(*seg.header);
+	pkt->offset = MAX_ETH_FRAME_SIZE - sizeof(*seg.header);
 }
 
 // nonsonsical combinations regardsless of listener or connection state
