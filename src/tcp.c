@@ -4,14 +4,21 @@ pkt_result send_tcp_down(struct nw_layer *self, struct pkt *packet)
 {
 	struct tcp_header_no_options *header =
 	    (struct tcp_header_no_options *)(packet->data + packet->offset);
+
+	if (packet->tcp_options->length > 0) {
+		unsigned char *opt_buff = (unsigned char *)(header) + sizeof(*header);
+		tcp_serialize_options(opt_buff, packet->tcp_options->length, packet->tcp_options);
+	}
+
 	header->dest_port = htons(packet->dest_port);
 	header->src_port = htons(packet->src_port);
 	header->seq_num = htonl(packet->tcp_seq);
 	header->ack_num = htonl(packet->tcp_ack);
-	header->checksum = 0;
-	header->checksum = calc_tcp_checksum(packet);
+	header->window = htons(packet->rcv_window);
 	header->flags = packet->tcp_flags;
-	header->data_offset = packet->tcp_data_offset << 4;
+	header->data_offset = packet->tcp_data_offset;
+	header->checksum = 0;
+	header->checksum = htons(calc_tcp_checksum(packet));
 
 	packet->offset -= sizeof(struct ipv4_header);
 	packet->len += sizeof(struct ipv4_header);
@@ -53,7 +60,7 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 	packet->len -= tcp_header_len;
 
 	struct tcp_segment seg = {.header = header,
-				  .options = options,
+				  .options = &options,
 				  .options_len = options_len,
 				  .payload = packet->data + packet->offset,
 				  .payload_len = packet->len};
@@ -69,55 +76,108 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 		conn = query_tcp_conn_hashtable(mgr->tcp_ipv4_conn_time_wait_htable, id);
 	}
 	if (conn != NULL) {
-		pkt_result r = process_tcp_segment(seg, conn);
+		pkt_result r = process_tcp_segment(&seg, conn);
 		if (r == TCP_SEQ_OUT_OF_WNDW_RANGE_RST)
-			tcp_reply_rst(self, conn, packet, seg);
+			tcp_fast_reply_rst(self, conn, packet, &seg);
 		return r;
 	}
-
 	// if neither, find listener
 	struct tcp_ipv4_listener *lstnr = query_tcp_listener_hashtable(
 	    mgr->tcp_ipv4_listener_htable, packet->dest_port, packet->dest_ip);
+
 	if (lstnr != NULL) {
 		// find half-open connection
 		conn = query_tcp_conn_hashtable(lstnr->half_opens, id);
 		// only ACK's are relevant for half-open connections
-		if (conn != NULL && header->flags == TCP_ACK) {
-			return half_open_check_ack(seg, conn, lstnr);
+		if (conn != NULL && header->flags & TCP_ACK) {
+			return half_open_check_ack(&seg, conn, lstnr);
 		}
 
 		// NO TCP_CONNECTION_SOCKET OBJECT EXISTS YET:
 		// if proper SYN without ACK, open new connection
 		// can include ECE, CWR
-		if ((header->flags & TCP_SYN) != 0 && (header->flags & TCP_ACK) == 0) {
-			return process_incoming_syn(lstnr, seg, packet);
+		if ((header->flags & (TCP_SYN | TCP_ACK)) == TCP_SYN) {
+			if (true || lstnr->half_open_count >= lstnr->half_open_limit) {
+				pkt_result r = tcp_fast_reply_syn_cookie(self, lstnr, packet, &seg);
+				if (r == SENT)
+					return TCP_SYN_COOKIE_SENT;
+				return r;
+			}
+			tcp_open_new_connection(lstnr, &seg);
 		}
 
 		// if ACK, check for valid SYN cookie
-		if (header->flags == TCP_ACK) {
-			return syn_cookie_check_ack(lstnr, seg);
+		if (header->flags & TCP_ACK) {
+			return syn_cookie_check_ack(lstnr, &seg, packet);
 		}
 	}
-	printf("FLAGS: %d \n\n", header->flags);
 
 	// no connection, not a listener SYN
 	if ((header->flags & TCP_RST) == 0) {
-		tcp_reply_rst(self, NULL, packet, seg);
+		tcp_fast_reply_rst(self, NULL, packet, &seg);
 	}
 	return TCP_NO_CONNECTION;
 }
 
-pkt_result tcp_reply_rst(struct nw_layer *tcp,
-			 struct tcp_ipv4_conn *conn,
-			 struct pkt *packet,
-			 struct tcp_segment seg)
+// fast SYN ACK reply bypassing send buffer
+pkt_result tcp_fast_reply_syn_cookie(struct nw_layer *tcp,
+				     struct tcp_ipv4_listener *listener,
+				     struct pkt *packet,
+				     struct tcp_segment *seg)
 {
-	uint32_t incoming_seq = ntohl(seg.header->seq_num);
-	uint32_t incoming_ack = ntohl(seg.header->ack_num);
+	packet->tcp_seq = generate_syn_cookie_iss(listener, seg, packet);
+	uint32_t incoming_seq = ntohl(seg->header->seq_num);
 
 	init_reply_packet_from_incoming(packet, seg);
+	packet->tcp_flags = TCP_SYN | TCP_ACK;
+	packet->tcp_ack = incoming_seq + seg_len(seg);
+	packet->rcv_window = 65535;
 
-	if (seg.header->flags & TCP_ACK) {
+	// options, MSS and SACK encoded in cookie, can safely negotiate
+	packet->tcp_options->mss_present = seg->options->mss_present;
+	if (seg->options->mss_present) {
+		// MTU should come from listener's interface it's bound to!
+		// change later
+		uint32_t mtu =
+		    ((struct tcp_context *)(tcp->context))->socket_manager->interfaces[0].mtu;
+		packet->tcp_options->mss =
+		    mtu - sizeof(struct ipv4_header) - sizeof(struct ethernet_header);
+	}
+	packet->tcp_options->sack_permitted = seg->options->sack_permitted;
+
+	/* ECHO IF PRESENT, encode received window scale in timestamp
+	packet->tcp_options->ts_present = true;
+	packet->tcp_options->tsecr = seg->options->tsval;
+
+	FIGURE OUT BUFFER SIZE => ADVERTISE APPROPRIATE SCALE
+	packet->tcp_options->wscale_present = true;
+	*/
+
+	size_t options_len = tcp_options_length(packet->tcp_options);
+	packet->tcp_data_offset = ((sizeof(*seg->header) + options_len) / 4) << 4;
+	packet->len = sizeof(*seg->header) + options_len;
+	packet->offset = MAX_ETH_FRAME_SIZE - packet->len;
+	printf("SENDING SYN COOKIE DOWN \n");
+	return tcp->send_down(tcp, packet);
+}
+
+// fast RST reply bypassing send buffer
+pkt_result tcp_fast_reply_rst(struct nw_layer *tcp,
+			      struct tcp_ipv4_conn *conn,
+			      struct pkt *packet,
+			      struct tcp_segment *seg)
+{
+	uint32_t incoming_seq = ntohl(seg->header->seq_num);
+	uint32_t incoming_ack = ntohl(seg->header->ack_num);
+
+	init_reply_packet_from_incoming(packet, seg);
+	memset(packet->tcp_options, 0, sizeof(*packet->tcp_options));
+
+	packet->tcp_data_offset = (sizeof(*seg->header) / 4) << 4;
+	packet->len = sizeof(*seg->header);
+	packet->offset = MAX_ETH_FRAME_SIZE - sizeof(*seg->header);
+
+	if (seg->header->flags & TCP_ACK) {
 		packet->tcp_flags = TCP_RST;
 		packet->tcp_seq = incoming_ack;
 		packet->tcp_ack = 0;
@@ -134,19 +194,15 @@ pkt_result tcp_reply_rst(struct nw_layer *tcp,
 }
 
 // recycle incoming packet for a quick reply (not going through global TX q)
-void init_reply_packet_from_incoming(struct pkt *pkt, const struct tcp_segment seg)
+void init_reply_packet_from_incoming(struct pkt *pkt, const struct tcp_segment *seg)
 {
-	pkt->dest_port = ntohs(seg.header->src_port);
-	pkt->src_port = ntohs(seg.header->dest_port);
+	pkt->dest_port = ntohs(seg->header->src_port);
+	pkt->src_port = ntohs(seg->header->dest_port);
 
 	ipv4_address tmp;
 	memcpy(tmp, pkt->dest_ip, IPV4_ADDR_LEN);
 	memcpy(pkt->dest_ip, pkt->src_ip, IPV4_ADDR_LEN);
 	memcpy(pkt->src_ip, tmp, IPV4_ADDR_LEN);
-
-	pkt->tcp_data_offset = sizeof(*seg.header) / 4;
-	pkt->len = sizeof(*seg.header);
-	pkt->offset = MAX_ETH_FRAME_SIZE - sizeof(*seg.header);
 }
 
 // nonsonsical combinations regardsless of listener or connection state

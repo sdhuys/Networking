@@ -36,6 +36,7 @@ set(LIB_SOURCES
   src/sockfd_manager.c
   src/stack_constructor.c
   src/stack_tx_worker.c
+  src/syn_cookie.c
   src/tap.c
   src/tcp.c
   src/tcp_conn_socket.c

@@ -34,6 +34,8 @@ struct socket_ops {
 };
 
 struct socket_manager {
+	struct nw_interface *interfaces;
+	size_t if_amount;
 	struct tcp_ipv4_listener_htable *tcp_ipv4_listener_htable;
 	struct tcp_ipv4_conn_htable *tcp_ipv4_conn_htable;
 	struct tcp_ipv4_conn_htable *tcp_ipv4_conn_time_wait_htable;

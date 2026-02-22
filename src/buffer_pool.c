@@ -6,6 +6,7 @@ static struct pkt pkt_pool[PKT_BUFF_POOL_SIZE];
 static struct pkt *free_pkt_stack[PKT_BUFF_POOL_SIZE];
 static int top_free_index;
 static pthread_mutex_t pool_mutex = PTHREAD_MUTEX_INITIALIZER;
+static struct tcp_options tcp_opts[PKT_BUFF_POOL_SIZE];
 
 void init_buffer_pool()
 {
@@ -13,6 +14,7 @@ void init_buffer_pool()
 
 	for (int i = 0; i < PKT_BUFF_POOL_SIZE; i++) {
 		pkt_pool[i].data = buffer_pool[i];
+		pkt_pool[i].tcp_options = &tcp_opts[i];
 		pkt_pool[i].ref_count = 0;
 		pthread_mutex_init(&pkt_pool[i].lock, NULL);
 		free_pkt_stack[i] = &pkt_pool[i];

@@ -1,10 +1,10 @@
 #include "tcp_conn_socket.h"
 #include "tcp.h"
 
-pkt_result process_tcp_segment(struct tcp_segment seg, struct tcp_ipv4_conn *connection)
+pkt_result process_tcp_segment(struct tcp_segment *seg, struct tcp_ipv4_conn *connection)
 {
-	uint32_t seq = ntohl(seg.header->seq_num);
-	if (seg.header->flags & TCP_RST) {
+	uint32_t seq = ntohl(seg->header->seq_num);
+	if (seg->header->flags & TCP_RST) {
 		// NOTIFY APPLICATION
 		return NOT_IMPLEMENTED_YET;
 	}
@@ -31,9 +31,9 @@ uint32_t generate_random_iss()
 	return x;
 }
 
-struct tcp_ipv4_conn *create_ipv4_connection(struct tcp_segment seg, uint32_t iss)
+struct tcp_ipv4_conn *create_tcp_connection(struct tcp_segment *seg, uint32_t iss)
 {
-	// create stuff
+	return NULL;
 }
 
 void destroy_tcp_conn(struct tcp_ipv4_conn *connection)
@@ -76,13 +76,13 @@ uint16_t calculate_rcv_wnd_sws(struct tcp_ipv4_conn *conn)
 	return (uint16_t)scaled_window;
 }
 
-uint32_t seg_len(struct tcp_segment seg)
+uint32_t seg_len(struct tcp_segment *seg)
 {
-	uint32_t len = seg.payload_len;
+	uint32_t len = seg->payload_len;
 
-	if (seg.header->flags & TCP_SYN)
+	if (seg->header->flags & TCP_SYN)
 		len++;
-	if (seg.header->flags & TCP_FIN)
+	if (seg->header->flags & TCP_FIN)
 		len++;
 
 	return len;

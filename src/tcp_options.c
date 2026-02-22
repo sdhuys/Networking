@@ -1,38 +1,38 @@
 #include "tcp_options.h"
 #include <arpa/inet.h>
 
-#define TCPOPT_EOL 0
-#define TCPOPT_NOP 1
-#define TCPOPT_MSS 2
-#define TCPOPT_WSCALE 3
-#define TCPOPT_SACKOK 4
-#define TCPOPT_SACK 5
-#define TCPOPT_TS 8
+#define TCP_OPT_EOL 0
+#define TCP_OPT_NOP 1
+#define TCP_OPT_MSS 2
+#define TCP_OPT_WSCALE 3
+#define TCP_OPT_SACKOK 4
+#define TCP_OPT_SACK 5
+#define TCP_OPT_TS 8
 
-#define MAX_TCP_WSCALE 14
+#define TCP_MAX_WSCALE 14
+#define TCP_MAX_OPT_LEN 40
 
 bool parse_tcp_options(const unsigned char *opts, int opt_len, struct tcp_options *out)
 {
 	int i = 0;
 
-	if (!opts || !out)
+	if (!opts || !out || opt_len > 40)
 		return false;
 
+	out->length = opt_len;
 	memset(out, 0, sizeof(*out));
 
 	while (i < opt_len) {
 		uint8_t kind = opts[i];
 
 		// single-byte padding or end marker
-		if (kind == TCPOPT_EOL)
+		if (kind == TCP_OPT_EOL)
 			break;
 
-		if (kind == TCPOPT_NOP) {
+		if (kind == TCP_OPT_NOP) {
 			i++;
 			continue;
 		}
-
-		// multi-byte options
 
 		// ensure safely reading length byte
 		if (i + 1 >= opt_len)
@@ -45,7 +45,7 @@ bool parse_tcp_options(const unsigned char *opts, int opt_len, struct tcp_option
 			return false;
 
 		switch (kind) {
-		case TCPOPT_MSS:
+		case TCP_OPT_MSS:
 			if (len == 4) {
 				uint16_t mss_val;
 				memcpy(&mss_val, &opts[i + 2], 2);
@@ -54,21 +54,21 @@ bool parse_tcp_options(const unsigned char *opts, int opt_len, struct tcp_option
 			}
 			break;
 
-		case TCPOPT_WSCALE:
+		case TCP_OPT_WSCALE:
 			if (len == 3) {
 				out->wscale_present = true;
 				uint8_t val = opts[i + 2];
 				// RFC 7323: Clamp to 14
-				out->wscale = (val > MAX_TCP_WSCALE) ? MAX_TCP_WSCALE : val;
+				out->wscale = (val > TCP_MAX_WSCALE) ? TCP_MAX_WSCALE : val;
 			}
 			break;
 
-		case TCPOPT_SACKOK:
+		case TCP_OPT_SACKOK:
 			if (len == 2)
 				out->sack_permitted = true;
 			break;
 
-		case TCPOPT_SACK:
+		case TCP_OPT_SACK:
 			// Length is 2 + (8 * num_blocks)
 			if (len >= 10 && ((len - 2) % 8 == 0)) {
 				int blocks_in_pkt = (len - 2) / 8;
@@ -86,7 +86,7 @@ bool parse_tcp_options(const unsigned char *opts, int opt_len, struct tcp_option
 			}
 			break;
 
-		case TCPOPT_TS:
+		case TCP_OPT_TS:
 			if (len == 10) {
 				uint32_t val, ecr;
 				out->ts_present = true;
@@ -104,6 +104,111 @@ bool parse_tcp_options(const unsigned char *opts, int opt_len, struct tcp_option
 
 		i += len;
 	}
-
 	return true;
+}
+
+size_t tcp_options_length(struct tcp_options *opt)
+{
+	size_t len = 0;
+
+	if (opt->mss_present)
+		len += 4; // Kind(1) + Len(1) + MSS(2)
+
+	if (opt->wscale_present)
+		len += 3; // Kind(1) + Len(1) + Shift(1)
+
+	if (opt->sack_permitted)
+		len += 2; // Kind(1) + Len(1)
+
+	if (opt->sack_block_count > 0)
+		len += 2 + 8 * opt->sack_block_count; // Kind(1) + Len(1) + N*(Left+Right)
+
+	if (opt->ts_present)
+		len += 10; // Kind(1) + Len(1) + TSval(4) + TSecr(4)
+
+	opt->length = (len + 3) & ~3;
+	return opt->length;
+}
+
+static inline int enough_space(uint8_t *p, uint8_t *end, size_t n)
+{
+	return p + n <= end;
+}
+
+static inline void align4(uint8_t **p, uint8_t *end)
+{
+	while (((uintptr_t)*p & 3) && enough_space(*p, end, 1)) {
+		*(*p)++ = TCP_OPT_NOP;
+	}
+}
+
+size_t tcp_serialize_options(unsigned char *buf, uint8_t len, const struct tcp_options *opt)
+{
+	uint8_t *p = buf;
+	uint8_t *end = buf + (len < TCP_MAX_OPT_LEN ? len : TCP_MAX_OPT_LEN);
+
+	if (opt->mss_present && enough_space(p, end, 4)) {
+		*p++ = TCP_OPT_MSS;
+		*p++ = 4;
+		uint16_t mss = htons(opt->mss);
+		memcpy(p, &mss, 2);
+		p += 2;
+	}
+
+	if (opt->wscale_present && opt->wscale <= TCP_MAX_WSCALE && enough_space(p, end, 3)) {
+		*p++ = TCP_OPT_WSCALE;
+		*p++ = 3;
+		*p++ = opt->wscale;
+	}
+
+	if (opt->sack_permitted && enough_space(p, end, 2)) {
+		*p++ = TCP_OPT_SACKOK;
+		*p++ = 2;
+	}
+
+	// timestamp must be 4-byte aligned
+	if (opt->ts_present) {
+		align4(&p, end);
+		if (enough_space(p, end, 10)) {
+			*p++ = TCP_OPT_TS;
+			*p++ = 10;
+			uint32_t ts = htonl(opt->tsval);
+			uint32_t ecr = htonl(opt->tsecr);
+			memcpy(p, &ts, 4);
+			p += 4;
+			memcpy(p, &ecr, 4);
+			p += 4;
+		}
+	}
+
+	if (opt->sack_permitted && opt->sack_block_count > 0) {
+		int n = opt->sack_block_count;
+		if (n > MAX_SACK_BLOCKS)
+			n = MAX_SACK_BLOCKS;
+
+		align4(&p, end);
+		size_t len = 2 + 8 * n;
+
+		if (enough_space(p, end, len)) {
+			*p++ = TCP_OPT_SACK;
+			*p++ = len;
+			for (int i = 0; i < n; i++) {
+				uint32_t left = htonl(opt->sacks[i].left);
+				uint32_t right = htonl(opt->sacks[i].right);
+				memcpy(p, &left, 4);
+				p += 4;
+				memcpy(p, &right, 4);
+				p += 4;
+			}
+		}
+	}
+
+	if (enough_space(p, end, 1))
+		*p++ = TCP_OPT_EOL;
+
+	// zero pad to 32-bit boundary
+	while (((p - buf) & 3) && enough_space(p, end, 1))
+		*p++ = 0;
+
+	return p - buf;
 }

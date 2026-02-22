@@ -53,13 +53,7 @@ void tcp_release_listener(void *s);
 struct tcp_ipv4_conn_q *create_ready_q();
 void destroy_ready_q(struct tcp_ipv4_conn_q *q);
 
-pkt_result process_incoming_syn(struct tcp_ipv4_listener *listener,
-				struct tcp_segment seg_in,
-				struct pkt *p);
-uint32_t generate_syn_cookie_iss(struct tcp_ipv4_listener *listener,
-				 struct tcp_segment seg,
-				 struct pkt *p);
-pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener, struct tcp_segment seg);
-pkt_result half_open_check_ack(struct tcp_segment seg,
+pkt_result tcp_open_new_connection(struct tcp_ipv4_listener *listener, struct tcp_segment *seg);
+pkt_result half_open_check_ack(struct tcp_segment *seg,
 			       struct tcp_ipv4_conn *half_open,
 			       struct tcp_ipv4_listener *lstnr);

@@ -1,5 +1,6 @@
 #pragma once
 #include "address_types.h"
+#include "tcp_common_types.h"
 #include <net/if.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -52,7 +53,8 @@ typedef enum {
 	ARP_REPLY_SENT = 20,
 	ARP_TABLE_UPDATED_Q_FLUSHED = 25,
 	PACKET_QUEUED = 26,
-	SENT_UP_TO_APPLICATION = 40,
+	UDP_WRITTEN_TO_RCV_BUFF = 40,
+	TCP_SYN_COOKIE_SENT = 45,
 
 	ICMP_ECHO_REPLY_RCVD = 35,
 
@@ -86,6 +88,8 @@ typedef enum {
 	TCP_SEQ_OUT_OF_WNDW_RANGE_RST = -416,
 	TCP_NO_CONNECTION = -417,
 	TCP_CONN_CREATION_ERROR = -418,
+	TCP_SYN_COOKIE_EXPIRED = -419,
+	TCP_SYN_COOKIE_INVALID = -420,
 	RING_BUFFER_FULL = -501,
 
 	LAYER_NAME_NOT_FOUND = -2,
@@ -110,14 +114,17 @@ struct pkt {
 	ipv4_address src_ip;
 	ipv4_address dest_ip;
 
+	// TRANSPORT LAYER metadata
+	// apart from src and dest ports for UDP, these fields are only ever used to store metadata
+	// for outgoing packets
 	uint16_t src_port;
 	uint16_t dest_port;
 	uint32_t tcp_seq;
 	uint32_t tcp_ack;
 	uint8_t tcp_flags;
 	uint8_t tcp_data_offset; // (4bits) number of words in header (5 = no options)
-	uint16_t window;
-	// ADD TCP OPTIONS!
+	uint16_t rcv_window;
+	struct tcp_options *tcp_options;
 };
 
 // ===== General Network Layer Structure =====
@@ -147,7 +154,7 @@ struct nw_interface {
 	uint32_t ipv4_addr;   // network byte order
 	uint32_t subnet_mask; // network byte order
 	mac_address_t mac_addr;
-	uint8_t mtu;
+	uint32_t mtu;
 };
 
 // ===== Ethernet Layer =====

@@ -96,6 +96,8 @@ struct stack construct_stack(int fd, char *if_name)
 	icmp->downs[0] = ip;
 
 	struct socket_manager *socket_manager = malloc(sizeof(struct socket_manager));
+	socket_manager->interfaces = nw_if;
+	socket_manager->if_amount = 1;
 	socket_manager->send_down_sock_q = malloc(sizeof(struct socket_h_q));
 	socket_manager->send_down_sock_q->head = NULL;
 	socket_manager->send_down_sock_q->tail = NULL;
@@ -133,7 +135,6 @@ struct stack construct_stack(int fd, char *if_name)
 	tcp->downs = malloc(tcp->downs_count * sizeof(struct nw_layer *));
 	tcp->downs[0] = ip;
 	struct tcp_context *tcp_context = malloc(sizeof(struct tcp_context));
-	memcpy(tcp_context->stack_ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
 	tcp_context->timers = timers_heap;
 	tcp_context->socket_manager = socket_manager;
 	tcp->context = tcp_context;

@@ -59,10 +59,16 @@ struct tcp_ipv4_conn {
 	bool ece_enabled;
 
 	bool ts_enabled;
+
+	// ACK controls
+	bool ack_pending; // signifies timer is running
+	struct timer del_ack_timer;
+	int8_t in_order_full_seg_count;
 };
-struct tcp_ipv4_conn *create_ipv4_connection(struct tcp_segment seg, uint32_t iss);
+
+struct tcp_ipv4_conn *create_tcp_connection(struct tcp_segment *seg, uint32_t iss);
 void destroy_tcp_conn(struct tcp_ipv4_conn *connection);
 uint32_t generate_random_iss();
-pkt_result process_tcp_segment(struct tcp_segment seg, struct tcp_ipv4_conn *connection);
+pkt_result process_tcp_segment(struct tcp_segment *seg, struct tcp_ipv4_conn *connection);
 uint16_t calculate_rcv_wnd_sws(struct tcp_ipv4_conn *conn);
-uint32_t seg_len(struct tcp_segment seg);
+uint32_t seg_len(struct tcp_segment *seg);

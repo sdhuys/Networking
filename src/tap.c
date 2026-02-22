@@ -32,9 +32,17 @@ void start_listening(struct nw_layer *interface)
 
 				packet->len = (size_t)nread;
 				packet->offset = 0;
+				FILE *log = fopen("in.txt", "a");
+				if (log) {
+					for (size_t i = 0; i < packet->len; i++)
+						fprintf(
+						    log, "%02X", packet->data[i + packet->offset]);
+					fprintf(log, "\n");
+					fclose(log);
+				}
 				pkt_result result = interface->rcv_up(interface, packet);
 
-				if (result != SENT) {
+				if (result != SENT && result != TCP_SYN_COOKIE_SENT) {
 					printf("LISTEN LOOP RELEASING \n");
 					release_pkt(packet);
 				}

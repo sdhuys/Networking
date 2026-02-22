@@ -1,6 +1,7 @@
 #pragma once
-#include "stdint.h"
-#include "types.h"
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 #define TCP_MSS_MAX 1460
 #define TCP_MSS_TS 1448 // max segment with timestamps enabled
@@ -40,18 +41,22 @@ struct tcp_options {
 	bool wscale_present;
 	uint8_t wscale;
 
-	bool sack_permitted; // SYN/SYN-ACK handshake
+	bool sack_permitted;
 
-	int sack_block_count; // Data ACKs
+	int sack_block_count;
 	struct sack_block sacks[MAX_SACK_BLOCKS];
 
 	bool ts_present;
 	uint32_t tsval;
 	uint32_t tsecr;
+
+	// set by calling parse_tcp_options() or tcp_options_len()
+	uint8_t length;
 };
+
 struct tcp_segment {
 	struct tcp_header_no_options *header;
-	struct tcp_options options;
+	struct tcp_options *options;
 	size_t options_len;
 	unsigned char *payload;
 	size_t payload_len;

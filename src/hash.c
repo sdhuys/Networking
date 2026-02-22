@@ -44,8 +44,9 @@ static inline uint64_t load_le64(const unsigned char *p)
 		v2 = rotl64(v2, 32);                                                               \
 	} while (0)
 
-static uint64_t siphash24(const unsigned char *in, size_t len, const uint64_t key[2])
+static uint64_t siphash24(const void *src, size_t len, const uint64_t key[2])
 {
+	unsigned char *in = (unsigned char *)src;
 	uint64_t v0 = 0x736f6d6570736575ULL ^ key[0];
 	uint64_t v1 = 0x646f72616e646f6dULL ^ key[1];
 	uint64_t v2 = 0x6c7967656e657261ULL ^ key[0];
@@ -108,15 +109,28 @@ uint32_t hash_table(const void *data, size_t len)
 	return (uint32_t)(h ^ (h >> 32));
 }
 
-uint32_t hash_syncookie(const void *data, size_t len, uint64_t time)
+uint32_t hash_syncookie(ipv4_address local_addr,
+			ipv4_address extern_addr,
+			uint16_t local_port,
+			uint16_t extern_port,
+			uint64_t time)
 {
-	unsigned char buf[16];
-	if (len + sizeof(time) > sizeof(buf))
-		abort();
+	struct {
+		ipv4_address local_addr;
+		ipv4_address remote_addr;
+		uint16_t local_port;
+		uint16_t remote_port;
+		uint64_t time;
+	} __attribute__((packed)) hash_input;
 
-	memcpy(buf, data, len);
-	memcpy(buf + len, &time, sizeof(time));
+	memcpy(hash_input.local_addr, local_addr, IPV4_ADDR_LEN);
+	memcpy(hash_input.remote_addr, extern_addr, IPV4_ADDR_LEN);
+	hash_input.local_port = local_port;
+	hash_input.remote_port = extern_port;
+	hash_input.time = time;
 
-	uint64_t h = siphash24(buf, len + sizeof(time), cookie_key);
-	return (uint32_t)(h ^ (h >> 32));
+	uint64_t h = siphash24((unsigned char *)&hash_input, sizeof(hash_input), cookie_key);
+	// Return only 24 bits as per SYN cookie specification
+	// We XOR the high and low parts of the SipHash to maximize entropy in the 24 bits
+	return (uint32_t)((h ^ (h >> 24) ^ (h >> 48)) & 0x00FFFFFF);
 }

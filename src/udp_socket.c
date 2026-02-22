@@ -84,7 +84,7 @@ pkt_result write_up_to_rcv_buffer(struct udp_ipv4_socket *socket, struct pkt *pa
 		return RING_BUFFER_FULL;
 
 	broadcast_udp_rcv_readable(socket);
-	return SENT_UP_TO_APPLICATION;
+	return UDP_WRITTEN_TO_RCV_BUFF;
 }
 
 // socket handle operations (app side)
