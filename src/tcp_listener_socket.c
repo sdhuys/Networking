@@ -16,16 +16,23 @@ const struct socket_ops tcp_listener_ops = {.is_snd_queued = NULL,
 					    .send_pkt = NULL,
 					    .close = tcp_close_listener};
 
-pkt_result tcp_open_new_connection(struct tcp_ipv4_listener *listener, struct tcp_segment *seg)
+pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lis,
+					  struct pkt *pkt,
+					  struct tcp_segment *seg)
 {
-	uint32_t iss;
-	uint32_t ack = seg->header->seq_num + seg_len(seg);
-	iss = generate_random_iss();
-	struct tcp_ipv4_conn *conn = create_tcp_connection(seg, iss);
+	struct tcp_conn_id id = {.loc_port = lis->local_port,
+				 .extern_port = seg->header->dest_port};
+	memcpy(id.extern_addr, pkt->src_ip, IPV4_ADDR_LEN);
+	memcpy(id.loc_addr, pkt->dest_ip, IPV4_ADDR_LEN);
+
+	struct tcp_ipv4_conn *conn = create_tcp_connection(&id);
 	if (conn == NULL)
 		return TCP_CONN_CREATION_ERROR;
-	// add connection to listener's half-open htable
+	server_init_tcp_connection(conn, seg);
+	add_to_tcp_conn_hashtable(lis->half_opens, conn);
+
 	// send SYN ACK
+	return SYN_ACK_TO_SND_BUFFER;
 }
 
 pkt_result half_open_check_ack(struct tcp_segment *seg,

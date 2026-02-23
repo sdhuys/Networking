@@ -31,7 +31,15 @@ uint32_t generate_random_iss()
 	return x;
 }
 
-struct tcp_ipv4_conn *create_tcp_connection(struct tcp_segment *seg, uint32_t iss)
+// initialse connection based on incoming seg
+void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *seg)
+{
+	conn->iss = generate_random_iss();
+	conn->rcv_buffer->rcv_nxt = seg->header->seq_num + seg_len(seg);
+}
+
+// create connection for id
+struct tcp_ipv4_conn *create_tcp_connection(struct tcp_conn_id *id)
 {
 	return NULL;
 }

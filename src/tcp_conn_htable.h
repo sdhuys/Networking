@@ -17,9 +17,9 @@ struct tcp_ipv4_conn_htbl_node {
 
 struct tcp_conn_id {
 	uint16_t loc_port;
-	ipv4_address loc_addr;
+	ipv4_address_t loc_addr;
 	uint16_t extern_port;
-	ipv4_address extern_addr;
+	ipv4_address_t extern_addr;
 };
 
 bool add_to_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct tcp_ipv4_conn *conn);

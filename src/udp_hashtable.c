@@ -32,7 +32,7 @@ bool add_to_udp_hashtable(struct udp_ipv4_sckt_htable *htable, struct udp_ipv4_s
 
 struct udp_ipv4_socket *query_udp_hashtable(struct udp_ipv4_sckt_htable *htable,
 					    uint16_t port,
-					    ipv4_address addr)
+					    ipv4_address_t addr)
 {
 	uint32_t hash = calc_udp_hash(port, addr, htable);
 	pthread_mutex_t *lock = &(htable->bucket_locks[hash]);
@@ -84,7 +84,7 @@ bool remove_from_udp_hashtable(struct udp_ipv4_sckt_htable *htable, struct udp_i
 	return false;
 }
 
-uint32_t calc_udp_hash(uint16_t port, ipv4_address ip, struct udp_ipv4_sckt_htable *htable)
+uint32_t calc_udp_hash(uint16_t port, ipv4_address_t ip, struct udp_ipv4_sckt_htable *htable)
 {
 	unsigned char data[6];
 	data[0] = port & 0xFF;

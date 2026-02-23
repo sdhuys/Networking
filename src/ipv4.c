@@ -52,13 +52,15 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 	struct nw_layer *arp_layer = ipv4_cntxt->arp_layer;
 	struct arp_context *arp_cntxt = arp_layer->context;
 	struct arp_table *arp_tbl = arp_cntxt->arp_table;
+	struct routing_table *route_tbl = ipv4_cntxt->routing_table;
 
 	// Find route
 	struct route *next_hop_route = NULL;
-	get_route(self, packet->dest_ip, &next_hop_route);
+	if (!get_route(route_tbl, packet->dest_ip, &next_hop_route)) {
+		// should relay ICMP Destination Unreachable to UDP or TCP
+		return IP_NO_ROUTE_FOUND;
+	}
 
-	if (next_hop_route == NULL)
-		return IP_NO_ROUTE_FOUND; // should relay ICMP Destination Unreachable to UDP or TCP
 	packet->if_index = next_hop_route->iface_id;
 
 	// Write header
@@ -108,7 +110,7 @@ void write_ipv4_header(struct ipv4_header *header, struct pkt *packet)
 	memcpy(header->dest_ip, packet->dest_ip, IPV4_ADDR_LEN);
 }
 
-bool relevant_destination_ip(ipv4_address dest_ip, struct nw_layer *self)
+bool relevant_destination_ip(ipv4_address_t dest_ip, struct nw_layer *self)
 {
 	struct ipv4_context *context = (struct ipv4_context *)self->context;
 
@@ -116,25 +118,4 @@ bool relevant_destination_ip(ipv4_address dest_ip, struct nw_layer *self)
 	    memcmp(dest_ip, context->stack_ipv4_addr, IPV4_ADDR_LEN) == 0)
 		return true;
 	return false;
-}
-
-void get_route(struct nw_layer *self, ipv4_address dest_ip, struct route **route_out)
-{
-	struct ipv4_context *context = (struct ipv4_context *)self->context;
-	struct route *routes = context->routing_table;
-
-	int longest_prefix = -1;
-
-	uint32_t int_ip;
-	memcpy(&int_ip, dest_ip, IPV4_ADDR_LEN);
-
-	for (size_t i = 0; i < context->routes_amount; i++) {
-		struct route *route = &routes[i];
-
-		if (route->prefix_len > longest_prefix &&
-		    ((int_ip & route->subnet_mask)) == route->prefix) {
-			longest_prefix = route->prefix_len;
-			*route_out = route;
-		}
-	}
 }

@@ -1,5 +1,6 @@
 #pragma once
 #include "buffer_pool.h"
+#include "nw_interface.h"
 #include "timer.h"
 #include "types.h"
 #include <poll.h>

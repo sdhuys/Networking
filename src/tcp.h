@@ -2,6 +2,7 @@
 #include "buffer_pool.h"
 #include "checksum.h"
 #include "layer_router.h"
+#include "routing_table.h"
 #include "socket_manager.h"
 #include "syn_cookie.h"
 #include "tcp_common_types.h"
@@ -15,6 +16,8 @@
 struct tcp_context {
 	struct socket_manager *socket_manager;
 	struct timer_min_heap *timers;
+	ipv4_address_t stack_ipv4_addr;
+	struct routing_table *routing_tbl;
 };
 
 #ifdef __cplusplus

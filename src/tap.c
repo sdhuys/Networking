@@ -32,7 +32,7 @@ void start_listening(struct nw_layer *interface)
 
 				packet->len = (size_t)nread;
 				packet->offset = 0;
-				FILE *log = fopen("in.txt", "a");
+				FILE *log = fopen("iotraffic.txt", "a");
 				if (log) {
 					for (size_t i = 0; i < packet->len; i++)
 						fprintf(
@@ -79,7 +79,7 @@ pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
 		return WRITE_ERROR;
 	}
 
-	FILE *log = fopen("out.txt", "a");
+	FILE *log = fopen("iotraffic.txt", "a");
 	if (log) {
 		for (size_t i = 0; i < packet->len; i++)
 			fprintf(log, "%02X", packet->data[i + packet->offset]);

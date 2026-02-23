@@ -3,6 +3,7 @@
 #include "ethernet.h"
 #include "icmp.h"
 #include "ipv4.h"
+#include "nw_interface.h"
 #include "routing_table.h"
 #include "socket_manager.h"
 #include "sockfd_manager.h"
@@ -20,9 +21,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/eventfd.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
 #include <unistd.h>
 
 #define TCP_LISTNR_HTBL_SIZE 1024
@@ -35,9 +33,7 @@
 extern "C" {
 #endif
 
-struct stack construct_stack(int fd, char *if_name);
-void set_net_if_struct(int fd, char *if_name, struct nw_interface *n_if);
-void set_stack_ipv4_addr(struct nw_interface *n_if, ipv4_address stack_ip_addr);
+struct stack construct_stack(struct nw_interface *interface_array, size_t if_count);
 
 #ifdef __cplusplus
 }

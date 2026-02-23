@@ -21,8 +21,11 @@ struct socket_ops {
 
 	bool (*write_to_snd_buffer)(struct stack *stack, void *sock, struct send_request req);
 	int (*read_rcv_buffer)(void *sock, size_t len, unsigned char *buff);
-	int (*read_rcv_buffer_from)(
-	    void *sock, size_t len, unsigned char *buff, ipv4_address addr_out, uint16_t *port_out);
+	int (*read_rcv_buffer_from)(void *sock,
+				    size_t len,
+				    unsigned char *buff,
+				    ipv4_address_t addr_out,
+				    uint16_t *port_out);
 
 	void (*unlock)(void *sock);
 	void (*lock)(void *sock);
@@ -34,8 +37,6 @@ struct socket_ops {
 };
 
 struct socket_manager {
-	struct nw_interface *interfaces;
-	size_t if_amount;
 	struct tcp_ipv4_listener_htable *tcp_ipv4_listener_htable;
 	struct tcp_ipv4_conn_htable *tcp_ipv4_conn_htable;
 	struct tcp_ipv4_conn_htable *tcp_ipv4_conn_time_wait_htable;

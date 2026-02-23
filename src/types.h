@@ -35,7 +35,7 @@
 #define DESTINATION_UNREACHABLE 3
 #define ECHO_REQUEST 8
 
-#define TAP_NAME "tap0"
+#define IF_NAME "interface"
 #define ETH_NAME "ethernet"
 #define ARP_NAME "arp"
 #define ICMP_NAME "icmp"
@@ -55,6 +55,7 @@ typedef enum {
 	PACKET_QUEUED = 26,
 	UDP_WRITTEN_TO_RCV_BUFF = 40,
 	TCP_SYN_COOKIE_SENT = 45,
+	SYN_ACK_TO_SND_BUFFER = 46,
 
 	ICMP_ECHO_REPLY_RCVD = 35,
 
@@ -90,6 +91,7 @@ typedef enum {
 	TCP_CONN_CREATION_ERROR = -418,
 	TCP_SYN_COOKIE_EXPIRED = -419,
 	TCP_SYN_COOKIE_INVALID = -420,
+	TCP_UNROUTABLE_CONNECTION = -421,
 	RING_BUFFER_FULL = -501,
 
 	LAYER_NAME_NOT_FOUND = -2,
@@ -111,8 +113,8 @@ struct pkt {
 	uint8_t protocol;
 	mac_address_t dest_mac;
 
-	ipv4_address src_ip;
-	ipv4_address dest_ip;
+	ipv4_address_t src_ip;
+	ipv4_address_t dest_ip;
 
 	// TRANSPORT LAYER metadata
 	// apart from src and dest ports for UDP, these fields are only ever used to store metadata
@@ -125,6 +127,7 @@ struct pkt {
 	uint8_t tcp_data_offset; // (4bits) number of words in header (5 = no options)
 	uint16_t rcv_window;
 	struct tcp_options *tcp_options;
+	struct route *route;
 };
 
 // ===== General Network Layer Structure =====
@@ -146,15 +149,6 @@ struct interface_context {
 	size_t if_amount;
 	struct timer_min_heap *timers_heap;
 	int wake_fd; // eventfd to trigger polling to return early (when new timer added)
-};
-
-struct nw_interface {
-	char name[IFNAMSIZ];
-	int fd;
-	uint32_t ipv4_addr;   // network byte order
-	uint32_t subnet_mask; // network byte order
-	mac_address_t mac_addr;
-	uint32_t mtu;
 };
 
 // ===== Ethernet Layer =====
@@ -180,7 +174,7 @@ struct arp_table {
 };
 
 struct arp_table_node {
-	ipv4_address ipv4_addr;
+	ipv4_address_t ipv4_addr;
 	mac_address_t mac_addr;
 	arp_node_status status;
 	time_t last_updated;
@@ -195,7 +189,7 @@ struct queue_entry {
 };
 
 struct arp_context {
-	ipv4_address ipv4_addr;
+	ipv4_address_t ipv4_addr;
 	mac_address_t mac_addr;
 	struct arp_table *arp_table;
 };
@@ -207,34 +201,17 @@ struct arp_data {
 	unsigned char proto_addr_len;
 	uint16_t operation;
 	mac_address_t src_mac;
-	ipv4_address src_ip;
+	ipv4_address_t src_ip;
 	mac_address_t target_mac;
-	ipv4_address target_ip;
+	ipv4_address_t target_ip;
 } __attribute__((packed));
 
 // ===== IPv4 Layer =====
 
-typedef enum {
-	ROUTE_ONLINK, // destination is directly reachable
-	ROUTE_VIA     // send via gateway
-} route_type;
-
-struct route {
-	uint32_t prefix;      // network byte order
-	uint32_t subnet_mask; // network byte order
-	uint8_t prefix_len;   // CIDR mask (0–32)
-	uint8_t mtu;	      // max transmission unit
-	route_type type;
-	uint32_t gateway; // valid only if type == ROUTE_VIA
-	uint32_t iface_id;
-};
-
 struct ipv4_context {
 	struct nw_layer *arp_layer;
-	ipv4_address stack_ipv4_addr;
-	struct nw_interface *nw_if;
-	struct route *routing_table;
-	size_t routes_amount;
+	ipv4_address_t stack_ipv4_addr;
+	struct routing_table *routing_table;
 };
 
 struct ipv4_header {
@@ -251,13 +228,13 @@ struct ipv4_header {
 	unsigned char ttl;
 	unsigned char protocol;
 	uint16_t header_checksum;
-	ipv4_address src_ip;
-	ipv4_address dest_ip;
+	ipv4_address_t src_ip;
+	ipv4_address_t dest_ip;
 } __attribute__((packed));
 
 struct ipv4_pseudo_header {
-	ipv4_address src_ip;
-	ipv4_address dest_ip;
+	ipv4_address_t src_ip;
+	ipv4_address_t dest_ip;
 	uint8_t padding;
 	uint8_t protocol;
 	uint16_t len;
@@ -278,7 +255,7 @@ struct icmp_header {
 
 // UDP LAYER
 struct udp_context {
-	ipv4_address stack_ipv4_addr;
+	ipv4_address_t stack_ipv4_addr;
 	struct socket_manager *sock_manager;
 };
 
@@ -301,13 +278,13 @@ struct stack {
 	struct nw_layer *udp_layer;
 	struct nw_layer *tcp_layer;
 	struct socket_manager *sock_manager;
-	ipv4_address local_address;
+	ipv4_address_t local_address;
 };
 
 // App send request
 struct send_request {
 	unsigned char *data;
 	size_t len;
-	ipv4_address dest_ip; // optional, only for UDP
-	uint16_t dest_port;   // optional, only for UDP
+	ipv4_address_t dest_ip; // optional, only for UDP
+	uint16_t dest_port;	// optional, only for UDP
 };

@@ -35,7 +35,7 @@ int receive_from(struct stack *stack,
 		 int sockfd,
 		 unsigned char *buff,
 		 size_t len,
-		 ipv4_address addr_out,
+		 ipv4_address_t addr_out,
 		 uint16_t *port_out)
 {
 	struct socket_handle h;

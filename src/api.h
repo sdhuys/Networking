@@ -12,7 +12,7 @@ int receive_from(struct stack *stack,
 		 int sockfd,
 		 unsigned char *buff,
 		 size_t len,
-		 ipv4_address addr_out,
+		 ipv4_address_t addr_out,
 		 uint16_t *port_out);
 int send_down(struct stack *stack, int sockfd, struct send_request req);
 int close_socket(struct stack *stack, int sockfd);

@@ -40,6 +40,7 @@ struct pkt *allocate_pkt()
 	       p->ref_count,
 	       top_free_index + 1);
 	p->ref_count = 1;
+	p->route = NULL;
 
 	pthread_mutex_unlock(&pool_mutex);
 	return p;

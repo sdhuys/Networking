@@ -1,5 +1,6 @@
 #include "app.h"
 #include "hash.h"
+#include "nw_interface.h"
 #include "stack_constructor.h"
 #include "stack_tx_worker.h"
 #include <arpa/inet.h>
@@ -27,7 +28,7 @@
 #define UTUN_CONTROL_NAME "com.apple.net.utun_control"
 #endif
 
-int tap_setup();
+int tap_setup(char *name);
 int get_tap(char *name, int flags);
 int activate_tap(char *if_name);
 int set_ipv4_addr(char *name, char *address);
@@ -50,10 +51,11 @@ int main()
 {
 	hash_init();
 	int tap_fd;
-	if ((tap_fd = tap_setup()) < 0)
+	if ((tap_fd = tap_setup("tap0")) < 0)
 		return 1;
-
-	struct stack stack = construct_stack(tap_fd, TAP_NAME);
+	struct nw_interface *nw_if = malloc(sizeof(struct nw_interface));
+	set_net_if_struct(tap_fd, "tap0", nw_if);
+	struct stack stack = construct_stack(nw_if, 1);
 	struct nw_layer *tap = stack.if_layer;
 	// struct socket_manager *socket_manager = stack.sock_manager;
 
@@ -66,10 +68,16 @@ int main()
 	return 0;
 }
 
-int tap_setup()
+int tap_setup(char *name)
 {
+	if (name == NULL)
+		return -1;
+
+	char if_name[IFNAMSIZ];
+	strncpy(if_name, name, IFNAMSIZ - 1);
+	if_name[IFNAMSIZ - 1] = '\0';
+
 	char tap_address[] = "192.168.100.1";
-	char if_name[IFNAMSIZ] = TAP_NAME;
 	int tap_fd;
 	if ((tap_fd = get_tap(if_name, IFF_TAP | IFF_NO_PI)) < 0) {
 		perror("Getting TAP interace");

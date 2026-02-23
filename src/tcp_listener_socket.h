@@ -16,7 +16,7 @@ struct tcp_ipv4_listener {
 	pthread_mutex_t lock; // also used to access half_open_count (defeats purpose of
 			      // per bucket locks => switch to atomic cound in htable)
 
-	ipv4_address local_addr;
+	ipv4_address_t local_addr;
 	uint16_t local_port;
 	tcp_listener_state state;
 
@@ -53,7 +53,9 @@ void tcp_release_listener(void *s);
 struct tcp_ipv4_conn_q *create_ready_q();
 void destroy_ready_q(struct tcp_ipv4_conn_q *q);
 
-pkt_result tcp_open_new_connection(struct tcp_ipv4_listener *listener, struct tcp_segment *seg);
+pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lis,
+					  struct pkt *pkt,
+					  struct tcp_segment *seg);
 pkt_result half_open_check_ack(struct tcp_segment *seg,
 			       struct tcp_ipv4_conn *half_open,
 			       struct tcp_ipv4_listener *lstnr);

@@ -28,7 +28,7 @@ pkt_result receive_icmp_up(struct nw_layer *self, struct pkt *packet)
 
 void echo_request_to_reply(struct pkt *packet, struct icmp_header *header)
 {
-	ipv4_address temp;
+	ipv4_address_t temp;
 	memcpy(temp, packet->dest_ip, IPV4_ADDR_LEN);
 	memcpy(packet->dest_ip, packet->src_ip, IPV4_ADDR_LEN);
 	memcpy(packet->src_ip, temp, IPV4_ADDR_LEN);

@@ -10,7 +10,7 @@ void start_app(struct stack *stack)
 	printf("CLOSE SOCKET: %d \n", close_socket(stack, udp_9001));
 	while (1) {
 		unsigned char buff[1500];
-		ipv4_address addr;
+		ipv4_address_t addr;
 		uint16_t port;
 		int r = receive_from(stack, udp_9000, buff, sizeof(buff), addr, &port);
 		if (r >= 0) {

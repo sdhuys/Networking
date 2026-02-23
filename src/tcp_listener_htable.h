@@ -19,11 +19,13 @@ bool add_to_tcp_listener_hashtable(struct tcp_ipv4_listener_htable *htable,
 				   struct tcp_ipv4_listener *socket);
 struct tcp_ipv4_listener *query_tcp_listener_hashtable(struct tcp_ipv4_listener_htable *htable,
 						       uint16_t port,
-						       ipv4_address addr);
+						       ipv4_address_t addr);
 bool remove_from_tcp_listener_hashtable(struct tcp_ipv4_listener_htable *htable,
 					struct tcp_ipv4_listener *socket);
 uint32_t calc_tcp_listener_hash(uint16_t port,
-				ipv4_address ip,
+				ipv4_address_t ip,
 				struct tcp_ipv4_listener_htable *htable);
 struct tcp_ipv4_listener_htable *create_tcp_ipv4_listener_htable(size_t size);
-bool is_tcp_lstnr_match(struct tcp_ipv4_listener *lstnr, uint16_t loc_port, ipv4_address loc_addr);
+bool is_tcp_lstnr_match(struct tcp_ipv4_listener *lstnr,
+			uint16_t loc_port,
+			ipv4_address_t loc_addr);

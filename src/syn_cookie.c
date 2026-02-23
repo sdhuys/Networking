@@ -74,12 +74,11 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	// reconstruct the original full timestamp used during generation.
 	uint64_t original_t_full = now_t_full - delta_t;
 
-	uint32_t expected_hash = hash_syncookie(listener->local_addr,  // Server IP
-						p->src_ip,	       // Client IP
-						listener->local_port,  // Server Port
-						seg->header->src_port, // Client Port
-						original_t_full // The RECONSTRUCTED full timestamp
-	);
+	uint32_t expected_hash = hash_syncookie(listener->local_addr,
+						p->src_ip,
+						listener->local_port,
+						seg->header->src_port,
+						original_t_full);
 
 	if (received_hash != expected_hash)
 		return TCP_SYN_COOKIE_INVALID;

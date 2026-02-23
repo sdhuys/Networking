@@ -4,7 +4,6 @@
 #include <stdint.h>
 
 #define TCP_MSS_MAX 1460
-#define TCP_MSS_TS 1448 // max segment with timestamps enabled
 #define TCP_MSS_DEFAULT_FALLBACK 536
 #define MAX_SACK_BLOCKS 4
 

@@ -159,7 +159,7 @@ int udp_read_rcv_buffer(void *s, size_t len, unsigned char *buff)
 }
 
 int udp_read_rcv_buffer_from(
-    void *s, size_t len, unsigned char *buff, ipv4_address addr_out, uint16_t *port_out)
+    void *s, size_t len, unsigned char *buff, ipv4_address_t addr_out, uint16_t *port_out)
 {
 	struct udp_ipv4_socket *socket = (struct udp_ipv4_socket *)s;
 	struct pkt_ring_buffer *rcv_buffer = socket->rcv_buffer;

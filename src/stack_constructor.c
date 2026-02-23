@@ -1,6 +1,6 @@
 #include "stack_constructor.h"
 
-struct stack construct_stack(int fd, char *if_name)
+struct stack construct_stack(struct nw_interface *interfaces, size_t if_count)
 {
 	struct nw_layer *interface = malloc(sizeof(struct nw_layer));
 	struct nw_layer *eth = malloc(sizeof(struct nw_layer));
@@ -13,7 +13,7 @@ struct stack construct_stack(int fd, char *if_name)
 	int wake_fd = eventfd(0, EFD_NONBLOCK);
 	struct timer_min_heap *timers_heap = create_timers_min_heap(wake_fd);
 
-	interface->name = if_name;
+	interface->name = IF_NAME;
 	interface->send_down = &write_to_interface;
 	interface->rcv_up = &send_up_to_ethernet;
 	interface->ups_count = 1;
@@ -22,10 +22,8 @@ struct stack construct_stack(int fd, char *if_name)
 	interface->downs = NULL;
 	interface->downs_count = 0;
 	struct interface_context *nw_if_context = malloc(sizeof(struct interface_context));
-	nw_if_context->if_amount = 1;
-	struct nw_interface *nw_if = malloc(sizeof(struct nw_interface));
-	set_net_if_struct(fd, if_name, nw_if);
-	nw_if_context->interfaces = nw_if;
+	nw_if_context->if_amount = if_count;
+	nw_if_context->interfaces = interfaces;
 	nw_if_context->timers_heap = timers_heap;
 	nw_if_context->wake_fd = wake_fd;
 	interface->context = nw_if_context;
@@ -33,8 +31,7 @@ struct stack construct_stack(int fd, char *if_name)
 	// assign stack mac address and ip address on same subnet as interface
 	static unsigned char stack_mac_addr[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
 	static unsigned char stack_ipv4_addr[4];
-	void set_net_if_struct(int fd, char *if_name, struct nw_interface *n_if);
-	set_stack_ipv4_addr(nw_if, stack_ipv4_addr);
+	set_stack_ipv4_addr(&interfaces[0], stack_ipv4_addr);
 
 	eth->name = ETH_NAME;
 	eth->send_down = &send_frame_down;
@@ -80,10 +77,8 @@ struct stack construct_stack(int fd, char *if_name)
 	ip->downs[0] = eth;
 	struct ipv4_context *ipv4_context = malloc(sizeof(struct ipv4_context));
 	ipv4_context->arp_layer = arp;
-	ipv4_context->routing_table = create_routing_table(nw_if);
-	ipv4_context->routes_amount = get_init_routes_amount();
+	ipv4_context->routing_table = create_routing_table(interfaces, if_count);
 	memcpy(ipv4_context->stack_ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
-	ipv4_context->nw_if = nw_if;
 	ip->context = ipv4_context;
 
 	icmp->name = ICMP_NAME;
@@ -96,8 +91,6 @@ struct stack construct_stack(int fd, char *if_name)
 	icmp->downs[0] = ip;
 
 	struct socket_manager *socket_manager = malloc(sizeof(struct socket_manager));
-	socket_manager->interfaces = nw_if;
-	socket_manager->if_amount = 1;
 	socket_manager->send_down_sock_q = malloc(sizeof(struct socket_h_q));
 	socket_manager->send_down_sock_q->head = NULL;
 	socket_manager->send_down_sock_q->tail = NULL;
@@ -137,6 +130,8 @@ struct stack construct_stack(int fd, char *if_name)
 	struct tcp_context *tcp_context = malloc(sizeof(struct tcp_context));
 	tcp_context->timers = timers_heap;
 	tcp_context->socket_manager = socket_manager;
+	memcpy(tcp_context->stack_ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
+	tcp_context->routing_tbl = ipv4_context->routing_table;
 	tcp->context = tcp_context;
 
 	struct stack stack = {.if_layer = interface,
@@ -145,57 +140,4 @@ struct stack construct_stack(int fd, char *if_name)
 			      .sock_manager = socket_manager};
 	memcpy(stack.local_address, stack_ipv4_addr, IPV4_ADDR_LEN);
 	return stack;
-}
-
-void set_net_if_struct(int fd, char *if_name, struct nw_interface *n_if)
-{
-	int sock;
-	struct ifreq ifr;
-
-	n_if->fd = fd;
-	strcpy(n_if->name, if_name);
-
-	sock = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sock < 0) {
-		perror("socket");
-		return;
-	}
-
-	strncpy(ifr.ifr_name, if_name, IFNAMSIZ);
-
-	if (ioctl(sock, SIOCGIFADDR, &ifr) == 0)
-		n_if->ipv4_addr = ((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr.s_addr;
-	else
-		perror("SIOCGIFADDR");
-
-	if (ioctl(sock, SIOCGIFNETMASK, &ifr) == 0)
-		n_if->subnet_mask = ((struct sockaddr_in *)&ifr.ifr_netmask)->sin_addr.s_addr;
-	else
-		perror("SIOCGIFNETMASK");
-
-	if (ioctl(sock, SIOCGIFHWADDR, &ifr) == 0)
-		memcpy(n_if->mac_addr, ifr.ifr_hwaddr.sa_data, 6);
-	else
-		perror("SIOCGIFHWADDR");
-
-	if (ioctl(sock, SIOCGIFMTU, &ifr) == 0)
-		n_if->mtu = ifr.ifr_mtu;
-	else
-		perror("SIOCGIFMTU");
-
-	close(sock);
-}
-
-// Sets stack ip address on same subnet as the interface, with host bits set to 2
-// after set_ipv4_addr() call => interface at 192.168.100.1/24
-// after this call => stack at 192.168.100.2/24
-void set_stack_ipv4_addr(struct nw_interface *n_if, ipv4_address stack_ip_addr)
-{
-	uint32_t ip = ntohl(n_if->ipv4_addr);
-	uint32_t mask = ntohl(n_if->subnet_mask);
-
-	uint32_t network = ip & mask;
-
-	uint32_t stack_ip = htonl(network | 2);
-	memcpy(stack_ip_addr, &stack_ip, IPV4_ADDR_LEN);
 }

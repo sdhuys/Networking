@@ -64,7 +64,7 @@ void flush_q(struct nw_layer *self, struct arp_table_node *arp_entry)
 	arp_entry->pending_tail = NULL;
 }
 
-struct arp_table_node *insert_incomplete_for_ip(struct arp_table *table, ipv4_address dest_ip)
+struct arp_table_node *insert_incomplete_for_ip(struct arp_table *table, ipv4_address_t dest_ip)
 {
 	struct arp_table_node *new = malloc(sizeof(struct arp_table_node));
 	if (new == NULL)
@@ -97,7 +97,7 @@ pkt_result add_pkt_to_q(struct arp_table_node *node, struct pkt *packet)
 	return PACKET_QUEUED;
 }
 
-struct arp_table_node *query_arp_table(struct arp_table *table, ipv4_address ip)
+struct arp_table_node *query_arp_table(struct arp_table *table, ipv4_address_t ip)
 {
 	struct arp_table_node *node = table->head;
 	for (; node != NULL; node = node->next)
@@ -123,7 +123,7 @@ void inc_arp_request_to_reply(struct pkt *packet,
 	header->operation = htons(ARP_REPLY);
 	memcpy(header->target_mac, header->src_mac, header->hw_addr_len);
 	memcpy(header->src_mac, requested_address, header->hw_addr_len);
-	ipv4_address temp_ip;
+	ipv4_address_t temp_ip;
 	memcpy(temp_ip, header->target_ip, header->proto_addr_len);
 	memcpy(header->target_ip, header->src_ip, header->proto_addr_len);
 	memcpy(header->src_ip, temp_ip, header->proto_addr_len);
@@ -167,7 +167,7 @@ void print_arp_header(struct arp_data *arp_header)
 	       arp_header->target_ip[3]);
 }
 
-struct pkt *create_arp_request_for(struct nw_layer *self, ipv4_address target_ip)
+struct pkt *create_arp_request_for(struct nw_layer *self, ipv4_address_t target_ip)
 {
 	printf("CREATE ARP REQUEST ALLOCATING \n");
 	struct pkt *pkt = allocate_pkt();

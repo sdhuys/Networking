@@ -97,13 +97,15 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 		// if proper SYN without ACK, open new connection
 		// can include ECE, CWR
 		if ((header->flags & (TCP_SYN | TCP_ACK)) == TCP_SYN) {
-			if (true || lstnr->half_open_count >= lstnr->half_open_limit) {
+			// syn cookie open
+			if (lstnr->half_open_count >= lstnr->half_open_limit) {
 				pkt_result r = tcp_fast_reply_syn_cookie(self, lstnr, packet, &seg);
 				if (r == SENT)
 					return TCP_SYN_COOKIE_SENT;
 				return r;
 			}
-			tcp_open_new_connection(lstnr, &seg);
+			// regular open
+			return tcp_server_open_new_connection(lstnr, packet, &seg);
 		}
 
 		// if ACK, check for valid SYN cookie
@@ -136,22 +138,20 @@ pkt_result tcp_fast_reply_syn_cookie(struct nw_layer *tcp,
 	// options, MSS and SACK encoded in cookie, can safely negotiate
 	packet->tcp_options->mss_present = seg->options->mss_present;
 	if (seg->options->mss_present) {
-		// MTU should come from listener's interface it's bound to!
-		// change later
-		uint32_t mtu =
-		    ((struct tcp_context *)(tcp->context))->socket_manager->interfaces[0].mtu;
+		struct routing_table *table = ((struct tcp_context *)(tcp->context))->routing_tbl;
+		struct route *route;
+		if (!get_route(table, packet->src_ip, route))
+			return TCP_UNROUTABLE_CONNECTION;
+
 		packet->tcp_options->mss =
-		    mtu - sizeof(struct ipv4_header) - sizeof(struct ethernet_header);
+		    route->mtu - sizeof(struct ipv4_header) - sizeof(struct tcp_header_no_options);
 	}
 	packet->tcp_options->sack_permitted = seg->options->sack_permitted;
 
-	/* ECHO IF PRESENT, encode received window scale in timestamp
-	packet->tcp_options->ts_present = true;
-	packet->tcp_options->tsecr = seg->options->tsval;
-
-	FIGURE OUT BUFFER SIZE => ADVERTISE APPROPRIATE SCALE
+	packet->tcp_options->ts_present = false;
 	packet->tcp_options->wscale_present = true;
-	*/
+	// FIGURE OUT BUFFER SIZE => ADVERTISE APPROPRIATE SCALE
+	packet->tcp_options->wscale = 1;
 
 	size_t options_len = tcp_options_length(packet->tcp_options);
 	packet->tcp_data_offset = ((sizeof(*seg->header) + options_len) / 4) << 4;
@@ -199,7 +199,7 @@ void init_reply_packet_from_incoming(struct pkt *pkt, const struct tcp_segment *
 	pkt->dest_port = ntohs(seg->header->src_port);
 	pkt->src_port = ntohs(seg->header->dest_port);
 
-	ipv4_address tmp;
+	ipv4_address_t tmp;
 	memcpy(tmp, pkt->dest_ip, IPV4_ADDR_LEN);
 	memcpy(pkt->dest_ip, pkt->src_ip, IPV4_ADDR_LEN);
 	memcpy(pkt->src_ip, tmp, IPV4_ADDR_LEN);

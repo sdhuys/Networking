@@ -23,7 +23,7 @@ void udp_release(void *s);
 bool udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_request req);
 int udp_read_rcv_buffer(void *s, size_t len, unsigned char *buff);
 int udp_read_rcv_buffer_from(
-    void *s, size_t len, unsigned char *buff, ipv4_address addr_out, uint16_t *port_out);
+    void *s, size_t len, unsigned char *buff, ipv4_address_t addr_out, uint16_t *port_out);
 void lock_socket(void *s);
 void unlock_socket(void *s);
 struct pkt *udp_next_snd_pkt(void *s);
@@ -34,7 +34,7 @@ typedef enum { UDP_LISTEN, UDP_CLOSED } udp_socket_state;
 
 struct udp_ipv4_socket {
 	uint16_t local_port;
-	ipv4_address local_addr;
+	ipv4_address_t local_addr;
 	struct pkt_ring_buffer *rcv_buffer; // stack writes, app consumes
 	struct pkt_ring_buffer *snd_buffer; // app writes, stack consumes
 	udp_socket_state state;

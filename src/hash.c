@@ -109,15 +109,15 @@ uint32_t hash_table(const void *data, size_t len)
 	return (uint32_t)(h ^ (h >> 32));
 }
 
-uint32_t hash_syncookie(ipv4_address local_addr,
-			ipv4_address extern_addr,
+uint32_t hash_syncookie(ipv4_address_t local_addr,
+			ipv4_address_t extern_addr,
 			uint16_t local_port,
 			uint16_t extern_port,
 			uint64_t time)
 {
 	struct {
-		ipv4_address local_addr;
-		ipv4_address remote_addr;
+		ipv4_address_t local_addr;
+		ipv4_address_t remote_addr;
 		uint16_t local_port;
 		uint16_t remote_port;
 		uint64_t time;

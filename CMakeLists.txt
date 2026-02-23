@@ -30,6 +30,7 @@ set(LIB_SOURCES
   src/icmp.c
   src/ipv4.c
   src/layer_router.c
+  src/nw_interface.c
   src/pkt_ring_buffer.c
   src/routing_table.c
   src/socket_manager.c

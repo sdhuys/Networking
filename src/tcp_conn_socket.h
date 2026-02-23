@@ -26,8 +26,8 @@ struct tcp_ipv4_conn {
 	struct byte_snd_buffer *snd_buffer;
 	struct timer rto_timer;
 
-	ipv4_address local_addr;
-	ipv4_address extern_addr;
+	ipv4_address_t local_addr;
+	ipv4_address_t extern_addr;
 	uint16_t local_port;
 	uint16_t extern_port;
 
@@ -64,9 +64,13 @@ struct tcp_ipv4_conn {
 	bool ack_pending; // signifies timer is running
 	struct timer del_ack_timer;
 	int8_t in_order_full_seg_count;
+
+	// route
+	struct route *route;
 };
 
-struct tcp_ipv4_conn *create_tcp_connection(struct tcp_segment *seg, uint32_t iss);
+struct tcp_ipv4_conn *create_tcp_connection(struct tcp_conn_id *id);
+void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *seg);
 void destroy_tcp_conn(struct tcp_ipv4_conn *connection);
 uint32_t generate_random_iss();
 pkt_result process_tcp_segment(struct tcp_segment *seg, struct tcp_ipv4_conn *connection);
