@@ -1,3 +1,3 @@
 #pragma once
 
-#define container_of(ptr, type, member) ((type *)((char *)(ptr) - offsetof(type, member)))
+#define CONTAINER_OF(ptr, type, member) ((type *)((char *)(ptr) - offsetof(type, member)))

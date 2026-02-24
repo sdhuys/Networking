@@ -147,8 +147,7 @@ struct nw_layer {
 struct interface_context {
 	struct nw_interface *interfaces;
 	size_t if_amount;
-	struct timer_min_heap *timers_heap;
-	int wake_fd; // eventfd to trigger polling to return early (when new timer added)
+	struct timer_manager *rx_timer_mgr; // rx thread timers (delayed ACKS, ARP timeouts, etc)
 };
 
 // ===== Ethernet Layer =====
@@ -278,6 +277,7 @@ struct stack {
 	struct nw_layer *udp_layer;
 	struct nw_layer *tcp_layer;
 	struct socket_manager *sock_manager;
+	struct timer_manager *tx_timer_mgr;
 	ipv4_address_t local_address;
 };
 

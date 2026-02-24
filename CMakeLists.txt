@@ -27,6 +27,7 @@ set(LIB_SOURCES
   src/constants.c
   src/ethernet.c
   src/hash.c
+  src/heap.c
   src/icmp.c
   src/ipv4.c
   src/layer_router.c
