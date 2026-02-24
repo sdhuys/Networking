@@ -1,4 +1,5 @@
 #pragma once
+#include "address_types.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -59,4 +60,11 @@ struct tcp_segment {
 	size_t options_len;
 	unsigned char *payload;
 	size_t payload_len;
+};
+
+struct tcp_conn_id {
+	uint16_t loc_port;
+	ipv4_address_t loc_addr;
+	uint16_t extern_port;
+	ipv4_address_t extern_addr;
 };

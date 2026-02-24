@@ -54,14 +54,16 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 	struct arp_table *arp_tbl = arp_cntxt->arp_table;
 	struct routing_table *route_tbl = ipv4_cntxt->routing_table;
 
-	// Find route
-	struct route *next_hop_route = NULL;
-	if (!get_route(route_tbl, packet->dest_ip, &next_hop_route)) {
-		// should relay ICMP Destination Unreachable to UDP or TCP
-		return IP_NO_ROUTE_FOUND;
+	// TCP connections store its own route and copy it to pkt metadata
+	// to avoid route lookups for every tcp segment sent out
+	if (!packet->route) {
+		if (!get_route(route_tbl, packet->dest_ip, &packet->route)) {
+			// should relay ICMP Destination Unreachable to UDP or TCP
+			return IP_NO_ROUTE_FOUND;
+		}
 	}
 
-	packet->if_index = next_hop_route->iface_id;
+	packet->if_index = packet->route->iface_id;
 
 	// Write header
 	struct ipv4_header *header = (struct ipv4_header *)(packet->data + packet->offset);
@@ -72,8 +74,8 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 	packet->len += sizeof(struct ethernet_header);
 
 	// Prepare MAC metadata for lower layer
-	unsigned char *next_hop = (next_hop_route->type == ROUTE_VIA)
-				      ? (unsigned char *)&next_hop_route->gateway
+	unsigned char *next_hop = (packet->route->type == ROUTE_VIA)
+				      ? (unsigned char *)&packet->route->gateway
 				      : packet->dest_ip;
 
 	struct arp_table_node *dest_ip_node = query_arp_table(arp_tbl, next_hop);

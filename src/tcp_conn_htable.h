@@ -15,13 +15,6 @@ struct tcp_ipv4_conn_htbl_node {
 	struct tcp_ipv4_conn_htbl_node *next;
 };
 
-struct tcp_conn_id {
-	uint16_t loc_port;
-	ipv4_address_t loc_addr;
-	uint16_t extern_port;
-	ipv4_address_t extern_addr;
-};
-
 bool add_to_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct tcp_ipv4_conn *conn);
 struct tcp_ipv4_conn *query_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable,
 					       struct tcp_conn_id id);

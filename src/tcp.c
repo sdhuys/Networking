@@ -98,7 +98,7 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 		// can include ECE, CWR
 		if ((header->flags & (TCP_SYN | TCP_ACK)) == TCP_SYN) {
 			// syn cookie open
-			if (lstnr->half_open_count >= lstnr->half_open_limit) {
+			if (true || lstnr->half_open_count >= lstnr->half_open_limit) {
 				pkt_result r = tcp_fast_reply_syn_cookie(self, lstnr, packet, &seg);
 				if (r == SENT)
 					return TCP_SYN_COOKIE_SENT;
@@ -139,12 +139,12 @@ pkt_result tcp_fast_reply_syn_cookie(struct nw_layer *tcp,
 	packet->tcp_options->mss_present = seg->options->mss_present;
 	if (seg->options->mss_present) {
 		struct routing_table *table = ((struct tcp_context *)(tcp->context))->routing_tbl;
-		struct route *route;
-		if (!get_route(table, packet->src_ip, route))
+
+		if (!get_route(table, packet->dest_ip, &packet->route))
 			return TCP_UNROUTABLE_CONNECTION;
 
 		packet->tcp_options->mss =
-		    route->mtu - sizeof(struct ipv4_header) - sizeof(struct tcp_header_no_options);
+		    packet->route->mtu - sizeof(struct ipv4_header) - sizeof(struct tcp_header_no_options);
 	}
 	packet->tcp_options->sack_permitted = seg->options->sack_permitted;
 
