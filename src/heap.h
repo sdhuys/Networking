@@ -1,7 +1,8 @@
 #pragma once
-#include <stdint.h>
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 #define NODE_NOT_IN_HEAP 0xFFFFFFFF
 #define HEAP_SIZE_DEFAULT 0xFFFF
@@ -12,9 +13,9 @@ struct heap_node {
 };
 
 struct min_heap {
-    struct heap_node **nodes; // array of pointers to nodes
-    size_t count;
-    size_t capacity;
+	struct heap_node **nodes; // array of pointers to nodes
+	size_t count;
+	size_t capacity;
 };
 
 struct min_heap *heap_create(uint16_t capacity);

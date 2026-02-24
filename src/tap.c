@@ -6,12 +6,12 @@ void start_listening(struct nw_layer *interface)
 	struct interface_context *interface_context =
 	    ((struct interface_context *)interface->context);
 	int fd = interface_context->interfaces[0].fd;
-	struct timer_min_heap *timers_heap = interface_context->timers_heap;
+	struct timer_manager *timer_mgr = interface_context->rx_timer_mgr;
 
 	for (;;) {
-		uint64_t timeout_ms = get_timeout(timers_heap);
+		uint64_t timeout_ms = get_timeout(timer_mgr);
 		struct pollfd pfd[2] = {{.fd = fd, .events = POLLIN},
-					{.fd = interface_context->wake_fd, .events = POLLIN}};
+					{.fd = timer_mgr->event_fd, .events = POLLIN}};
 
 		int poll_r = poll(pfd, 2, timeout_ms);
 
@@ -53,7 +53,7 @@ void start_listening(struct nw_layer *interface)
 				uint64_t x;
 				read(pfd[1].fd, &x, sizeof(x)); // drain eventfd
 			}
-			execute_exp_timers(timers_heap);
+			execute_exp_timers(timer_mgr);
 		}
 	}
 }

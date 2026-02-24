@@ -1,6 +1,5 @@
 #include "timer.h"
 #include "container_of.h"
-#include "heap.h"
 
 void execute_exp_timers(struct timer_manager *mgr)
 {
@@ -37,8 +36,8 @@ struct timer_manager *create_timer_manager()
 
 	int fd = eventfd(0, EFD_NONBLOCK);
 	if (fd < 0) {
-		free(mgr);
 		heap_destroy(mgr->timer_heap);
+		free(mgr);
 		return NULL;
 	}
 	mgr->event_fd = fd;

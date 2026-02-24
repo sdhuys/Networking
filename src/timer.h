@@ -1,4 +1,5 @@
 #pragma once
+#include "heap.h"
 #include "types.h"
 #include <limits.h>
 #include <stdbool.h>

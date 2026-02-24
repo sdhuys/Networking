@@ -15,7 +15,7 @@
 
 struct tcp_context {
 	struct socket_manager *socket_manager;
-	struct timer_min_heap *rx_timer_mgr;
+	struct timer_manager *rx_timer_mgr;
 	ipv4_address_t stack_ipv4_addr;
 	struct routing_table *routing_tbl;
 };
