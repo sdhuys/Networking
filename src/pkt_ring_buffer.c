@@ -17,6 +17,11 @@ bool write_to_pkt_buffer(struct pkt_ring_buffer *buff, struct pkt *packet)
 	return true;
 }
 
+bool pkt_buffer_empty(struct pkt_ring_buffer *buff)
+{
+	return buff->head == buff->tail;
+}
+
 struct pkt *read_pkt_buffer(struct pkt_ring_buffer *buff)
 {
 	pthread_mutex_lock(&buff->lock);

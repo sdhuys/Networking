@@ -17,11 +17,9 @@ void *stack_transmission_loop(void *arg)
 			if (!h.sock)
 				break;
 
-			struct pkt *pkt;
 			pkt_result res;
-
-			while ((pkt = h.ops->next_snd_pkt(h.sock)) != NULL) {
-				res = h.ops->send_pkt(stack, pkt);
+			while ((h.ops->snd_ready(h.sock))) {
+				res = h.ops->send_pkt(stack, h.sock);
 			}
 			printf("WORKER RESULT: %d", res);
 			release_socket_from_queue(h);

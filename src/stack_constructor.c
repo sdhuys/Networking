@@ -134,6 +134,7 @@ struct stack construct_stack(struct nw_interface *interfaces, size_t if_count)
 	struct stack stack = {.if_layer = interface,
 			      .tcp_layer = tcp,
 			      .udp_layer = udp,
+			      .icmp_layer = icmp,
 			      .sock_manager = socket_manager};
 	memcpy(stack.local_address, stack_ipv4_addr, IPV4_ADDR_LEN);
 	return stack;

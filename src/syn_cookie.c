@@ -1,4 +1,6 @@
 #include "syn_cookie.h"
+#include "tcp.h"
+#include "tcp_listener_socket.h"
 
 #define COOKIE_MSS_VAL_COUNT 4
 
@@ -16,9 +18,8 @@ uint32_t generate_syn_cookie_iss(struct tcp_ipv4_listener *listener,
 
 	// time in 64 seconds resolution
 	uint64_t time = now_s() >> 6;
-
 	uint32_t hash = hash_syncookie(
-	    listener->local_addr, p->src_ip, listener->local_port, seg->header->dest_port, time);
+	    listener->local_addr, p->src_ip, listener->local_port, seg->header->src_port, time);
 	// encoded in 5 bits
 	time &= 0x1F;
 
@@ -48,8 +49,7 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 				struct tcp_segment *seg,
 				struct pkt *p)
 {
-	uint32_t cookie = seg->header->ack_num - 1;
-
+	uint32_t cookie = ntohl(seg->header->ack_num) - 1;
 	// top 5 bits: t
 	// middle 3 bits: 2 bits encoded MSS, 1 bit sack_permitted
 	// bottom 24 bits: hash
@@ -86,8 +86,40 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	uint32_t mss = mss_decode(received_mss_idx_sack >> 1);
 	bool sack_permitted = received_mss_idx_sack & 1;
 
-	// create connection
-	// send ack
-	printf("\n\nSYN COOKIE ACK ESTABLISH CONNECTION!!! \n\n");
-	return NOT_IMPLEMENTED_YET;
+	struct tcp_conn_id id = {.loc_port = listener->local_port,
+				 .extern_port = seg->header->src_port};
+	memcpy(id.extern_addr, p->src_ip, IPV4_ADDR_LEN);
+	memcpy(id.loc_addr, listener->local_addr, IPV4_ADDR_LEN);
+
+	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, listener->tcp_layer);
+
+	// negotiated options
+	conn->sack_enabled = sack_permitted;
+	conn->snd_mss = mss;
+
+	// lost options/features
+	conn->ece_enabled = 0;
+	conn->ts_enabled = false;
+	conn->rcv_wscale = 0;
+	conn->snd_wscale = 0;
+
+	struct routing_table *table =
+	    ((struct tcp_context *)(listener->tcp_layer->context))->routing_tbl;
+	get_route(table, conn->extern_addr, &conn->route);
+
+	conn->rcv_mss =
+	    conn->route->mtu - sizeof(struct ipv4_header) - sizeof(struct tcp_header_no_options);
+
+	conn->cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
+
+	conn->iss = cookie;
+	conn->irs = seg->header->seq_num - 1; // -1 to account for original SYN
+	conn->rcv_buffer->rcv_nxt = seg->header->seq_num + seg_seq_len(seg);
+	conn->snd_buffer->snd_nxt = cookie + 1;
+	conn->snd_buffer->snd_una = cookie + 1;
+
+	conn->state = ESTABLISHED;
+	// ADD TO LISTENER READY Q!!!!
+	printf("MSS: %u, CWND: %u \n", conn->snd_mss, conn->cwnd);
+	return TCP_SYN_COOKIE_CONN_CREATED;
 }

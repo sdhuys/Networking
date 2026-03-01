@@ -77,7 +77,7 @@ void heap_remove(struct min_heap *h, struct heap_node *node)
 
 	uint32_t last = --h->count;
 	node->index = NODE_NOT_IN_HEAP;
-	
+
 	if (i == last)
 		return; // removed last item, heap still instact
 
@@ -108,7 +108,7 @@ bool heap_push(struct min_heap *h, struct heap_node *node, uint64_t priority)
 {
 	if (h->count == h->capacity || node->index != NODE_NOT_IN_HEAP)
 		return false;
-		
+
 	node->priority = priority;
 	node->index = h->count;
 	h->nodes[h->count++] = node;
@@ -129,8 +129,8 @@ struct heap_node *heap_pop(struct min_heap *h)
 
 struct heap_node *heap_peek(struct min_heap *h)
 {
-    if (h->count == 0)
-        return NULL;
-    
-    return h->nodes[0];
+	if (h->count == 0)
+		return NULL;
+
+	return h->nodes[0];
 }

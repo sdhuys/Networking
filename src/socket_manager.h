@@ -30,8 +30,8 @@ struct socket_ops {
 	void (*unlock)(void *sock);
 	void (*lock)(void *sock);
 
-	struct pkt *(*next_snd_pkt)(void *);
-	pkt_result (*send_pkt)(struct stack *, struct pkt *);
+	bool (*snd_ready)(void *sock);
+	pkt_result (*send_pkt)(struct stack *stack, void *sock);
 
 	void (*close)(struct stack *stack, void *sock);
 };

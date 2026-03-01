@@ -11,7 +11,7 @@ const struct socket_ops udp_socket_ops = {.is_snd_queued = udp_is_snd_queued,
 					  .read_rcv_buffer_from = udp_read_rcv_buffer_from,
 					  .unlock = unlock_socket,
 					  .lock = lock_socket,
-					  .next_snd_pkt = udp_next_snd_pkt,
+					  .snd_ready = udp_send_ready,
 					  .send_pkt = udp_send_pkt,
 					  .close = udp_close_sock};
 
@@ -132,7 +132,7 @@ bool udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_request r
 	memcpy(packet->dest_ip, req.dest_ip, IPV4_ADDR_LEN);
 	packet->dest_port = req.dest_port;
 	packet->src_port = socket->local_port;
-	packet->offset = MAX_ETH_FRAME_SIZE - req.len;
+	packet->offset = PKT_SIZE - req.len;
 	packet->protocol = P_UDP;
 	memcpy((packet->data + packet->offset), req.data, req.len);
 	packet->len += sizeof(struct udp_header);
@@ -185,15 +185,23 @@ void unlock_socket(void *s)
 	pthread_mutex_unlock(&socket->lock);
 }
 
-struct pkt *udp_next_snd_pkt(void *s)
+bool udp_send_ready(void *s)
 {
 	struct udp_ipv4_socket *sock = s;
-	return read_pkt_buffer(sock->snd_buffer);
+	if (pkt_buffer_empty(sock->snd_buffer))
+		return false;
+	return true;
 }
 
-pkt_result udp_send_pkt(struct stack *stack, struct pkt *pkt)
+pkt_result udp_send_pkt(struct stack *stack, void *s)
 {
-	return stack->udp_layer->send_down(stack->udp_layer, pkt);
+	struct udp_ipv4_socket *sock = s;
+	struct pkt *p = read_pkt_buffer(sock->snd_buffer);
+	if (!p) {
+		printf("TRYING TO SEND WHEN NOTHING TO SEND, SHOULD NOT HAPPEN! \n");
+		abort();
+	}
+	return stack->udp_layer->send_down(stack->udp_layer, p);
 }
 
 void udp_close_sock(struct stack *stack, void *s)

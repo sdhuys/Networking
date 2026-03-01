@@ -12,26 +12,28 @@ const struct socket_ops tcp_listener_ops = {.is_snd_queued = NULL,
 					    .read_rcv_buffer = NULL,
 					    .unlock = tcp_unlock_listener,
 					    .lock = tcp_lock_listener,
-					    .next_snd_pkt = NULL,
+					    .snd_ready = NULL,
 					    .send_pkt = NULL,
 					    .close = tcp_close_listener};
 
-pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lis,
+pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lstnr,
 					  struct pkt *pkt,
 					  struct tcp_segment *seg)
 {
-	struct tcp_conn_id id = {.loc_port = lis->local_port,
-				 .extern_port = seg->header->dest_port};
+	struct tcp_conn_id id = {.loc_port = lstnr->local_port,
+				 .extern_port = ntohs(seg->header->src_port)};
 	memcpy(id.extern_addr, pkt->src_ip, IPV4_ADDR_LEN);
 	memcpy(id.loc_addr, pkt->dest_ip, IPV4_ADDR_LEN);
 
-	struct tcp_ipv4_conn *conn = create_tcp_connection(&id);
+	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, lstnr->tcp_layer);
 	if (conn == NULL)
 		return TCP_CONN_CREATION_ERROR;
+	conn->lstnr = lstnr;
 	server_init_tcp_connection(conn, seg);
-	add_to_tcp_conn_hashtable(lis->half_opens, conn);
+	add_to_tcp_conn_hashtable(lstnr->half_opens, conn);
 
-	// send SYN ACK
+	tcp_transition_to_state(conn, SYN_RECEIVED);
+	tcp_syn_to_snd_buff(conn);
 	return SYN_ACK_TO_SND_BUFFER;
 }
 
@@ -59,6 +61,7 @@ struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack
 	memcpy(listener->local_addr, stack->local_address, IPV4_ADDR_LEN);
 	listener->state = TCP_LIS_LISTEN;
 	pthread_mutex_init(&listener->lock, NULL);
+	listener->tcp_layer = stack->tcp_layer;
 	return listener;
 }
 
@@ -140,7 +143,7 @@ void destroy_ready_q(struct tcp_ipv4_conn_q *q)
 	struct tcp_ipv4_conn_q_node *node = q->head;
 	while (node) {
 		struct tcp_ipv4_conn_q_node *next = node->next;
-		destroy_tcp_conn(node->conn);
+		release_tcp_conn(node->conn);
 		free(node);
 		node = next;
 	}

@@ -26,8 +26,8 @@ int udp_read_rcv_buffer_from(
     void *s, size_t len, unsigned char *buff, ipv4_address_t addr_out, uint16_t *port_out);
 void lock_socket(void *s);
 void unlock_socket(void *s);
-struct pkt *udp_next_snd_pkt(void *s);
-pkt_result udp_send_pkt(struct stack *stack, struct pkt *pkt);
+bool udp_send_ready(void *s);
+pkt_result udp_send_pkt(struct stack *stack, void *s);
 void udp_close_sock(struct stack *stack, void *s);
 
 typedef enum { UDP_LISTEN, UDP_CLOSED } udp_socket_state;

@@ -1,7 +1,7 @@
 #include "buffer_pool.h"
 #include <stdio.h>
 
-alignas(64) static unsigned char buffer_pool[PKT_BUFF_POOL_SIZE][MAX_ETH_FRAME_SIZE];
+alignas(64) static unsigned char buffer_pool[PKT_BUFF_POOL_SIZE][PKT_SIZE];
 static struct pkt pkt_pool[PKT_BUFF_POOL_SIZE];
 static struct pkt *free_pkt_stack[PKT_BUFF_POOL_SIZE];
 static int top_free_index;

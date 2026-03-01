@@ -22,7 +22,7 @@ bool add_to_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct tcp_i
 		}
 		node = node->next;
 	}
-
+	retain_tcp_conn(conn);
 	struct tcp_ipv4_conn_htbl_node *new_node = malloc(sizeof(struct tcp_ipv4_conn_htbl_node));
 	if (new_node == NULL)
 		return false;
@@ -31,10 +31,11 @@ bool add_to_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct tcp_i
 	new_node->next = htable->buckets[hash];
 	htable->buckets[hash] = new_node;
 	pthread_mutex_unlock(&htable->bucket_locks[hash]);
+	conn->htable = htable;
 	return true;
 }
 
-// does not check state (different hashtables, each different state requirements!)
+// does not check state, caller's job (different hashtables, each different state requirements!)
 struct tcp_ipv4_conn *query_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable,
 					       struct tcp_conn_id id)
 {
@@ -45,8 +46,8 @@ struct tcp_ipv4_conn *query_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htab
 
 	while (bucket_node != NULL) {
 		struct tcp_ipv4_conn *conn = bucket_node->conn;
-
 		if (is_tcp_conn_match(conn, id)) {
+			retain_tcp_conn(conn);
 			pthread_mutex_unlock(lock);
 			return bucket_node->conn;
 		}
@@ -59,6 +60,9 @@ struct tcp_ipv4_conn *query_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htab
 // does not change state (different hashtables, each different state requirements!)
 bool remove_from_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct tcp_ipv4_conn *conn)
 {
+	if (!htable)
+		return false;
+
 	struct tcp_conn_id id = {.extern_port = conn->extern_port, .loc_port = conn->local_port};
 	memcpy(id.extern_addr, conn->extern_addr, IPV4_ADDR_LEN);
 	memcpy(id.loc_addr, conn->local_addr, IPV4_ADDR_LEN);
@@ -76,14 +80,10 @@ bool remove_from_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct 
 			else
 				htable->buckets[hash] = node->next;
 
-			/*
-				    pthread_mutex_lock(&conn->lock);
-				    conn->state = TCP_CLOSED;
-				    pthread_mutex_unlock(&conn->lock);
-			*/
-
+			release_tcp_conn(conn);
 			free(node);
 			pthread_mutex_unlock(lock);
+			conn->htable = NULL;
 			return true;
 		}
 		prev = node;

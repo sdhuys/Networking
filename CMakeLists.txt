@@ -32,6 +32,7 @@ set(LIB_SOURCES
   src/ipv4.c
   src/layer_router.c
   src/nw_interface.c
+  src/ping_test.c
   src/pkt_ring_buffer.c
   src/routing_table.c
   src/socket_manager.c
@@ -46,10 +47,13 @@ set(LIB_SOURCES
   src/tcp_listener_htable.c
   src/tcp_listener_socket.c
   src/tcp_options.c
+  src/tcp_segment.c
   src/timer.c
+  src/time_now.c
   src/udp.c
   src/udp_hashtable.c
   src/udp_socket.c
+  src/window_helpers.c
 )
 
 # Main executable source files

@@ -1,10 +1,12 @@
 #pragma once
 #include "heap.h"
+#include "time_now.h"
 #include "types.h"
 #include <limits.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <sys/eventfd.h>
+#include <time.h>
 #include <unistd.h>
 
 struct timer *create_timer(void (*callback)(void *), void *args);
@@ -14,9 +16,6 @@ struct timer_manager *create_timer_manager();
 bool start_timer(struct timer_manager *mgr, struct timer *timer, uint64_t duration_ms);
 void cancel_timer(struct timer_manager *mgr, struct timer *timer);
 int get_timeout(struct timer_manager *mgr);
-
-uint64_t now_ms();
-uint64_t now_s();
 
 struct timer {
 	void (*callback)(void *);

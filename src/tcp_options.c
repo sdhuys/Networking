@@ -1,4 +1,5 @@
 #include "tcp_options.h"
+#include "tcp_conn_socket.h"
 #include <arpa/inet.h>
 
 #define TCP_OPT_EOL 0
@@ -19,8 +20,8 @@ bool parse_tcp_options(const unsigned char *opts, int opt_len, struct tcp_option
 	if (!opts || !out || opt_len > 40)
 		return false;
 
-	out->length = opt_len;
 	memset(out, 0, sizeof(*out));
+	out->length = opt_len;
 
 	while (i < opt_len) {
 		uint8_t kind = opts[i];
@@ -80,8 +81,8 @@ bool parse_tcp_options(const unsigned char *opts, int opt_len, struct tcp_option
 					uint32_t l, r;
 					memcpy(&l, &opts[i + 2 + (b * 8)], 4);
 					memcpy(&r, &opts[i + 6 + (b * 8)], 4);
-					out->sacks[b].left = ntohl(l);
-					out->sacks[b].right = ntohl(r);
+					out->sacks[b].start_seq = ntohl(l);
+					out->sacks[b].end_seq = ntohl(r);
 				}
 			}
 			break;
@@ -107,7 +108,7 @@ bool parse_tcp_options(const unsigned char *opts, int opt_len, struct tcp_option
 	return true;
 }
 
-size_t tcp_options_length(struct tcp_options *opt)
+size_t calc_tcp_options_len(struct tcp_options *opt)
 {
 	size_t len = 0;
 
@@ -193,8 +194,8 @@ size_t tcp_serialize_options(unsigned char *buf, uint8_t len, const struct tcp_o
 			*p++ = TCP_OPT_SACK;
 			*p++ = len;
 			for (int i = 0; i < n; i++) {
-				uint32_t left = htonl(opt->sacks[i].left);
-				uint32_t right = htonl(opt->sacks[i].right);
+				uint32_t left = htonl(opt->sacks[i].start_seq);
+				uint32_t right = htonl(opt->sacks[i].end_seq);
 				memcpy(p, &left, 4);
 				p += 4;
 				memcpy(p, &right, 4);

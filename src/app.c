@@ -3,7 +3,7 @@
 
 void start_app(struct stack *stack)
 {
-	int udp_9000 = open_listener(stack, SOCK_TCP, 9000);
+	int udp_9000 = open_listener(stack, SOCK_UDP, 9000);
 	int udp_9001 = open_listener(stack, SOCK_TCP, 9001);
 	printf("FD 9000: %d \n", udp_9000);
 	printf("FD 9001: %d \n", udp_9001);

@@ -5,6 +5,11 @@ pkt_result send_tcp_down(struct nw_layer *self, struct pkt *packet)
 	struct tcp_header_no_options *header =
 	    (struct tcp_header_no_options *)(packet->data + packet->offset);
 
+	// write timestamp here so we don't include time packet was in TX queue
+	// still incorrectly times ARP resolution time (write value at ETH layer?)
+	if (packet->tcp_options->ts_present) {
+		packet->tcp_options->tsval = now_ms_32();
+	}
 	if (packet->tcp_options->length > 0) {
 		unsigned char *opt_buff = (unsigned char *)(header) + sizeof(*header);
 		tcp_serialize_options(opt_buff, packet->tcp_options->length, packet->tcp_options);
@@ -34,7 +39,7 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 	    (struct tcp_header_no_options *)(packet->data + packet->offset);
 
 	size_t tcp_header_len = (header->data_offset >> 4) * 4; // in bytes
-	if (tcp_header_len < 20 || tcp_header_len > packet->len)
+	if (tcp_header_len < sizeof(struct tcp_header_no_options) || tcp_header_len > packet->len)
 		return TCP_HEADER_MALFORMED;
 
 	if (bogus_flags_any(header->flags))
@@ -68,19 +73,20 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 	struct tcp_conn_id id = {.extern_port = packet->src_port, .loc_port = packet->dest_port};
 	memcpy(id.extern_addr, packet->src_ip, IPV4_ADDR_LEN);
 	memcpy(id.loc_addr, packet->dest_ip, IPV4_ADDR_LEN);
-	// query established connections (also includes half-opens app started as client)
-	struct tcp_ipv4_conn *conn = query_tcp_conn_hashtable(mgr->tcp_ipv4_conn_htable, id);
 
+	// query established connections (incl half-opens app started as client => not tied
+	// to listener)
+	struct tcp_ipv4_conn *conn = query_tcp_conn_hashtable(mgr->tcp_ipv4_conn_htable, id);
 	// if not established, try time_wait connections
-	if (conn == NULL) {
+	if (conn == NULL)
 		conn = query_tcp_conn_hashtable(mgr->tcp_ipv4_conn_time_wait_htable, id);
-	}
+
 	if (conn != NULL) {
-		pkt_result r = process_tcp_segment(&seg, conn);
-		if (r == TCP_SEQ_OUT_OF_WNDW_RANGE_RST)
-			tcp_fast_reply_rst(self, conn, packet, &seg);
+		pkt_result r = process_tcp_segment(packet, &seg, conn);
+		release_tcp_conn(conn);
 		return r;
 	}
+
 	// if neither, find listener
 	struct tcp_ipv4_listener *lstnr = query_tcp_listener_hashtable(
 	    mgr->tcp_ipv4_listener_htable, packet->dest_port, packet->dest_ip);
@@ -88,9 +94,11 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 	if (lstnr != NULL) {
 		// find half-open connection
 		conn = query_tcp_conn_hashtable(lstnr->half_opens, id);
-		// only ACK's are relevant for half-open connections
-		if (conn != NULL && header->flags & TCP_ACK) {
-			return half_open_check_ack(&seg, conn, lstnr);
+		if (conn != NULL) {
+			pkt_result r = process_tcp_segment(packet, &seg, conn);
+			release_tcp_conn(conn);
+			release_tcp_listener(lstnr);
+			return r;
 		}
 
 		// NO TCP_CONNECTION_SOCKET OBJECT EXISTS YET:
@@ -98,44 +106,49 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 		// can include ECE, CWR
 		if ((header->flags & (TCP_SYN | TCP_ACK)) == TCP_SYN) {
 			// syn cookie open
-			if (true || lstnr->half_open_count >= lstnr->half_open_limit) {
-				pkt_result r = tcp_fast_reply_syn_cookie(self, lstnr, packet, &seg);
+			if (lstnr->half_open_count >= lstnr->half_open_limit) {
+				pkt_result r = tcp_fast_reply_syn_cookie(lstnr, packet, &seg);
+				release_tcp_listener(lstnr);
 				if (r == SENT)
 					return TCP_SYN_COOKIE_SENT;
 				return r;
 			}
 			// regular open
-			return tcp_server_open_new_connection(lstnr, packet, &seg);
+			pkt_result r = tcp_server_open_new_connection(lstnr, packet, &seg);
+			release_tcp_listener(lstnr);
+			return r;
 		}
 
 		// if ACK, check for valid SYN cookie
 		if (header->flags & TCP_ACK) {
-			return syn_cookie_check_ack(lstnr, &seg, packet);
+			pkt_result r = syn_cookie_check_ack(lstnr, &seg, packet);
+			release_tcp_listener(lstnr);
+			return r;
 		}
 	}
 
-	// no connection, not a listener SYN
+	// no connection, not a listener SYN, nor RST
 	if ((header->flags & TCP_RST) == 0) {
-		tcp_fast_reply_rst(self, NULL, packet, &seg);
+		tcp_fast_reply_rst(self, packet, &seg);
 	}
 	return TCP_NO_CONNECTION;
 }
 
 // fast SYN ACK reply bypassing send buffer
-pkt_result tcp_fast_reply_syn_cookie(struct nw_layer *tcp,
-				     struct tcp_ipv4_listener *listener,
+pkt_result tcp_fast_reply_syn_cookie(struct tcp_ipv4_listener *listener,
 				     struct pkt *packet,
 				     struct tcp_segment *seg)
 {
+	struct nw_layer *tcp = listener->tcp_layer;
 	packet->tcp_seq = generate_syn_cookie_iss(listener, seg, packet);
 	uint32_t incoming_seq = ntohl(seg->header->seq_num);
 
 	init_reply_packet_from_incoming(packet, seg);
 	packet->tcp_flags = TCP_SYN | TCP_ACK;
-	packet->tcp_ack = incoming_seq + seg_len(seg);
-	packet->rcv_window = 65535;
+	packet->tcp_ack = incoming_seq + seg_seq_len(seg);
+	packet->rcv_window = 0xFFFF;
 
-	// options, MSS and SACK encoded in cookie, can safely negotiate
+	// options: MSS and SACK encoded in cookie, can safely negotiate
 	packet->tcp_options->mss_present = seg->options->mss_present;
 	if (seg->options->mss_present) {
 		struct routing_table *table = ((struct tcp_context *)(tcp->context))->routing_tbl;
@@ -143,29 +156,25 @@ pkt_result tcp_fast_reply_syn_cookie(struct nw_layer *tcp,
 		if (!get_route(table, packet->dest_ip, &packet->route))
 			return TCP_UNROUTABLE_CONNECTION;
 
-		packet->tcp_options->mss =
-		    packet->route->mtu - sizeof(struct ipv4_header) - sizeof(struct tcp_header_no_options);
+		packet->tcp_options->mss = packet->route->mtu - sizeof(struct ipv4_header) -
+					   sizeof(struct tcp_header_no_options);
 	}
 	packet->tcp_options->sack_permitted = seg->options->sack_permitted;
 
+	// wscale and timestamps lost
+	packet->tcp_options->wscale_present = false;
 	packet->tcp_options->ts_present = false;
-	packet->tcp_options->wscale_present = true;
-	// FIGURE OUT BUFFER SIZE => ADVERTISE APPROPRIATE SCALE
-	packet->tcp_options->wscale = 1;
 
-	size_t options_len = tcp_options_length(packet->tcp_options);
+	size_t options_len = calc_tcp_options_len(packet->tcp_options);
 	packet->tcp_data_offset = ((sizeof(*seg->header) + options_len) / 4) << 4;
 	packet->len = sizeof(*seg->header) + options_len;
-	packet->offset = MAX_ETH_FRAME_SIZE - packet->len;
+	packet->offset = PKT_SIZE - packet->len;
 	printf("SENDING SYN COOKIE DOWN \n");
 	return tcp->send_down(tcp, packet);
 }
 
-// fast RST reply bypassing send buffer
-pkt_result tcp_fast_reply_rst(struct nw_layer *tcp,
-			      struct tcp_ipv4_conn *conn,
-			      struct pkt *packet,
-			      struct tcp_segment *seg)
+// fast send RST reply bypassing send buffer
+pkt_result tcp_fast_reply_rst(struct nw_layer *tcp, struct pkt *packet, struct tcp_segment *seg)
 {
 	uint32_t incoming_seq = ntohl(seg->header->seq_num);
 	uint32_t incoming_ack = ntohl(seg->header->ack_num);
@@ -175,7 +184,7 @@ pkt_result tcp_fast_reply_rst(struct nw_layer *tcp,
 
 	packet->tcp_data_offset = (sizeof(*seg->header) / 4) << 4;
 	packet->len = sizeof(*seg->header);
-	packet->offset = MAX_ETH_FRAME_SIZE - sizeof(*seg->header);
+	packet->offset = PKT_SIZE - sizeof(*seg->header);
 
 	if (seg->header->flags & TCP_ACK) {
 		packet->tcp_flags = TCP_RST;
@@ -184,16 +193,13 @@ pkt_result tcp_fast_reply_rst(struct nw_layer *tcp,
 	} else {
 		packet->tcp_flags = TCP_RST | TCP_ACK;
 		packet->tcp_seq = 0;
-		packet->tcp_ack = incoming_seq + seg_len(seg);
+		packet->tcp_ack = incoming_seq + seg_seq_len(seg);
 	}
-
-	if (conn != NULL)
-		destroy_tcp_conn(conn);
 
 	return tcp->send_down(tcp, packet);
 }
 
-// recycle incoming packet for a quick reply (not going through global TX q)
+// recycle incoming packet
 void init_reply_packet_from_incoming(struct pkt *pkt, const struct tcp_segment *seg)
 {
 	pkt->dest_port = ntohs(seg->header->src_port);

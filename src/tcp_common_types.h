@@ -29,9 +29,9 @@ struct tcp_header_no_options {
 	uint16_t urg_ptr;
 } __attribute__((packed));
 
-struct sack_block {
-	uint32_t left;
-	uint32_t right;
+struct ooo_seg {
+	uint32_t start_seq;
+	uint32_t end_seq;
 };
 
 struct tcp_options {
@@ -44,7 +44,7 @@ struct tcp_options {
 	bool sack_permitted;
 
 	int sack_block_count;
-	struct sack_block sacks[MAX_SACK_BLOCKS];
+	struct ooo_seg sacks[MAX_SACK_BLOCKS];
 
 	bool ts_present;
 	uint32_t tsval;
@@ -54,17 +54,30 @@ struct tcp_options {
 	uint8_t length;
 };
 
-struct tcp_segment {
-	struct tcp_header_no_options *header;
-	struct tcp_options *options;
-	size_t options_len;
-	unsigned char *payload;
-	size_t payload_len;
-};
-
 struct tcp_conn_id {
 	uint16_t loc_port;
 	ipv4_address_t loc_addr;
 	uint16_t extern_port;
 	ipv4_address_t extern_addr;
 };
+
+// 32-bit TCP sequence number comparisons
+static inline bool tcp_seq_before(uint32_t a, uint32_t b)
+{
+	return (int32_t)(a - b) < 0;
+}
+
+static inline bool tcp_seq_after(uint32_t a, uint32_t b)
+{
+	return tcp_seq_before(b, a);
+}
+
+static inline bool tcp_seq_before_eq(uint32_t a, uint32_t b)
+{
+	return !tcp_seq_after(a, b);
+}
+
+static inline bool tcp_seq_after_eq(uint32_t a, uint32_t b)
+{
+	return !tcp_seq_before(a, b);
+}

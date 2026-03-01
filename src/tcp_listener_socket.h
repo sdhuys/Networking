@@ -2,6 +2,7 @@
 #include "address_types.h"
 #include "hash.h"
 #include "socket_manager.h"
+#include "tcp.h"
 #include "tcp_conn_htable.h"
 #include "tcp_conn_socket.h"
 #include "tcp_listener_htable.h"
@@ -26,6 +27,7 @@ struct tcp_ipv4_listener {
 	struct tcp_ipv4_conn_q *ready_q;
 
 	uint32_t ref_count;
+	struct nw_layer *tcp_layer;
 };
 
 struct tcp_ipv4_conn_q_node {

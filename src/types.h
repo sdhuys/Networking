@@ -21,6 +21,8 @@
 #define ARP_REPLY 2
 
 #define MAX_ETH_FRAME_SIZE 1518 // not supporting vlan tagged frames
+#define ALIGN_PADDING ((MAX_ETH_FRAME_SIZE / 64) + 1) * 64
+#define PKT_SIZE MAX_ETH_FRAME_SIZE + ALIGN_PADDING
 
 #define IPV4 0x0800
 #define ARP 0x0806
@@ -30,10 +32,6 @@
 #define P_ICMP 1
 #define P_TCP 6
 #define P_UDP 17
-
-#define ECHO_REPLY 0
-#define DESTINATION_UNREACHABLE 3
-#define ECHO_REQUEST 8
 
 #define IF_NAME "interface"
 #define ETH_NAME "ethernet"
@@ -55,7 +53,8 @@ typedef enum {
 	PACKET_QUEUED = 26,
 	UDP_WRITTEN_TO_RCV_BUFF = 40,
 	TCP_SYN_COOKIE_SENT = 45,
-	SYN_ACK_TO_SND_BUFFER = 46,
+	TCP_SYN_COOKIE_CONN_CREATED = 46,
+	SYN_ACK_TO_SND_BUFFER = 47,
 
 	ICMP_ECHO_REPLY_RCVD = 35,
 
@@ -85,13 +84,15 @@ typedef enum {
 	TCP_BOGUS_FLAGS = -412,
 	TCP_CHECKSUM_ERROR = -413,
 	TCP_OPTIONS_MALFORMED = -414,
-	TCP_SEQ_DUPLICATE = -415,
-	TCP_SEQ_OUT_OF_WNDW_RANGE_RST = -416,
+	TCP_SEG_DUPLICATE = -415,
+	TCP_SEG_OUT_OF_WNDW_RANGE = -416,
 	TCP_NO_CONNECTION = -417,
 	TCP_CONN_CREATION_ERROR = -418,
 	TCP_SYN_COOKIE_EXPIRED = -419,
 	TCP_SYN_COOKIE_INVALID = -420,
-	TCP_UNROUTABLE_CONNECTION = -421,
+	INC_RST_CONN_DEAD = -421,
+
+	TCP_UNROUTABLE_CONNECTION = -430,
 	RING_BUFFER_FULL = -501,
 
 	LAYER_NAME_NOT_FOUND = -2,
@@ -124,7 +125,7 @@ struct pkt {
 	uint32_t tcp_seq;
 	uint32_t tcp_ack;
 	uint8_t tcp_flags;
-	uint8_t tcp_data_offset; // (4bits) number of words in header (5 = no options)
+	uint8_t tcp_data_offset; // (top 4bits) number of 32bit words in header (5 = no options)
 	uint16_t rcv_window;
 	struct tcp_options *tcp_options;
 	struct route *route;
@@ -239,17 +240,6 @@ struct ipv4_pseudo_header {
 	uint16_t len;
 } __attribute__((packed));
 
-// ICMP LAYER
-struct icmp_context {
-};
-
-struct icmp_header {
-	unsigned char type;
-	unsigned char code;
-	uint16_t checksum;
-	uint32_t var_rest_of_header;
-} __attribute__((packed));
-
 //// TRANSPORT LAYERS ////
 
 // UDP LAYER
@@ -276,6 +266,7 @@ struct stack {
 	struct nw_layer *if_layer;
 	struct nw_layer *udp_layer;
 	struct nw_layer *tcp_layer;
+	struct nw_layer *icmp_layer;
 	struct socket_manager *sock_manager;
 	struct timer_manager *tx_timer_mgr;
 	ipv4_address_t local_address;

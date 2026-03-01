@@ -46,21 +46,24 @@ struct timer_manager *create_timer_manager()
 }
 
 // (re)start
-bool start_timer(struct timer_manager *mgr, struct timer *timer, uint64_t expiry)
+bool start_timer(struct timer_manager *mgr, struct timer *timer, uint64_t delay_ms)
 {
 	struct min_heap *h = mgr->timer_heap;
 	if (h == NULL)
 		return false;
 
+	uint32_t expiry = now_ms() + delay_ms;
 	if (timer->node.index == NODE_NOT_IN_HEAP) {
 		if (!heap_push(h, &timer->node, expiry))
 			return false;
 	} else
 		heap_update(h, &timer->node, expiry);
 
-	// trigger event, in case this new timer will be the new time_out value for polling!
-	uint64_t x = 1;
-	write(mgr->event_fd, &x, sizeof(x));
+	// newly added timer is first of the heap to time out => trigger polling return to update
+	if ((uint32_t)get_timeout(mgr) > expiry) {
+		uint64_t x = 1;
+		write(mgr->event_fd, &x, sizeof(x));
+	}
 	return true;
 }
 
@@ -100,18 +103,4 @@ void cancel_timer(struct timer_manager *mgr, struct timer *timer)
 {
 	struct min_heap *h = mgr->timer_heap;
 	heap_remove(h, &timer->node);
-}
-
-uint64_t now_ms()
-{
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-}
-
-uint64_t now_s()
-{
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return ts.tv_sec;
 }

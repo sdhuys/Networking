@@ -1,9 +1,24 @@
 #pragma once
+#include "address_types.h"
 #include "checksum.h"
 #include "layer_router.h"
-#include "types.h"
 #include <arpa/inet.h>
 #include <sys/types.h>
+
+#define ECHO_REPLY 0
+#define DESTINATION_UNREACHABLE 3
+#define ECHO_REQUEST 8
+
+// ICMP LAYER
+struct icmp_context {
+};
+
+struct icmp_header {
+	unsigned char type;
+	unsigned char code;
+	uint16_t checksum;
+	uint32_t var_rest_of_header;
+} __attribute__((packed));
 
 #ifdef __cplusplus
 extern "C" {

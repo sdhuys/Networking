@@ -105,9 +105,6 @@ void write_ipv4_header(struct ipv4_header *header, struct pkt *packet)
 	header->protocol = packet->protocol;
 	header->header_checksum = 0;
 	header->header_checksum = calc_ipv4_checksum(header, IPV4_HEADER_NO_OPTIONS_LEN);
-	// Because we're using a TAP device, we set source as stack's ip instead of interface's
-	// ip
-	// otherwise the stack never receives any replies
 	memcpy(header->src_ip, packet->src_ip, IPV4_ADDR_LEN);
 	memcpy(header->dest_ip, packet->dest_ip, IPV4_ADDR_LEN);
 }

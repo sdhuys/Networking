@@ -35,20 +35,28 @@ struct udp_ipv4_socket *query_udp_hashtable(struct udp_ipv4_sckt_htable *htable,
 					    ipv4_address_t addr)
 {
 	uint32_t hash = calc_udp_hash(port, addr, htable);
-	pthread_mutex_t *lock = &(htable->bucket_locks[hash]);
-	pthread_mutex_lock(lock);
+	pthread_mutex_t *bucket_lock = &(htable->bucket_locks[hash]);
+	pthread_mutex_lock(bucket_lock);
 	struct udp_ipv4_sckt_htable_node *bucket_node = htable->buckets[hash];
 
 	while (bucket_node != NULL) {
 		struct udp_ipv4_socket *socket = bucket_node->socket;
-		if (socket->local_port == port && socket->state != UDP_CLOSED) {
+		if (socket->local_port == port) {
 			retain_udp_socket(socket);
-			pthread_mutex_unlock(lock);
-			return bucket_node->socket;
+			pthread_mutex_lock(&socket->lock);
+
+			if (socket->state != UDP_CLOSED) {
+				pthread_mutex_unlock(&socket->lock);
+				pthread_mutex_unlock(bucket_lock);
+				return bucket_node->socket;
+			} else {
+				pthread_mutex_unlock(&socket->lock);
+				release_udp_socket(socket);
+			}
 		}
 		bucket_node = bucket_node->next;
 	}
-	pthread_mutex_unlock(lock);
+	pthread_mutex_unlock(bucket_lock);
 	return NULL;
 }
 

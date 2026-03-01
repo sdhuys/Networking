@@ -12,7 +12,11 @@ pkt_result receive_icmp_up(struct nw_layer *self, struct pkt *packet)
 {
 	struct icmp_header *header = (struct icmp_header *)(packet->data + packet->offset);
 	struct checksum_chunk chunk = {.data = header, .len = packet->len};
-	if (calc_checksum(&chunk, 1) != 0)
+
+	uint16_t checksum = calc_checksum(&chunk, 1);
+
+	// allow 0 instead of 0xFFFF
+	if (!(checksum == 0xFFFF && header->checksum == 0) && calc_checksum(&chunk, 1) != 0)
 		return ICMP_CHECKSUM_ERROR;
 
 	switch (header->type) {

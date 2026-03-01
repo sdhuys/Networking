@@ -1,12 +1,25 @@
 #pragma once
 #include "byte_ring_buffers.h"
 #include "pkt_ring_buffer.h"
+#include "socket_manager.h"
 #include "tcp_common_types.h"
+#include "tcp_segment.h"
 #include "timer.h"
+#include "window_helpers.h"
 #include <arpa/inet.h>
 #include <sys/random.h>
 
+extern const struct socket_ops tcp_conn_ops;
+
+#define TCP_INIT_RTO_MS 1000
+#define TCP_INIT_CWND_MSS_MULT 10
+#define TCP_WND_FIELD_MAX 0xFFFF
+#define TCP_MAX_WND_SCALE 14		// per RFC 7323
+#define TCP_DEFAULT_BUFFER_SIZE 0x80000 // 512KB
+#define TCP_MAX_BUFFER_SIZE 0x80000	// useful when we implement dynamic buffer growth
+
 typedef enum {
+	CLOSED,
 	SYN_SENT,     // Sent SYN, waiting for SYN+ACK
 	SYN_RECEIVED, // Received SYN, sent SYN+ACK
 	ESTABLISHED,  // Connection established
@@ -24,7 +37,8 @@ struct tcp_ipv4_conn {
 
 	struct byte_reassembly_rcv_buffer *rcv_buffer;
 	struct byte_snd_buffer *snd_buffer;
-	struct timer rto_timer;
+	struct timer *rto_timer;
+	uint32_t rto; // Current Retransmission Timeout value
 
 	ipv4_address_t local_addr;
 	ipv4_address_t extern_addr;
@@ -39,40 +53,65 @@ struct tcp_ipv4_conn {
 
 	uint32_t cwnd;
 	uint32_t ssthresh;
-	uint32_t mss;
-	uint32_t snd_wnd;     // peer's advertised window (calculated with scale)
-	uint32_t rcv_wnd;     // last advertised rcv_window
-	uint32_t ts_recent;   // the last TSval received from peer (to echo back in TSecr)
-	uint32_t ts_last_ack; // the last TSecr we received (to validate ACKs)
+	uint32_t rcv_mss; // local mss
+	uint32_t snd_mss; // peer's advertised mss
+	uint32_t snd_wnd; // peer's advertised window (calculated with scale)
 
 	// features & options
-
+	uint32_t ts_recent;   // the last TSval received from peer (to echo back in TSecr)
+	uint32_t ts_last_ack; // the last TSecr we received (to validate ACKs)
 	// RTT Estimation (RFC 6298)
 	uint32_t srtt;	 // Smoothed Round-Trip Time (in microseconds or ticks)
 	uint32_t rttvar; // RTT Variation (mean deviation)
-	uint32_t rto;	 // Current Retransmission Timeout value
 
-	uint8_t snd_wscale;
-	uint8_t rcv_wscale;
+	bool ece_enabled; // set during handshake
+
+	uint8_t snd_wscale; // peer's scale
+	uint8_t rcv_wscale; // our scale
 	uint8_t dup_ack_cnt;
 	bool sack_enabled;
-	bool ece_enabled;
-
 	bool ts_enabled;
 
 	// ACK controls
 	bool ack_pending; // signifies timer is running
-	struct timer del_ack_timer;
+	struct timer *del_ack_timer;
 	int8_t in_order_full_seg_count;
 
 	// route
 	struct route *route;
+
+	// refs
+	struct nw_layer *tcp_layer;
+	struct tcp_ipv4_conn_htable *htable;
+	struct tcp_ipv4_listener *lstnr;
+
+	// TX queue flag
+	bool queued_for_snd;
+
+	// Zero window probe (instead of zero we use < MSS window)
+	struct timer *zwp_timer; // start timer as soon as peer advertises window < mss
+	bool snd_zwp;
 };
 
-struct tcp_ipv4_conn *create_tcp_connection(struct tcp_conn_id *id);
+struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct nw_layer *tcp);
 void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *seg);
-void destroy_tcp_conn(struct tcp_ipv4_conn *connection);
+void create_pkt_fast_snd_pure_ack(void *c);
+pkt_result tcp_fast_reply_pure_ack(struct pkt *p, struct tcp_ipv4_conn *conn);
+void destroy_tcp_conn(struct tcp_ipv4_conn *conn);
 uint32_t generate_random_iss();
-pkt_result process_tcp_segment(struct tcp_segment *seg, struct tcp_ipv4_conn *connection);
-uint16_t calculate_rcv_wnd_sws(struct tcp_ipv4_conn *conn);
-uint32_t seg_len(struct tcp_segment *seg);
+pkt_result process_tcp_segment(struct pkt *p,
+			       struct tcp_segment *seg,
+			       struct tcp_ipv4_conn *connection);
+void tcp_syn_to_snd_buff(struct tcp_ipv4_conn *conn);
+
+void rto_callback(void *c);
+void write_pkt_tcp_general_metadata(struct tcp_ipv4_conn *conn, struct pkt *p);
+void tcp_init_packet_addresses(struct pkt *pkt, struct tcp_ipv4_conn *conn);
+void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state state);
+void retain_tcp_conn(struct tcp_ipv4_conn *conn);
+void tcp_retain_conn(void *s);
+void release_tcp_conn(struct tcp_ipv4_conn *conn);
+void tcp_release_conn(void *s);
+void tcp_lock_conn(void *s);
+void tcp_unlock_conn(void *s);
+void zwp_callback(void *c);
