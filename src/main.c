@@ -1,4 +1,7 @@
 #include "app.h"
+#include "buffer_pool.h"
+#include "hash.h"
+#include "nw_interface.h"
 #include "stack_constructor.h"
 #include "stack_tx_worker.h"
 #include <arpa/inet.h>
@@ -10,6 +13,8 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+
+#include "ping_test.h"
 
 #ifdef __linux__
 #include <linux/if_tun.h>
@@ -26,48 +31,60 @@
 #define UTUN_CONTROL_NAME "com.apple.net.utun_control"
 #endif
 
-int tap_setup();
+int tap_setup(char *name);
 int get_tap(char *name, int flags);
 int activate_tap(char *if_name);
 int set_ipv4_addr(char *name, char *address);
+int disable_ipv6(char *ifname);
 
 void *start_app_wrapper(void *arg)
 {
-	struct socket_manager_t *manager = (struct socket_manager_t *)arg;
-	start_app(manager);
+	struct stack *stack = (struct stack *)arg;
+	start_app(stack);
 	return NULL;
 }
 
 void *start_listening_wrapper(void *arg)
 {
-	struct nw_layer_t *tap = (struct nw_layer_t *)arg;
+	struct nw_layer *tap = (struct nw_layer *)arg;
 	start_listening(tap);
 	return NULL;
 }
 
 int main()
 {
+	hash_init();
 	int tap_fd;
-	if ((tap_fd = tap_setup()) < 0)
+	if ((tap_fd = tap_setup("tap0")) < 0)
 		return 1;
+	struct nw_interface *nw_if = malloc(sizeof(struct nw_interface));
+	set_net_if_struct(tap_fd, "tap0", nw_if);
+	struct stack stack = construct_stack(nw_if, 1);
+	init_buffer_pool();
 
-	struct stack_t stack = construct_stack(tap_fd, TAP_NAME);
-	struct nw_layer_t *tap = stack.if_layer;
-	struct socket_manager_t *socket_manager = stack.sock_manager;
-
+	struct nw_layer *tap = stack.if_layer;
+	// struct socket_manager *socket_manager = stack.sock_manager;
 	pthread_t app_tid;
 	pthread_t stack_tx_tid;
-	pthread_create(&app_tid, NULL, start_app_wrapper, (void *)socket_manager);
+	pthread_t ping_testid;
+	// pthread_create(&ping_testid, NULL, ping_test, (void *)&stack);
+	pthread_create(&app_tid, NULL, start_app_wrapper, (void *)&stack);
 	pthread_create(&stack_tx_tid, NULL, stack_transmission_loop, (void *)&stack);
 	start_listening(tap);
 
 	return 0;
 }
 
-int tap_setup()
+int tap_setup(char *name)
 {
+	if (name == NULL)
+		return -1;
+
+	char if_name[IFNAMSIZ];
+	strncpy(if_name, name, IFNAMSIZ - 1);
+	if_name[IFNAMSIZ - 1] = '\0';
+
 	char tap_address[] = "192.168.100.1";
-	char if_name[IFNAMSIZ] = TAP_NAME;
 	int tap_fd;
 	if ((tap_fd = get_tap(if_name, IFF_TAP | IFF_NO_PI)) < 0) {
 		perror("Getting TAP interace");
@@ -80,6 +97,12 @@ int tap_setup()
 		return -1;
 	}
 
+	if (disable_ipv6(if_name) < 0) {
+		perror("Disabling IPv6");
+		close(tap_fd);
+		return -1;
+	}
+
 	if (set_ipv4_addr(if_name, tap_address) < 0) {
 		perror("Setting IPv4 address");
 		close(tap_fd);
@@ -88,6 +111,30 @@ int tap_setup()
 	return tap_fd;
 }
 
+int disable_ipv6(char *ifname)
+{
+#ifdef __linux__
+	char path[256];
+	snprintf(path, sizeof(path), "/proc/sys/net/ipv6/conf/%s/disable_ipv6", ifname);
+
+	int fd = open(path, O_WRONLY);
+	if (fd < 0) {
+		perror("open disable_ipv6");
+		return -1;
+	}
+
+	if (write(fd, "1", 1) != 1) {
+		perror("write disable_ipv6");
+		close(fd);
+		return -1;
+	}
+
+	close(fd);
+	return 0;
+#else
+	return 0; // handled below for macOS
+#endif
+}
 // Sets ipv4 address to 192.168.100.1
 // Subnet mask defaults to 255.255.255.0 => ok for now
 int set_ipv4_addr(char *name, char *address)

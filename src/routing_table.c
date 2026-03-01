@@ -1,42 +1,74 @@
 #include "routing_table.h"
-static size_t init_routes_amount = 2;
+#define ROUTES_PER_IF 2 // one direcly connected on_link, one via gateway
 
-size_t get_init_routes_amount()
+struct routing_table *create_routing_table(struct nw_interface *interfaces, size_t if_count)
 {
-	return init_routes_amount;
-}
-
-struct route_t *create_routing_table(struct nw_interface_t *nw_if)
-{
-	struct route_t *routes = malloc(init_routes_amount * sizeof(struct route_t));
-	if (!routes)
+	if (!interfaces || if_count == 0)
 		return NULL;
 
-	uint32_t ip = ntohl(nw_if->ipv4_addr);
-	uint32_t mask = ntohl(nw_if->subnet_mask);
+	size_t routes_count = if_count * ROUTES_PER_IF;
+	struct routing_table *table = malloc(sizeof(*table));
+	struct route *routes = malloc(routes_count * sizeof(struct route));
 
-	uint32_t network = ip & mask;
-	uint8_t prefix_len = __builtin_popcount(mask);
+	if (!table || !routes)
+		return NULL;
 
-	// Route 0: directly connected subnet
-	routes[0].prefix = htonl(network);
-	routes[0].subnet_mask = htonl(mask);
-	routes[0].prefix_len = prefix_len;
-	routes[0].mtu = nw_if->mtu;
-	routes[0].type = ROUTE_ONLINK;
-	routes[0].gateway = 0;
-	routes[0].iface_id = 0; // only one interface for now
+	table->routes = routes;
+	table->count = routes_count;
 
-	// Route 1: default route via gateway (assume .1)
-	uint32_t gateway = network | 1;
+	size_t route_i = 0;
 
-	routes[1].prefix = 0;
-	routes[1].subnet_mask = 0;
-	routes[1].prefix_len = 0;
-	routes[1].mtu = nw_if->mtu;
-	routes[1].type = ROUTE_VIA;
-	routes[1].gateway = htonl(gateway);
-	routes[1].iface_id = 0;
+	for (size_t i = 0; i < if_count; i++) {
+		uint32_t ip = ntohl(interfaces->ipv4_addr);
+		uint32_t mask = ntohl(interfaces->subnet_mask);
 
-	return routes;
+		uint32_t network = ip & mask;
+		uint8_t prefix_len = __builtin_popcount(mask);
+
+		// Route 0: directly connected subnet
+		routes[route_i].prefix = htonl(network);
+		routes[route_i].subnet_mask = htonl(mask);
+		routes[route_i].prefix_len = prefix_len;
+		routes[route_i].mtu = interfaces->mtu;
+		routes[route_i].type = ROUTE_ONLINK;
+		routes[route_i].gateway = 0;
+		routes[route_i].iface_id = i; // only one interface for now
+		routes[route_i].still_valid = true;
+		route_i++;
+
+		// Route 1: default route via gateway (assume .1)
+		uint32_t gateway = network | 1;
+
+		routes[route_i].prefix = 0;
+		routes[route_i].subnet_mask = 0;
+		routes[route_i].prefix_len = 0;
+		routes[route_i].mtu = interfaces->mtu;
+		routes[route_i].type = ROUTE_VIA;
+		routes[route_i].gateway = htonl(gateway);
+		routes[route_i].iface_id = i;
+		routes[route_i].still_valid = true;
+		route_i++;
+	}
+
+	return table;
+}
+
+bool get_route(struct routing_table *table, ipv4_address_t dest_ip, struct route **route_out)
+{
+	int longest_prefix = -1;
+
+	uint32_t int_ip;
+	memcpy(&int_ip, dest_ip, IPV4_ADDR_LEN);
+
+	for (size_t i = 0; i < table->count; i++) {
+		struct route *route = &table->routes[i];
+
+		if (route->prefix_len > longest_prefix &&
+		    ((int_ip & route->subnet_mask)) == route->prefix) {
+			longest_prefix = route->prefix_len;
+			*route_out = route;
+			return true;
+		}
+	}
+	return false;
 }

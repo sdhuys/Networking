@@ -18,26 +18,42 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # ---- Source files ----
 # Library source files (shared between main executable and tests)
 set(LIB_SOURCES
+  src/api.c  
   src/app.c
   src/arp.c
   src/buffer_pool.c
+  src/byte_ring_buffers.c
   src/checksum.c
   src/constants.c
   src/ethernet.c
+  src/hash.c
+  src/heap.c
   src/icmp.c
   src/ipv4.c
   src/layer_router.c
-  src/ring_buffer.c
+  src/nw_interface.c
+  src/ping_test.c
+  src/pkt_ring_buffer.c
   src/routing_table.c
   src/socket_manager.c
+  src/sockfd_manager.c
   src/stack_constructor.c
   src/stack_tx_worker.c
+  src/syn_cookie.c
   src/tap.c
-  src/timer.c
   src/tcp.c
+  src/tcp_conn_socket.c
+  src/tcp_conn_htable.c
+  src/tcp_listener_htable.c
+  src/tcp_listener_socket.c
+  src/tcp_options.c
+  src/tcp_segment.c
+  src/timer.c
+  src/time_now.c
   src/udp.c
   src/udp_hashtable.c
   src/udp_socket.c
+  src/window_helpers.c
 )
 
 # Main executable source files
@@ -52,8 +68,8 @@ set(TEST_SOURCES
 )
 
 # ---- Main executable ----
-add_executable(networking.elf ${MAIN_SOURCES})
-target_compile_options(networking.elf PRIVATE -Wall -Wextra -rdynamic)
+add_executable(networking ${MAIN_SOURCES})
+target_compile_options(networking PRIVATE -Wall -Wextra -rdynamic)
 
 # ---- Tests ----
 if(BUILD_TESTING)
@@ -81,22 +97,18 @@ if(BUILD_TESTING)
 endif()
 
 # ---- Formatting ----
-find_program(CLANG_FORMAT clang-format)
-if(CLANG_FORMAT)
-  file(GLOB_RECURSE ALL_SOURCE_FILES
-    src/*.c
-    src/*.h
-  )
-  add_custom_target(format
-    COMMAND ${CLANG_FORMAT} -i ${ALL_SOURCE_FILES}
-    COMMENT "Running clang-format on all source files"
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  )
-  add_custom_target(check-format
-    COMMAND ${CLANG_FORMAT} --dry-run --Werror ${ALL_SOURCE_FILES}
-    COMMENT "Checking if source files are formatted correctly"
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  )
-else()
-  message(WARNING "clang-format not found. Format targets will not be available.")
-endif()
+find_program(CLANG_FORMAT clang-format REQUIRED)
+
+file(GLOB_RECURSE ALL_SOURCE_FILES
+     CONFIGURE_DEPENDS
+     ${CMAKE_SOURCE_DIR}/src/*.c
+     ${CMAKE_SOURCE_DIR}/src/*.h
+)
+
+add_custom_target(format
+  COMMAND ${CLANG_FORMAT} -style=file -i ${ALL_SOURCE_FILES}
+)
+
+add_custom_target(check-format
+  COMMAND ${CLANG_FORMAT} -style=file --dry-run --Werror ${ALL_SOURCE_FILES}
+)

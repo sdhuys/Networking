@@ -1,5 +1,6 @@
 #pragma once
 #include "buffer_pool.h"
+#include "nw_interface.h"
 #include "timer.h"
 #include "types.h"
 #include <poll.h>
@@ -11,9 +12,9 @@
 extern "C" {
 #endif
 
-int start_listening(struct nw_layer_t *interface);
-pkt_result send_up_to_ethernet(struct nw_layer_t *tap, struct pkt_t *packet);
-pkt_result write_to_interface(struct nw_layer_t *tap, struct pkt_t *packet);
+void start_listening(struct nw_layer *interface);
+pkt_result send_up_to_ethernet(struct nw_layer *tap, struct pkt *packet);
+pkt_result write_to_interface(struct nw_layer *tap, struct pkt *packet);
 
 #ifdef __cplusplus
 }

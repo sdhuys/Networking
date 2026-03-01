@@ -1,57 +1,28 @@
 #include "socket_manager.h"
+#include <assert.h>
 #include <stdio.h>
 
-void notify_socket_readable_rcv(struct socket_manager_t *mgr,
+void notify_socket_readable_snd(struct socket_manager *mgr,
 				void *sock,
-				const struct socket_ops_t *ops,
-				socket_type_t type)
-{
-	ops->lock(sock);
-	if (!ops->is_rcv_queued(sock)) {
-		ops->set_rcv_queued(sock, true);
-		ops->unlock(sock);
-		ops->retain(sock);
-		struct socket_handle_t h = {.sock = sock, .type = type, .ops = ops};
-		enqueue_socket(mgr->receive_up_sock_q, h);
-	} else {
-		ops->unlock(sock);
-	}
-}
-
-void notify_socket_readable_snd(struct socket_manager_t *mgr,
-				void *sock,
-				const struct socket_ops_t *ops,
-				socket_type_t type)
+				const struct socket_ops *ops)
 {
 	ops->lock(sock);
 	if (!ops->is_snd_queued(sock)) {
 		ops->set_snd_queued(sock, true);
 		ops->unlock(sock);
 		ops->retain(sock);
-		struct socket_handle_t h = {.sock = sock, .type = type, .ops = ops};
+		struct socket_handle h = {.sock = sock, .ops = ops};
 		enqueue_socket(mgr->send_down_sock_q, h);
 	} else {
 		ops->unlock(sock);
 	}
 }
 
-// CONSUMER: Application side (RX)
-struct socket_handle_t dequeue_readable_socket(struct socket_manager_t *mgr)
-{
-	struct socket_h_q_node_t *node = dequeue_socket(mgr->receive_up_sock_q);
-	struct socket_handle_t sock = {0};
-	if (node) {
-		sock = node->socket;
-		free(node);
-	}
-	return sock;
-}
-
 // CONSUMER: Stack side (TX)
-struct socket_handle_t dequeue_writable_socket(struct socket_manager_t *mgr)
+struct socket_handle dequeue_sock_snd_down_q(struct socket_manager *mgr)
 {
-	struct socket_h_q_node_t *node = dequeue_socket(mgr->send_down_sock_q);
-	struct socket_handle_t sock = {0};
+	struct socket_h_q_node *node = dequeue_q_node(mgr->send_down_sock_q);
+	struct socket_handle sock = {0};
 	if (node) {
 		sock = node->socket;
 		free(node);
@@ -59,18 +30,16 @@ struct socket_handle_t dequeue_writable_socket(struct socket_manager_t *mgr)
 	return sock;
 }
 
-void release_socket_from_queue(struct socket_handle_t sock, bool rx)
+void release_socket_from_queue(struct socket_handle sock)
 {
 	sock.ops->lock(sock.sock);
-	if (rx)
-		sock.ops->set_rcv_queued(sock.sock, false);
-	else
-		sock.ops->set_snd_queued(sock.sock, false);
+
+	sock.ops->set_snd_queued(sock.sock, false);
 	sock.ops->unlock(sock.sock);
 	sock.ops->release(sock.sock);
 }
 
-struct socket_h_q_node_t *dequeue_socket(struct socket_h_q_t *q)
+struct socket_h_q_node *dequeue_q_node(struct socket_h_q *q)
 {
 	pthread_mutex_lock(&q->lock);
 	if (!q->head) {
@@ -78,7 +47,7 @@ struct socket_h_q_node_t *dequeue_socket(struct socket_h_q_t *q)
 		return NULL;
 	}
 
-	struct socket_h_q_node_t *node = q->head;
+	struct socket_h_q_node *node = q->head;
 	q->head = node->next;
 	if (!q->head)
 		q->tail = NULL;
@@ -88,9 +57,9 @@ struct socket_h_q_node_t *dequeue_socket(struct socket_h_q_t *q)
 	return node;
 }
 
-void enqueue_socket(struct socket_h_q_t *q, struct socket_handle_t sock)
+void enqueue_socket(struct socket_h_q *q, struct socket_handle sock)
 {
-	struct socket_h_q_node_t *node = malloc(sizeof(*node));
+	struct socket_h_q_node *node = malloc(sizeof(*node));
 	if (!node)
 		return;
 
@@ -108,4 +77,42 @@ void enqueue_socket(struct socket_h_q_t *q, struct socket_handle_t sock)
 	if (q->len++ == 0)
 		pthread_cond_broadcast(&q->cond);
 	pthread_mutex_unlock(&q->lock);
+}
+
+int create_socket_handle(struct stack *stack,
+			 socket_type type,
+			 uint16_t local_port,
+			 struct socket_handle *out)
+{
+	struct socket_manager *socket_manager = stack->sock_manager;
+
+	switch (type) {
+	case SOCK_UDP:
+		struct udp_ipv4_socket *sock = create_udp_socket(local_port, stack);
+		if (!sock)
+			return -2; // ALLOCATION FAILURE
+		retain_udp_socket(sock);
+		out->sock = sock;
+		out->ops = &udp_socket_ops;
+		if (!add_to_udp_hashtable(socket_manager->udp_ipv4_sckt_htable, sock)) {
+			release_udp_socket(sock);
+			return -3; // PORT ALREADY IN USE
+		}
+		break;
+
+	case SOCK_TCP:
+		struct tcp_ipv4_listener *listener = create_tcp_listener(local_port, stack);
+		if (!listener)
+			return -2; // ALLOCATION FAILURE
+		retain_tcp_listener(listener);
+		out->sock = listener;
+		out->ops = &tcp_listener_ops;
+		if (!add_to_tcp_listener_hashtable(socket_manager->tcp_ipv4_listener_htable,
+						   listener)) {
+			release_tcp_listener(listener);
+			return -3; // PORT ALREADY IN USE
+		}
+		break;
+	}
+	return 0;
 }

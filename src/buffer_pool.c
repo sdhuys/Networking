@@ -1,11 +1,12 @@
 #include "buffer_pool.h"
 #include <stdio.h>
 
-alignas(64) static unsigned char buffer_pool[PKT_BUFF_POOL_SIZE][MAX_ETH_FRAME_SIZE];
-static struct pkt_t pkt_pool[PKT_BUFF_POOL_SIZE];
-static struct pkt_t *free_pkt_stack[PKT_BUFF_POOL_SIZE];
+alignas(64) static unsigned char buffer_pool[PKT_BUFF_POOL_SIZE][PKT_SIZE];
+static struct pkt pkt_pool[PKT_BUFF_POOL_SIZE];
+static struct pkt *free_pkt_stack[PKT_BUFF_POOL_SIZE];
 static int top_free_index;
 static pthread_mutex_t pool_mutex = PTHREAD_MUTEX_INITIALIZER;
+static struct tcp_options tcp_opts[PKT_BUFF_POOL_SIZE];
 
 void init_buffer_pool()
 {
@@ -13,6 +14,7 @@ void init_buffer_pool()
 
 	for (int i = 0; i < PKT_BUFF_POOL_SIZE; i++) {
 		pkt_pool[i].data = buffer_pool[i];
+		pkt_pool[i].tcp_options = &tcp_opts[i];
 		pkt_pool[i].ref_count = 0;
 		pthread_mutex_init(&pkt_pool[i].lock, NULL);
 		free_pkt_stack[i] = &pkt_pool[i];
@@ -23,7 +25,7 @@ void init_buffer_pool()
 	pthread_mutex_unlock(&pool_mutex);
 }
 
-struct pkt_t *allocate_pkt()
+struct pkt *allocate_pkt()
 {
 	pthread_mutex_lock(&pool_mutex);
 
@@ -32,18 +34,19 @@ struct pkt_t *allocate_pkt()
 		return NULL;
 	}
 
-	struct pkt_t *p = free_pkt_stack[top_free_index--];
+	struct pkt *p = free_pkt_stack[top_free_index--];
 	printf("Allocating %d id, %d ref count, %d top_free_index \n",
 	       p->pool_index,
 	       p->ref_count,
 	       top_free_index + 1);
 	p->ref_count = 1;
+	p->route = NULL;
 
 	pthread_mutex_unlock(&pool_mutex);
 	return p;
 }
 
-void release_pkt(struct pkt_t *pkt)
+void release_pkt(struct pkt *pkt)
 {
 	int should_free = 0;
 	printf("Releasing PACKET %d id, %d ref count \n", pkt->pool_index, pkt->ref_count);
@@ -62,7 +65,7 @@ void release_pkt(struct pkt_t *pkt)
 	printf("\n\n");
 }
 
-void retain_pkt(struct pkt_t *pkt)
+void retain_pkt(struct pkt *pkt)
 {
 	printf("Retaining PACKET %d id, %d ref count \n", pkt->pool_index, pkt->ref_count);
 	pthread_mutex_lock(&pkt->lock);

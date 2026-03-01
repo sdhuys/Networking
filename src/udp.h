@@ -11,9 +11,9 @@
 extern "C" {
 #endif
 
-pkt_result send_udp_down(struct nw_layer_t *self, struct pkt_t *packet);
-pkt_result receive_udp_up(struct nw_layer_t *self, struct pkt_t *packet);
-uint16_t compute_checksum_internal(struct udp_header_t *header, struct pkt_t *packet);
+pkt_result send_udp_down(struct nw_layer *self, struct pkt *packet);
+pkt_result receive_udp_up(struct nw_layer *self, struct pkt *packet);
+uint16_t calc_udp_checksum(struct udp_header *header, struct pkt *packet);
 #ifdef __cplusplus
 }
 #endif
