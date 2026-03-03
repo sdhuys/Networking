@@ -3,16 +3,17 @@
 #include <pthread.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define CTRL_BLOCKS 2
-#define MAX_SACK_TRACKED 32	   // to avoind unneccessary retransmissions
-#define MAX_OOO_RCV_SEG_STORED 256 // to avoid dropping data within window
+#define MAX_SACK_TRACKED 32	  // to avoind unneccessary retransmissions
+#define MAX_OOO_RCV_SEG_STORED 64 // to avoid dropping data within window
 
 struct ctrl_seg {
 	uint32_t seq;  // sequence number where this lives
-	uint8_t flags; // TCP_SYN or TCP_FIN, only one each/connection
+	uint8_t flags; // TCP_SYN (+ACK/ECE/CWR) or TCP_FIN, only one each/connection
 };
 
 struct byte_reassembly_rcv_buffer {
@@ -26,7 +27,7 @@ struct byte_reassembly_rcv_buffer {
 	size_t ooo_count;
 	size_t ooo_capacity;
 
-	uint32_t rcv_wnd; // our last advertised rcv_window
+	uint16_t rcv_wnd; // our last advertised rcv_window
 
 	uint32_t rcv_nxt; // sequence number of the first "hole"
 	size_t head;	  // physical index where the App starts reading
@@ -66,7 +67,7 @@ struct byte_snd_buffer {
 	size_t used_bytes; // total bytes currently in buffer (sent + unsent)
 
 	struct ctrl_seg ctrl[CTRL_BLOCKS]; // keep track of ghost bytes seqs
-	size_t ctrl_count;		   // 0..2
+	uint8_t ctrl_count;		   // 0..2
 };
 
 struct byte_reassembly_rcv_buffer *create_byte_rcv_buffer(size_t capacity);
@@ -74,15 +75,15 @@ void destroy_byte_rcv_buffer(struct byte_reassembly_rcv_buffer *b);
 struct byte_snd_buffer *create_byte_snd_buffer(size_t capacity);
 void destroy_byte_snd_buffer(struct byte_snd_buffer *b);
 size_t write_to_snd_buff(struct byte_snd_buffer *b, unsigned char *data, size_t len);
+size_t copy_bytes_to_snd_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t len);
 
 size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct tcp_segment *seg);
 
 static inline void sndbuf_insert_ghost_byte(struct byte_snd_buffer *b, uint8_t flag)
 {
-	if (flag != TCP_SYN || flag != TCP_FIN)
+	if (flag != TCP_SYN && flag != TCP_FIN)
 		return;
 	b->ctrl[b->ctrl_count++] = (struct ctrl_seg){.seq = b->snd_nxt, .flags = TCP_SYN};
-	b->snd_nxt++;
 }
 
 static inline void lock_snd_buff(struct byte_snd_buffer *buff)

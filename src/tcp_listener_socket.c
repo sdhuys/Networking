@@ -12,7 +12,7 @@ const struct socket_ops tcp_listener_ops = {.is_snd_queued = NULL,
 					    .read_rcv_buffer = NULL,
 					    .unlock = tcp_unlock_listener,
 					    .lock = tcp_lock_listener,
-					    .snd_ready = NULL,
+					    .try_get_pkt = NULL,
 					    .send_pkt = NULL,
 					    .close = tcp_close_listener};
 
@@ -20,6 +20,7 @@ pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lstnr,
 					  struct pkt *pkt,
 					  struct tcp_segment *seg)
 {
+	printf("\nSYN INC. CREATE NEW CONNECTION!\n");
 	struct tcp_conn_id id = {.loc_port = lstnr->local_port,
 				 .extern_port = ntohs(seg->header->src_port)};
 	memcpy(id.extern_addr, pkt->src_ip, IPV4_ADDR_LEN);
@@ -34,14 +35,8 @@ pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lstnr,
 
 	tcp_transition_to_state(conn, SYN_RECEIVED);
 	tcp_syn_to_snd_buff(conn);
-	return SYN_ACK_TO_SND_BUFFER;
-}
-
-pkt_result half_open_check_ack(struct tcp_segment *seg,
-			       struct tcp_ipv4_conn *half_open,
-			       struct tcp_ipv4_listener *lstnr)
-{
-	return NOT_IMPLEMENTED_YET;
+		
+	return CONN_CREATED_SYN_ACK_TO_SND_BUFFER;
 }
 
 struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack)

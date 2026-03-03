@@ -18,18 +18,14 @@ struct route {
 	uint32_t gateway; // valid only if type == ROUTE_VIA
 	uint32_t iface_id;
 
-	/*no mechanism for updating routing table yet, but on potential future route deletion: set
-	flag to false, start timer for actual deletion.
-
-	tcp connections store route pointer, if still_valid => write pointer to pkt metadata, else
-	new lookup. this should give time for connections to update their routes or close before
-	remove timer runs out and deletes route entry*/
-	bool still_valid;
+	// to keep track of validity of route when we add routing adding/removing
+	uint32_t gen_id;
 };
 
 struct routing_table {
 	struct route *routes;
 	size_t count;
+	uint32_t gen_id;
 };
 
 #ifdef __cplusplus

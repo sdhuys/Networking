@@ -113,13 +113,13 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	conn->cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
 
 	conn->iss = cookie;
-	conn->irs = seg->header->seq_num - 1; // -1 to account for original SYN
-	conn->rcv_buffer->rcv_nxt = seg->header->seq_num + seg_seq_len(seg);
+	conn->irs = ntohl(seg->header->seq_num) - 1; // -1 to account for original SYN
+	conn->rcv_buffer->rcv_nxt = conn->irs + seg_seq_len(seg);
 	conn->snd_buffer->snd_nxt = cookie + 1;
 	conn->snd_buffer->snd_una = cookie + 1;
 
 	conn->state = ESTABLISHED;
 	// ADD TO LISTENER READY Q!!!!
 	printf("MSS: %u, CWND: %u \n", conn->snd_mss, conn->cwnd);
-	return TCP_SYN_COOKIE_CONN_CREATED;
+	return SYN_COOKIE_CONN_CREATED;
 }

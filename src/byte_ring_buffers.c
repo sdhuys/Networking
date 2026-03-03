@@ -127,6 +127,25 @@ size_t write_to_snd_buff(struct byte_snd_buffer *b, unsigned char *data, size_t 
 	return len;
 }
 
+// caller must make sure not to provide len > available bytes to read
+size_t copy_bytes_to_snd_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t len)
+{
+	if (!b || !buffer)
+		return 0;
+
+	size_t snd_i = b->rcov_mode ? b->rcov_snd_nxt_i : b->snd_nxt_i;
+	size_t first_part = len;
+	if (snd_i + len > b->capacity) {
+		first_part = b->capacity - snd_i;
+	}
+	if (first_part < len) {
+		memcpy(buffer, b->data + snd_i, first_part);
+		memcpy(buffer + first_part, b->data, len - first_part);
+	} else {
+		memcpy(buffer, b->data + snd_i, len);
+	}
+}
+
 // writes raw bytes into receive buffer at a physical index.
 // does not update any metadata fields (head, contiguous_bytes, rcv_nxt, ...)
 static size_t write_to_rcv_buff(struct byte_reassembly_rcv_buffer *b,

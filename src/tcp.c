@@ -10,9 +10,10 @@ pkt_result send_tcp_down(struct nw_layer *self, struct pkt *packet)
 	if (packet->tcp_options->ts_present) {
 		packet->tcp_options->tsval = now_ms_32();
 	}
+
 	if (packet->tcp_options->length > 0) {
 		unsigned char *opt_buff = (unsigned char *)(header) + sizeof(*header);
-		tcp_serialize_options(opt_buff, packet->tcp_options->length, packet->tcp_options);
+		tcp_serialize_options(opt_buff, packet->tcp_options);
 	}
 
 	header->dest_port = htons(packet->dest_port);
@@ -21,12 +22,13 @@ pkt_result send_tcp_down(struct nw_layer *self, struct pkt *packet)
 	header->ack_num = htonl(packet->tcp_ack);
 	header->window = htons(packet->rcv_window);
 	header->flags = packet->tcp_flags;
-	header->data_offset = packet->tcp_data_offset;
+	header->data_offset = ((sizeof(*header) + packet->tcp_options->length) / 4) << 4;
 	header->checksum = 0;
 	header->checksum = htons(calc_tcp_checksum(packet));
 
 	packet->offset -= sizeof(struct ipv4_header);
 	packet->len += sizeof(struct ipv4_header);
+
 	return self->downs[0]->send_down(self->downs[0], packet);
 }
 
@@ -95,6 +97,7 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 		// find half-open connection
 		conn = query_tcp_conn_hashtable(lstnr->half_opens, id);
 		if (conn != NULL) {
+			printf("\n\nPROCESS HALF OPEN INCOMING\n");
 			pkt_result r = process_tcp_segment(packet, &seg, conn);
 			release_tcp_conn(conn);
 			release_tcp_listener(lstnr);
@@ -110,7 +113,7 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 				pkt_result r = tcp_fast_reply_syn_cookie(lstnr, packet, &seg);
 				release_tcp_listener(lstnr);
 				if (r == SENT)
-					return TCP_SYN_COOKIE_SENT;
+					return SYN_COOKIE_SENT;
 				return r;
 			}
 			// regular open
@@ -165,9 +168,7 @@ pkt_result tcp_fast_reply_syn_cookie(struct tcp_ipv4_listener *listener,
 	packet->tcp_options->wscale_present = false;
 	packet->tcp_options->ts_present = false;
 
-	size_t options_len = calc_tcp_options_len(packet->tcp_options);
-	packet->tcp_data_offset = ((sizeof(*seg->header) + options_len) / 4) << 4;
-	packet->len = sizeof(*seg->header) + options_len;
+	packet->len = sizeof(*seg->header);
 	packet->offset = PKT_SIZE - packet->len;
 	printf("SENDING SYN COOKIE DOWN \n");
 	return tcp->send_down(tcp, packet);
@@ -182,7 +183,6 @@ pkt_result tcp_fast_reply_rst(struct nw_layer *tcp, struct pkt *packet, struct t
 	init_reply_packet_from_incoming(packet, seg);
 	memset(packet->tcp_options, 0, sizeof(*packet->tcp_options));
 
-	packet->tcp_data_offset = (sizeof(*seg->header) / 4) << 4;
 	packet->len = sizeof(*seg->header);
 	packet->offset = PKT_SIZE - sizeof(*seg->header);
 

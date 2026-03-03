@@ -103,10 +103,10 @@ void write_ipv4_header(struct ipv4_header *header, struct pkt *packet)
 	header->flags_fragment_offset = htons(1 << 14); // DO NOT FRAGMENT
 	header->ttl = IPV4_TTL_DEFAULT;
 	header->protocol = packet->protocol;
-	header->header_checksum = 0;
-	header->header_checksum = calc_ipv4_checksum(header, IPV4_HEADER_NO_OPTIONS_LEN);
 	memcpy(header->src_ip, packet->src_ip, IPV4_ADDR_LEN);
 	memcpy(header->dest_ip, packet->dest_ip, IPV4_ADDR_LEN);
+	header->header_checksum = 0;
+	header->header_checksum = calc_ipv4_checksum(header, IPV4_HEADER_NO_OPTIONS_LEN);
 }
 
 bool relevant_destination_ip(ipv4_address_t dest_ip, struct nw_layer *self)

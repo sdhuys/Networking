@@ -10,4 +10,4 @@
 
 bool parse_tcp_options(const unsigned char *opts, int opt_len, struct tcp_options *out);
 size_t calc_tcp_options_len(struct tcp_options *opt);
-size_t tcp_serialize_options(unsigned char *buf, uint8_t len, const struct tcp_options *opt);
+size_t tcp_serialize_options(unsigned char *buf, const struct tcp_options *opt);

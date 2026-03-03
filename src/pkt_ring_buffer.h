@@ -21,4 +21,3 @@ void destroy_pkt_ring_buffer(struct pkt_ring_buffer *b);
 bool write_to_pkt_buffer(struct pkt_ring_buffer *buff, struct pkt *packet);
 struct pkt *read_pkt_buffer(struct pkt_ring_buffer *buff);	    // TX
 struct pkt *read_pkt_buffer_blocking(struct pkt_ring_buffer *buff); // RX
-bool pkt_buffer_empty(struct pkt_ring_buffer *buff);

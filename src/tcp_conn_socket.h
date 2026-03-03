@@ -53,9 +53,9 @@ struct tcp_ipv4_conn {
 
 	uint32_t cwnd;
 	uint32_t ssthresh;
-	uint32_t rcv_mss; // local mss
-	uint32_t snd_mss; // peer's advertised mss
-	uint32_t snd_wnd; // peer's advertised window (calculated with scale)
+	uint32_t rcv_mss;  // local mss
+	uint32_t snd_mss;  // peer's advertised mss
+	uint16_t snd_wndw; // peer's advertised window (calculated with scale)
 
 	// features & options
 	uint32_t ts_recent;   // the last TSval received from peer (to echo back in TSecr)
@@ -66,6 +66,7 @@ struct tcp_ipv4_conn {
 
 	bool ece_enabled; // set during handshake
 
+	bool wscale_enabled;
 	uint8_t snd_wscale; // peer's scale
 	uint8_t rcv_wscale; // our scale
 	uint8_t dup_ack_cnt;
@@ -95,7 +96,10 @@ struct tcp_ipv4_conn {
 
 struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct nw_layer *tcp);
 void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *seg);
-void create_pkt_fast_snd_pure_ack(void *c);
+void delayed_ack_callback(void *c);
+void zwp_callback(void *c);
+void rto_callback(void *c);
+
 pkt_result tcp_fast_reply_pure_ack(struct pkt *p, struct tcp_ipv4_conn *conn);
 void destroy_tcp_conn(struct tcp_ipv4_conn *conn);
 uint32_t generate_random_iss();
@@ -104,14 +108,19 @@ pkt_result process_tcp_segment(struct pkt *p,
 			       struct tcp_ipv4_conn *connection);
 void tcp_syn_to_snd_buff(struct tcp_ipv4_conn *conn);
 
-void rto_callback(void *c);
 void write_pkt_tcp_general_metadata(struct tcp_ipv4_conn *conn, struct pkt *p);
 void tcp_init_packet_addresses(struct pkt *pkt, struct tcp_ipv4_conn *conn);
+
 void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state state);
+
 void retain_tcp_conn(struct tcp_ipv4_conn *conn);
-void tcp_retain_conn(void *s);
 void release_tcp_conn(struct tcp_ipv4_conn *conn);
+
+void tcp_retain_conn(void *s);
 void tcp_release_conn(void *s);
 void tcp_lock_conn(void *s);
 void tcp_unlock_conn(void *s);
-void zwp_callback(void *c);
+struct pkt *tcp_try_get_pkt(void *s);
+pkt_result tcp_send_packet(struct stack *stack, struct pkt *p);
+bool tcp_is_snd_queued(void *s);
+void tcp_set_snd_queued(void *s, bool v);

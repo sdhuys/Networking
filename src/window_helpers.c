@@ -51,8 +51,8 @@ uint16_t calc_rcv_wnd_sws(struct tcp_ipv4_conn *conn)
 	}
 
 	// worthwhile increase
-	uint32_t scaled_window = (uint32_t)(current_free >> conn->rcv_wscale);
-	return (uint16_t)scaled_window;
+	uint16_t scaled_window = (uint16_t)(current_free >> conn->rcv_wscale);
+	return scaled_window;
 }
 
 uint8_t tcp_calc_wndw_scale()
@@ -72,8 +72,7 @@ uint32_t usable_window(struct tcp_ipv4_conn *conn)
 {
 	struct byte_snd_buffer *buff = conn->snd_buffer;
 
-	uint32_t total_allowed =
-	    (conn->rcv_buffer->rcv_wnd < conn->cwnd) ? conn->rcv_buffer->rcv_wnd : conn->cwnd;
+	uint32_t total_allowed = (conn->snd_wndw < conn->cwnd) ? conn->snd_wndw : conn->cwnd;
 
 	uint32_t sent_unacked = buff->snd_nxt - buff->snd_una;
 	uint32_t sacked = buff->sacked_bytes;

@@ -2,13 +2,15 @@
 
 int sockfd_manager_init(struct sockfd_manager *fd_mgr)
 {
-	fd_mgr->fd_sockets = calloc(MAX_SOCKETS, sizeof(struct socket_handle *));
+	fd_mgr->fd_sockets = calloc(MAX_SOCKETS, sizeof(struct socket_handle));
 	if (!fd_mgr->fd_sockets)
 		return -1;
 
 	fd_mgr->free_stack = malloc(sizeof(int) * MAX_SOCKETS);
-	if (!fd_mgr->free_stack)
+	if (!fd_mgr->free_stack) {
+		free(fd_mgr->fd_sockets);
 		return -1;
+	}
 
 	for (int i = 0; i < MAX_SOCKETS; i++)
 		fd_mgr->free_stack[i] = i;

@@ -18,10 +18,11 @@ void *stack_transmission_loop(void *arg)
 				break;
 
 			pkt_result res;
-			while ((h.ops->snd_ready(h.sock))) {
-				res = h.ops->send_pkt(stack, h.sock);
+			struct pkt *p;
+			while ((p = h.ops->try_get_pkt(h.sock)) != NULL) {
+				res = h.ops->send_pkt(stack, p);
 			}
-			printf("WORKER RESULT: %d", res);
+			printf("WORKER RESULT: %d \n", res);
 			release_socket_from_queue(h);
 		}
 	}

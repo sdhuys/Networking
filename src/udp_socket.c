@@ -11,7 +11,7 @@ const struct socket_ops udp_socket_ops = {.is_snd_queued = udp_is_snd_queued,
 					  .read_rcv_buffer_from = udp_read_rcv_buffer_from,
 					  .unlock = unlock_socket,
 					  .lock = lock_socket,
-					  .snd_ready = udp_send_ready,
+					  .try_get_pkt = udp_try_get_pkt,
 					  .send_pkt = udp_send_pkt,
 					  .close = udp_close_sock};
 
@@ -88,21 +88,13 @@ pkt_result write_up_to_rcv_buffer(struct udp_ipv4_socket *socket, struct pkt *pa
 }
 
 ////  socket handle operations (app side) ////
-// caller must hold lock!
-bool udp_is_rcv_queued(void *s)
-{
-	return ((struct udp_ipv4_socket_t *)s)->queued_for_rcv;
-}
-// caller must hold lock!
-void udp_set_rcv_queued(void *s, bool v)
-{
-	((struct udp_ipv4_socket_t *)s)->queued_for_rcv = v;
-}
+
 // caller must hold lock!
 bool udp_is_snd_queued(void *s)
 {
 	return ((struct udp_ipv4_socket *)s)->queued_for_snd;
 }
+
 // caller must hold lock!
 void udp_set_snd_queued(void *s, bool v)
 {
@@ -196,22 +188,14 @@ void unlock_socket(void *s)
 	pthread_mutex_unlock(&socket->lock);
 }
 
-bool udp_send_ready(void *s)
+struct pkt *udp_try_get_pkt(void *s)
 {
 	struct udp_ipv4_socket *sock = s;
-	if (pkt_buffer_empty(sock->snd_buffer))
-		return false;
-	return true;
+	return read_pkt_buffer(sock->snd_buffer);
 }
 
-pkt_result udp_send_pkt(struct stack *stack, void *s)
+pkt_result udp_send_pkt(struct stack *stack, struct pkt *p)
 {
-	struct udp_ipv4_socket *sock = s;
-	struct pkt *p = read_pkt_buffer(sock->snd_buffer);
-	if (!p) {
-		printf("TRYING TO SEND WHEN NOTHING TO SEND, SHOULD NOT HAPPEN! \n");
-		abort();
-	}
 	return stack->udp_layer->send_down(stack->udp_layer, p);
 }
 

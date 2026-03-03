@@ -52,9 +52,10 @@ typedef enum {
 	ARP_TABLE_UPDATED_Q_FLUSHED = 25,
 	PACKET_QUEUED = 26,
 	UDP_WRITTEN_TO_RCV_BUFF = 40,
-	TCP_SYN_COOKIE_SENT = 45,
-	TCP_SYN_COOKIE_CONN_CREATED = 46,
-	SYN_ACK_TO_SND_BUFFER = 47,
+	SYN_COOKIE_SENT = 45,
+	SYN_COOKIE_CONN_CREATED = 46,
+	CONN_CREATED_SYN_ACK_TO_SND_BUFFER = 47,
+	RCOV_SYN_ACK_TO_SND_BUFFER = -48,
 
 	ICMP_ECHO_REPLY_RCVD = 35,
 
@@ -91,6 +92,7 @@ typedef enum {
 	TCP_SYN_COOKIE_EXPIRED = -419,
 	TCP_SYN_COOKIE_INVALID = -420,
 	INC_RST_CONN_DEAD = -421,
+	RST_UNEXPECTED_SYN = -422,
 
 	TCP_UNROUTABLE_CONNECTION = -430,
 	RING_BUFFER_FULL = -501,
@@ -125,7 +127,6 @@ struct pkt {
 	uint32_t tcp_seq;
 	uint32_t tcp_ack;
 	uint8_t tcp_flags;
-	uint8_t tcp_data_offset; // (top 4bits) number of 32bit words in header (5 = no options)
 	uint16_t rcv_window;
 	struct tcp_options *tcp_options;
 	struct route *route;

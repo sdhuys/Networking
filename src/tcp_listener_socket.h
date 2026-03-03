@@ -58,6 +58,3 @@ void destroy_ready_q(struct tcp_ipv4_conn_q *q);
 pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lis,
 					  struct pkt *pkt,
 					  struct tcp_segment *seg);
-pkt_result half_open_check_ack(struct tcp_segment *seg,
-			       struct tcp_ipv4_conn *half_open,
-			       struct tcp_ipv4_listener *lstnr);

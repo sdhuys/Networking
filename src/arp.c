@@ -55,7 +55,6 @@ void flush_q(struct nw_layer *self, struct arp_table_node *arp_entry)
 		next = current->next;
 		memcpy(current->packet->dest_mac, arp_entry->mac_addr, MAC_ADDR_LEN);
 		current->packet->ethertype = htons(IPV4);
-
 		self->downs[0]->send_down(self->downs[0], current->packet);
 		free(current);
 		current = next;
@@ -93,7 +92,6 @@ pkt_result add_pkt_to_q(struct arp_table_node *node, struct pkt *packet)
 	else
 		node->pending_tail->next = new;
 	node->pending_tail = new;
-
 	return PACKET_QUEUED;
 }
 
