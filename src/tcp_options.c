@@ -23,6 +23,9 @@ bool parse_tcp_options(const unsigned char *opts, int opt_len, struct tcp_option
 	memset(out, 0, sizeof(*out));
 	out->length = opt_len;
 
+	// indicating to sack, unless overwritten
+	out->sack_block_count = 0;
+
 	while (i < opt_len) {
 		uint8_t kind = opts[i];
 
@@ -147,65 +150,72 @@ static inline int enough_space(uint8_t *p, uint8_t *end, size_t n)
 
 size_t tcp_serialize_options(unsigned char *buf, const struct tcp_options *opt)
 {
-    unsigned char *p = buf;
-    unsigned char *end = buf + opt->length;
+	unsigned char *p = buf;
+	unsigned char *end = buf + opt->length;
 
-    if (opt->mss_present && enough_space(p, end, 4)) {
-        *p++ = TCP_OPT_MSS;
-        *p++ = 4;
-        uint16_t mss = htons(opt->mss);
-        memcpy(p, &mss, 2);
-        p += 2;
-    }
+	if (opt->mss_present && enough_space(p, end, 4)) {
+		*p++ = TCP_OPT_MSS;
+		*p++ = 4;
+		uint16_t mss = htons(opt->mss);
+		memcpy(p, &mss, 2);
+		p += 2;
+	}
 
-    if (opt->sack_permitted && enough_space(p, end, 2)) {
-        *p++ = TCP_OPT_SACKOK;
-        *p++ = 2;
-    }
+	if (opt->sack_permitted && enough_space(p, end, 2)) {
+		*p++ = TCP_OPT_SACKOK;
+		*p++ = 2;
+	}
 
-    if (opt->wscale_present && opt->wscale <= TCP_MAX_WSCALE && enough_space(p, end, 3)) {
-        *p++ = TCP_OPT_WSCALE;
-        *p++ = 3;
-        *p++ = opt->wscale;
-    }
+	if (opt->wscale_present && opt->wscale <= TCP_MAX_WSCALE && enough_space(p, end, 3)) {
+		*p++ = TCP_OPT_WSCALE;
+		*p++ = 3;
+		*p++ = opt->wscale;
+	}
 
-    if (opt->ts_present) {
+	if (opt->ts_present) {
 		// internal alignment
-        while (((p - buf) & 1) && enough_space(p, end, 1)) *p++ = TCP_OPT_NOP;
-        
-        if (enough_space(p, end, 10)) {
-            *p++ = TCP_OPT_TS;
-            *p++ = 10;
-            uint32_t ts = htonl(opt->tsval);
-            uint32_t ecr = htonl(opt->tsecr);
-            memcpy(p, &ts, 4); p += 4;
-            memcpy(p, &ecr, 4); p += 4;
-        }
-    }
+		while (((p - buf) & 1) && enough_space(p, end, 1))
+			*p++ = TCP_OPT_NOP;
 
-    if (opt->sack_block_count > 0) {
+		if (enough_space(p, end, 10)) {
+			*p++ = TCP_OPT_TS;
+			*p++ = 10;
+			uint32_t ts = htonl(opt->tsval);
+			uint32_t ecr = htonl(opt->tsecr);
+			memcpy(p, &ts, 4);
+			p += 4;
+			memcpy(p, &ecr, 4);
+			p += 4;
+		}
+	}
+
+	if (opt->sack_block_count > 0) {
 		// internal alignment
-        while (((p - buf) & 3) && enough_space(p, end, 1)) *p++ = TCP_OPT_NOP;
+		while (((p - buf) & 3) && enough_space(p, end, 1))
+			*p++ = TCP_OPT_NOP;
 
-        int n = (opt->sack_block_count > MAX_SACK_BLOCKS) ? MAX_SACK_BLOCKS : opt->sack_block_count;
-        size_t sack_len = 2 + (8 * n);
+		int n = (opt->sack_block_count > MAX_SACK_BLOCKS) ? MAX_SACK_BLOCKS
+								  : opt->sack_block_count;
+		size_t sack_len = 2 + (8 * n);
 
-        if (enough_space(p, end, sack_len)) {
-            *p++ = TCP_OPT_SACK;
-            *p++ = (uint8_t)sack_len;
-            for (int i = 0; i < n; i++) {
-                uint32_t left = htonl(opt->sacks[i].start_seq);
-                uint32_t right = htonl(opt->sacks[i].end_seq);
-                memcpy(p, &left, 4);  p += 4;
-                memcpy(p, &right, 4); p += 4;
-            }
-        }
-    }
+		if (enough_space(p, end, sack_len)) {
+			*p++ = TCP_OPT_SACK;
+			*p++ = (uint8_t)sack_len;
+			for (int i = 0; i < n; i++) {
+				uint32_t left = htonl(opt->sacks[i].start_seq);
+				uint32_t right = htonl(opt->sacks[i].end_seq);
+				memcpy(p, &left, 4);
+				p += 4;
+				memcpy(p, &right, 4);
+				p += 4;
+			}
+		}
+	}
 
-    // final padding
-    while (((p - buf) & 3) && enough_space(p, end, 1)) {
-        *p++ = TCP_OPT_EOL;
-    }
+	// final padding
+	while (((p - buf) & 3) && enough_space(p, end, 1)) {
+		*p++ = TCP_OPT_EOL;
+	}
 
-    return p - buf;
+	return p - buf;
 }

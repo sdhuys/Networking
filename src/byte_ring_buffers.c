@@ -247,12 +247,11 @@ static size_t write_unwritten_bytes(struct byte_reassembly_rcv_buffer *b,
 // writes a tcp segment into the receive buffer, either contigously or leaves appropriate gap space
 // if segment is out of order keeps track of ooo_segments metadata, merges if possible "first
 // arrival wins", bytes are never overwritten returns the number of bytes written
+// caller must hold lock
 size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct tcp_segment *seg)
 {
 	if (!b || !seg || seg->payload_len == 0)
 		return 0;
-
-	lock_rcv_buff(b);
 
 	uint32_t seg_seq = ntohl(seg->header->seq_num);
 	uint32_t data_seq = seg_seq; // data starts at seq; SYN/FIN handled at TCP layer
@@ -326,7 +325,6 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct
 		}
 	}
 
-	unlock_rcv_buff(b);
 	return written;
 }
 

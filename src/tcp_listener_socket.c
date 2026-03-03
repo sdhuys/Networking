@@ -35,7 +35,7 @@ pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lstnr,
 
 	tcp_transition_to_state(conn, SYN_RECEIVED);
 	tcp_syn_to_snd_buff(conn);
-		
+
 	return CONN_CREATED_SYN_ACK_TO_SND_BUFFER;
 }
 

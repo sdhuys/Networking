@@ -64,7 +64,7 @@ struct byte_snd_buffer {
 	uint32_t rcov_snd_next; // recovery mode sequence number to be sent
 	size_t rcov_snd_nxt_i;	// physical index of rcov_snd_next
 
-	size_t used_bytes; // total bytes currently in buffer (sent + unsent)
+	size_t used_bytes; // total bytes currently in buffer (unacked sent + unsent)
 
 	struct ctrl_seg ctrl[CTRL_BLOCKS]; // keep track of ghost bytes seqs
 	uint8_t ctrl_count;		   // 0..2
@@ -75,7 +75,9 @@ void destroy_byte_rcv_buffer(struct byte_reassembly_rcv_buffer *b);
 struct byte_snd_buffer *create_byte_snd_buffer(size_t capacity);
 void destroy_byte_snd_buffer(struct byte_snd_buffer *b);
 size_t write_to_snd_buff(struct byte_snd_buffer *b, unsigned char *data, size_t len);
-size_t copy_bytes_to_snd_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t len);
+size_t copy_bytes_to_snd_from_snd_buff(struct byte_snd_buffer *b,
+				       unsigned char *buffer,
+				       size_t len);
 
 size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct tcp_segment *seg);
 

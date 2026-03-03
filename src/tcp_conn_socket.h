@@ -12,6 +12,7 @@
 extern const struct socket_ops tcp_conn_ops;
 
 #define TCP_INIT_RTO_MS 1000
+#define TCP_DEL_ACK_MS 200
 #define TCP_INIT_CWND_MSS_MULT 10
 #define TCP_WND_FIELD_MAX 0xFFFF
 #define TCP_MAX_WND_SCALE 14		// per RFC 7323
