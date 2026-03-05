@@ -27,7 +27,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 	struct timer_manager *tmgr = ctx->rx_timer_mgr;
 
 	// RST processing, cleanup (ignored for TIME_WAIT connections)
-	if (flags & TCP_RST == conn->state != TIME_WAIT) {
+	if (flags & TCP_RST && conn->state != TIME_WAIT) {
 		tcp_transition_to_state(conn, CLOSED);
 		// notify threads waiting to read/write to cancel
 		pthread_cond_broadcast(&conn->snd_buffer->cond);
@@ -132,7 +132,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 					// remove SACK blocks that are overtaken by progressed
 					// snd_una
 					int sack = 0;
-					for (int i = 0; i < sb->sack_blocks_count; i++) {
+					for (size_t i = 0; i < sb->sack_blocks_count; i++) {
 						// only keep blocks that start after snd_una
 						if (tcp_seq_after(sb->sack_blocks[i].start_seq,
 								  sb->snd_una)) {
@@ -146,7 +146,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 					size_t sack_count = seg->options->sack_block_count;
 					struct ooo_seg *sacks = seg->options->sacks;
 					if (seg->options->sack_block_count > 0) {
-						for (int i = 0; i < sack_count; i++) {
+						for (size_t i = 0; i < sack_count; i++) {
 							uint32_t s_start = sacks[i].start_seq;
 							uint32_t s_end = sacks[i].end_seq;
 
