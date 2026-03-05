@@ -26,13 +26,17 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
 	struct timer_manager *tmgr = ctx->rx_timer_mgr;
 
-	// RST processing, cleanup
-	if (flags & TCP_RST) {
-		remove_from_tcp_conn_hashtable(conn->htable, conn);
+	// RST processing, cleanup (ignored for TIME_WAIT connections)
+	if (flags & TCP_RST == conn->state != TIME_WAIT) {
 		tcp_transition_to_state(conn, CLOSED);
 		// notify threads waiting to read/write to cancel
 		pthread_cond_broadcast(&conn->snd_buffer->cond);
 		pthread_cond_broadcast(&conn->rcv_buffer->cond);
+		struct tcp_ipv4_conn_htable *htable =
+		    ((struct tcp_context *)conn->tcp_layer->context)
+			->socket_manager->tcp_ipv4_conn_htable;
+		remove_from_tcp_conn_hashtable(htable, conn);
+
 		return INC_RST_CONN_DEAD;
 	}
 
@@ -216,11 +220,13 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		else if (conn->state == FIN_WAIT_1)
 			tcp_transition_to_state(conn, (flags & TCP_ACK) ? TIME_WAIT : CLOSING);
 		else if (conn->state == FIN_WAIT_2) {
+			struct socket_manager *mgr =
+			    ((struct tcp_context *)conn->tcp_layer->context)->socket_manager;
 			tcp_transition_to_state(conn, TIME_WAIT);
-			remove_from_tcp_conn_hashtable(conn->htable, conn);
-			struct tcp_ipv4_conn_htable *cls_wait =
-			    ctx->socket_manager->tcp_ipv4_conn_time_wait_htable;
-			add_to_tcp_conn_hashtable(cls_wait, conn);
+			remove_from_tcp_conn_hashtable(mgr->tcp_ipv4_conn_htable, conn);
+			struct tcp_ipv4_conn_htable *time_wait_htable =
+			    mgr->tcp_ipv4_conn_time_wait_htable;
+			add_to_tcp_conn_hashtable(time_wait_htable, conn);
 		}
 	}
 

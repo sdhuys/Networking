@@ -84,7 +84,6 @@ struct tcp_ipv4_conn {
 
 	// refs
 	struct nw_layer *tcp_layer;
-	struct tcp_ipv4_conn_htable *htable;
 	struct tcp_ipv4_listener *lstnr;
 
 	// TX queue flag

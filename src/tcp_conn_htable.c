@@ -31,7 +31,6 @@ bool add_to_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct tcp_i
 	new_node->next = htable->buckets[hash];
 	htable->buckets[hash] = new_node;
 	pthread_mutex_unlock(&htable->bucket_locks[hash]);
-	conn->htable = htable;
 	return true;
 }
 
@@ -83,7 +82,6 @@ bool remove_from_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct 
 			release_tcp_conn(conn);
 			free(node);
 			pthread_mutex_unlock(lock);
-			conn->htable = NULL;
 			return true;
 		}
 		prev = node;
