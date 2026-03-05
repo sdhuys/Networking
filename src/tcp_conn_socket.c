@@ -422,6 +422,9 @@ void write_pkt_tcp_general_metadata(struct tcp_ipv4_conn *conn, struct pkt *p)
 void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state state)
 {
 	pthread_mutex_lock(&conn->lock);
+	if (conn->lstnr && state == ESTABLISHED)
+		conn->lstnr->half_open_count--;
+
 	conn->state = state;
 	pthread_mutex_unlock(&conn->lock);
 }

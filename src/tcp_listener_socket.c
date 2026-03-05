@@ -34,7 +34,7 @@ pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lstnr,
 	struct tcp_ipv4_conn_htable *htable =
 	    ((struct tcp_context *)lstnr->tcp_layer->context)->socket_manager->tcp_ipv4_conn_htable;
 	add_to_tcp_conn_hashtable(htable, conn);
-
+	lstnr->half_open_count++;
 	tcp_transition_to_state(conn, SYN_RECEIVED);
 	tcp_syn_to_snd_buff(conn);
 
