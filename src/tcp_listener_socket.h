@@ -21,7 +21,6 @@ struct tcp_ipv4_listener {
 	uint16_t local_port;
 	tcp_listener_state state;
 
-	struct tcp_ipv4_conn_htable *half_opens;
 	size_t half_open_limit;
 	size_t half_open_count;
 	struct tcp_ipv4_conn_q *ready_q;

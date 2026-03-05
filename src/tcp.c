@@ -76,8 +76,7 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 	memcpy(id.extern_addr, packet->src_ip, IPV4_ADDR_LEN);
 	memcpy(id.loc_addr, packet->dest_ip, IPV4_ADDR_LEN);
 
-	// query established connections (incl half-opens app started as client => not tied
-	// to listener)
+	// query established connections (including half-opens)
 	struct tcp_ipv4_conn *conn = query_tcp_conn_hashtable(mgr->tcp_ipv4_conn_htable, id);
 	// if not established, try time_wait connections
 	if (conn == NULL)
@@ -94,16 +93,6 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 	    mgr->tcp_ipv4_listener_htable, packet->dest_port, packet->dest_ip);
 
 	if (lstnr != NULL) {
-		// find half-open connection
-		conn = query_tcp_conn_hashtable(lstnr->half_opens, id);
-		if (conn != NULL) {
-			printf("\n\nPROCESS HALF OPEN INCOMING\n");
-			pkt_result r = process_tcp_segment(packet, &seg, conn);
-			release_tcp_conn(conn);
-			release_tcp_listener(lstnr);
-			return r;
-		}
-
 		// NO TCP_CONNECTION_SOCKET OBJECT EXISTS YET:
 		// if proper SYN without ACK, open new connection
 		// can include ECE, CWR

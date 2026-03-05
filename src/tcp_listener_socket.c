@@ -20,7 +20,6 @@ pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lstnr,
 					  struct pkt *pkt,
 					  struct tcp_segment *seg)
 {
-	printf("\nSYN INC. CREATE NEW CONNECTION!\n");
 	struct tcp_conn_id id = {.loc_port = lstnr->local_port,
 				 .extern_port = ntohs(seg->header->src_port)};
 	memcpy(id.extern_addr, pkt->src_ip, IPV4_ADDR_LEN);
@@ -31,7 +30,10 @@ pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lstnr,
 		return TCP_CONN_CREATION_ERROR;
 	conn->lstnr = lstnr;
 	server_init_tcp_connection(conn, seg);
-	add_to_tcp_conn_hashtable(lstnr->half_opens, conn);
+
+	struct tcp_ipv4_conn_htable *htable =
+	    ((struct tcp_context *)lstnr->tcp_layer->context)->socket_manager->tcp_ipv4_conn_htable;
+	add_to_tcp_conn_hashtable(htable, conn);
 
 	tcp_transition_to_state(conn, SYN_RECEIVED);
 	tcp_syn_to_snd_buff(conn);
@@ -50,7 +52,7 @@ struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack
 		free(listener);
 		return NULL;
 	}
-	listener->half_opens = create_tcp_ipv4_conn_htable(TCP_LSTNR_HALF_OPENS_BCKT_COUNT);
+	
 	listener->half_open_limit = TCP_LSTNR_HALF_OPENS_LIMIT;
 	listener->local_port = port;
 	memcpy(listener->local_addr, stack->local_address, IPV4_ADDR_LEN);
