@@ -8,6 +8,12 @@ void start_app(struct stack *stack)
 	printf("FD 9000: %d \n", tcp_9000);
 	printf("FD 9001: %d \n", udp_9001);
 	printf("CLOSE SOCKET: %d \n", close_socket(stack, udp_9001));
+
+	while (1) {
+		int conn_fd = accept_connection(stack, tcp_9000);
+		printf("\nCONN FD: %d ACCEPTED \n", conn_fd);
+	}
+
 	while (1) {
 		unsigned char buff[1500];
 		ipv4_address_t addr;

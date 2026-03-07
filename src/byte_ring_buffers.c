@@ -79,8 +79,8 @@ struct byte_snd_buffer *create_byte_snd_buffer(size_t capacity)
 
 	if (pthread_cond_init(&b->cond, NULL) != 0) {
 		free(b->data);
-		free(b);
 		pthread_mutex_destroy(&b->lock);
+		free(b);
 		return NULL;
 	}
 

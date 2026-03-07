@@ -92,7 +92,6 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	memcpy(id.loc_addr, listener->local_addr, IPV4_ADDR_LEN);
 
 	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, listener->tcp_layer);
-
 	// negotiated options
 	conn->sack_enabled = sack_permitted;
 	conn->snd_mss = mss;
@@ -103,8 +102,8 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	conn->rcv_wscale = 0;
 	conn->snd_wscale = 0;
 
-	struct routing_table *table =
-	    ((struct tcp_context *)(listener->tcp_layer->context))->routing_tbl;
+	struct tcp_context *cntx = (struct tcp_context *)(listener->tcp_layer->context);
+	struct routing_table *table = cntx->routing_tbl;
 	get_route(table, conn->extern_addr, &conn->route);
 
 	conn->rcv_mss =
@@ -119,7 +118,9 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	conn->snd_buffer->snd_una = cookie + 1;
 
 	conn->state = ESTABLISHED;
-	// ADD TO LISTENER READY Q!!!!
+
+	add_to_tcp_conn_hashtable(cntx->socket_manager->tcp_ipv4_conn_htable, conn);
+	push_q(listener->ready_q, &conn->q_node, true);
 	printf("MSS: %u, CWND: %u \n", conn->snd_mss, conn->cwnd);
 	return SYN_COOKIE_CONN_CREATED;
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include "queue.h"
 #include "tcp_common_types.h"
 #include "tcp_segment.h"
 #include "time_now.h"

@@ -72,8 +72,30 @@ int close_socket(struct stack *stack, int sockfd)
 		return r;
 
 	h.ops->close(stack, h.sock);
-	h.ops->release(h.sock); // not for tcp??
+	h.ops->release(h.sock);
 
 	sockfd_free(stack->sock_manager->sockfd_manager, sockfd);
 	return 1;
+}
+
+int accept_connection(struct stack *stack, int sockfd)
+{
+	struct sockfd_manager *sockfd_mgr = stack->sock_manager->sockfd_manager;
+	struct socket_handle lis_h;
+	int r = get_socket_handle(sockfd_mgr, sockfd, &lis_h);
+	if (r < 0)
+		return r;
+
+	if (!lis_h.ops->accept)
+		return -2; // INVALID SOCKET TYPE
+
+	struct tcp_ipv4_conn *conn = lis_h.ops->accept(lis_h.sock);
+	struct socket_handle conn_h = create_conn_sock_h(conn);
+
+	int fd = get_sockfd(sockfd_mgr);
+	if (fd == -1)
+		return -1; // MAX FD REACHED
+
+	assign_sock_h(sockfd_mgr, fd, conn_h);
+	return fd;
 }

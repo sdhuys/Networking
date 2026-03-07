@@ -1,5 +1,6 @@
 #pragma once
 #include "socket_types.h"
+#include "tcp_conn_socket.h"
 #include "tcp_listener_htable.h"
 #include "tcp_listener_socket.h"
 #include "types.h"
@@ -34,6 +35,7 @@ struct socket_ops {
 	pkt_result (*send_pkt)(struct stack *stack, struct pkt *p);
 
 	void (*close)(struct stack *stack, void *sock);
+	struct tcp_ipv4_conn *(*accept)(void *sock);
 };
 
 struct socket_manager {
@@ -69,3 +71,4 @@ int create_socket_handle(struct stack *stack,
 			 socket_type type,
 			 uint16_t local_port,
 			 struct socket_handle *out);
+struct socket_handle create_conn_sock_h(struct tcp_ipv4_conn *conn);

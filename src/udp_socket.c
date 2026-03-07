@@ -13,7 +13,8 @@ const struct socket_ops udp_socket_ops = {.is_snd_queued = udp_is_snd_queued,
 					  .lock = lock_socket,
 					  .try_get_pkt = udp_try_get_pkt,
 					  .send_pkt = udp_send_pkt,
-					  .close = udp_close_sock};
+					  .close = udp_close_sock,
+					  .accept = NULL};
 
 struct udp_ipv4_socket *create_udp_socket(uint16_t port, struct stack *stack)
 {

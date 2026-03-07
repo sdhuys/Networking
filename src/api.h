@@ -16,3 +16,4 @@ int receive_from(struct stack *stack,
 		 uint16_t *port_out);
 int send_down(struct stack *stack, int sockfd, struct send_request req);
 int close_socket(struct stack *stack, int sockfd);
+int accept_connection(struct stack *stack, int sockfd);

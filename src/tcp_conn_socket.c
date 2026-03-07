@@ -11,7 +11,8 @@ const struct socket_ops tcp_conn_ops = {.is_snd_queued = tcp_is_snd_queued,
 					.lock = tcp_lock_conn,
 					.try_get_pkt = tcp_try_get_pkt,
 					.send_pkt = tcp_send_packet,
-					.close = NULL};
+					.close = NULL,
+					.accept = NULL};
 
 // only store SACKs if start < end
 // AND end after seg_ack but before_eq snd_next
@@ -77,7 +78,6 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		}
 		return TCP_SEG_OUT_OF_WNDW_RANGE;
 	}
-
 	// RST processing
 	if (flags & TCP_RST) {
 		if (seg_ack == snd_next) {
@@ -242,7 +242,6 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 			conn->ack_pending = false;
 		}
 	}
-
 	// FIN handling
 	if (flags & TCP_FIN) {
 		conn->rcv_buffer->fin_received = true;
@@ -308,6 +307,8 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 		destroy_byte_snd_buffer(conn->snd_buffer);
 		free(conn);
 	}
+
+	conn->ref_count = 0;
 
 	conn->local_port = id->loc_port;
 	conn->extern_port = id->extern_port;
@@ -459,8 +460,11 @@ void write_pkt_tcp_general_metadata(struct tcp_ipv4_conn *conn, struct pkt *p)
 void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state state)
 {
 	pthread_mutex_lock(&conn->lock);
-	if (conn->lstnr && state == ESTABLISHED)
-		conn->lstnr->half_open_count--;
+	struct tcp_ipv4_listener *l = conn->lstnr;
+	if (l && state == ESTABLISHED) {
+		l->half_open_count--;
+		push_q(l->ready_q, &conn->q_node, false);
+	}
 
 	conn->state = state;
 	pthread_mutex_unlock(&conn->lock);
@@ -497,6 +501,19 @@ void release_tcp_conn(struct tcp_ipv4_conn *conn)
 	pthread_mutex_unlock(&(conn->lock));
 	if (should_destroy)
 		destroy_tcp_conn(conn);
+}
+
+// caller must hold lock!
+void q_retain_tcp_conn(struct queue_node *n)
+{
+	struct tcp_ipv4_conn *conn = CONTAINER_OF(n, struct tcp_ipv4_conn, q_node);
+	conn->ref_count++;
+}
+
+void q_release_tcp_conn(struct queue_node *n)
+{
+	struct tcp_ipv4_conn *conn = CONTAINER_OF(n, struct tcp_ipv4_conn, q_node);
+	release_tcp_conn(conn);
 }
 
 void tcp_lock_conn(void *s)

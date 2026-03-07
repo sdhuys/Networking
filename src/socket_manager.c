@@ -116,3 +116,9 @@ int create_socket_handle(struct stack *stack,
 	}
 	return 0;
 }
+
+struct socket_handle create_conn_sock_h(struct tcp_ipv4_conn *conn)
+{
+	struct socket_handle h = {.sock = conn, .ops = &tcp_conn_ops};
+	return h;
+}

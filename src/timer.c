@@ -11,12 +11,10 @@ void execute_exp_timers(struct timer_manager *mgr)
 
 	while (heap->count > 0) {
 		struct heap_node *n = heap_peek(heap);
-		struct timer *t = CONTAINER_OF(n, struct timer, node);
 		if (n->priority > now)
 			break;
 
-		t = CONTAINER_OF(heap_pop(heap), struct timer, node);
-
+		struct timer *t = CONTAINER_OF(heap_pop(heap), struct timer, node);
 		t->callback(t->args);
 		now = now_ms();
 	}

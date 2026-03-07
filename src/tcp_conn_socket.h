@@ -1,6 +1,7 @@
 #pragma once
 #include "byte_ring_buffers.h"
 #include "pkt_ring_buffer.h"
+#include "queue.h"
 #include "socket_manager.h"
 #include "tcp_common_types.h"
 #include "tcp_segment.h"
@@ -92,6 +93,9 @@ struct tcp_ipv4_conn {
 	// Zero window probe (instead of zero we use < MSS window)
 	struct timer *zwp_timer; // start timer as soon as peer advertises window < mss
 	bool snd_zwp;
+
+	// Intrusive data structures
+	struct queue_node q_node;
 };
 
 struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct nw_layer *tcp);
@@ -115,6 +119,8 @@ void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state st
 
 void retain_tcp_conn(struct tcp_ipv4_conn *conn);
 void release_tcp_conn(struct tcp_ipv4_conn *conn);
+void q_retain_tcp_conn(struct queue_node *n);
+void q_release_tcp_conn(struct queue_node *n);
 
 void tcp_retain_conn(void *s);
 void tcp_release_conn(void *s);
