@@ -52,7 +52,7 @@ struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack
 		free(listener);
 		return NULL;
 	}
-	
+
 	listener->half_open_limit = TCP_LSTNR_HALF_OPENS_LIMIT;
 	listener->local_port = port;
 	memcpy(listener->local_addr, stack->local_address, IPV4_ADDR_LEN);

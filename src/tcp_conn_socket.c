@@ -206,7 +206,6 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 						start_timer(tmgr, conn->rto_timer, conn->rto);
 					}
 
-
 					// update peer's window and reset duplicate count
 					conn->snd_wndw = ntohs(seg->header->window);
 					conn->dup_ack_cnt = 0;
