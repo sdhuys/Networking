@@ -146,7 +146,7 @@ pkt_result tcp_fast_reply_syn_cookie(struct tcp_ipv4_listener *listener,
 		struct routing_table *table = ((struct tcp_context *)(tcp->context))->routing_tbl;
 
 		if (!get_route(table, packet->dest_ip, &packet->route))
-			return TCP_UNROUTABLE_CONNECTION;
+			return SYN_COOKIE_UNROUTABLE;
 
 		packet->tcp_options->mss = packet->route->mtu - sizeof(struct ipv4_header) -
 					   sizeof(struct tcp_header_no_options);
