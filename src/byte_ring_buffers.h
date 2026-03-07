@@ -49,6 +49,7 @@ struct byte_snd_buffer {
 	// SACK blocks received from peer
 	struct ooo_seg sack_blocks[MAX_SACK_TRACKED];
 	size_t sack_blocks_count;
+	size_t sack_capacity;
 	size_t sacked_bytes;
 
 	uint32_t snd_una; // lowest unacknowledged sequence number
@@ -61,8 +62,8 @@ struct byte_snd_buffer {
 		     // of window)
 
 	bool rcov_mode;
-	uint32_t rcov_snd_next; // recovery mode sequence number to be sent
-	size_t rcov_snd_nxt_i;	// physical index of rcov_snd_next
+	uint32_t rcov_snd_nxt; // recovery mode sequence number to be sent
+	size_t rcov_snd_nxt_i; // physical index of rcov_snd_next
 
 	size_t used_bytes; // total bytes currently in buffer (unacked sent + unsent)
 
@@ -75,17 +76,17 @@ void destroy_byte_rcv_buffer(struct byte_reassembly_rcv_buffer *b);
 struct byte_snd_buffer *create_byte_snd_buffer(size_t capacity);
 void destroy_byte_snd_buffer(struct byte_snd_buffer *b);
 size_t write_to_snd_buff(struct byte_snd_buffer *b, unsigned char *data, size_t len);
-size_t copy_bytes_to_snd_from_snd_buff(struct byte_snd_buffer *b,
-				       unsigned char *buffer,
-				       size_t len);
-
+void copy_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t len);
+void insert_ooo_segment(
+    struct ooo_seg *segs, size_t *count, size_t capacity, struct ooo_seg seg, size_t idx);
+size_t bin_search_seq_after_eq_indx(uint32_t seq, struct ooo_seg *segs, size_t count);
 size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct tcp_segment *seg);
 
 static inline void sndbuf_insert_ghost_byte(struct byte_snd_buffer *b, uint8_t flag)
 {
-	if (flag != TCP_SYN && flag != TCP_FIN)
+	if ((flag != TCP_SYN && flag != TCP_FIN) || b->ctrl_count == 2)
 		return;
-	b->ctrl[b->ctrl_count++] = (struct ctrl_seg){.seq = b->snd_nxt, .flags = TCP_SYN};
+	b->ctrl[b->ctrl_count++] = (struct ctrl_seg){.seq = b->snd_nxt, .flags = flag};
 }
 
 static inline void lock_snd_buff(struct byte_snd_buffer *buff)
@@ -134,4 +135,14 @@ static inline void update_rcv_nxt_tail(struct byte_reassembly_rcv_buffer *b, siz
 {
 	b->rcv_nxt += contiguous_add;
 	b->tail = (b->tail + contiguous_add) & (b->capacity - 1);
+	b->contiguous_bytes += contiguous_add;
+}
+
+static inline void update_snd_nxt_head(struct byte_snd_buffer *b,
+				       uint32_t seg_ack,
+				       size_t data_ackd)
+{
+	b->snd_una = seg_ack;
+	b->used_bytes -= data_ackd;
+	b->head = (b->head + data_ackd) & (b->capacity - 1);
 }

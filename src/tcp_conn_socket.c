@@ -13,32 +13,46 @@ const struct socket_ops tcp_conn_ops = {.is_snd_queued = tcp_is_snd_queued,
 					.send_pkt = tcp_send_packet,
 					.close = NULL};
 
+// only store SACKs if start < end
+// AND end after seg_ack but before_eq snd_next
+// AND space to store OR ealier than last stored
+static bool should_store_sack_block(struct byte_snd_buffer *sb,
+				    uint32_t s_start,
+				    uint32_t s_end,
+				    uint32_t seg_ack)
+{
+	return tcp_seq_before(s_start, s_end) && tcp_seq_after(s_end, seg_ack) &&
+	       tcp_seq_before_eq(s_end, sb->snd_nxt) &&
+	       (sb->sack_blocks_count < sb->sack_capacity ||
+		tcp_seq_before_eq(s_start, sb->sack_blocks[sb->sack_capacity - 1].start_seq));
+}
+
+static void rst_connection(struct tcp_ipv4_conn *conn)
+{
+	tcp_transition_to_state(conn, CLOSED);
+	// notify threads waiting to read/write to cancel
+	pthread_cond_broadcast(&conn->snd_buffer->cond);
+	pthread_cond_broadcast(&conn->rcv_buffer->cond);
+	struct tcp_ipv4_conn_htable *htable =
+	    ((struct tcp_context *)conn->tcp_layer->context)->socket_manager->tcp_ipv4_conn_htable;
+	remove_from_tcp_conn_hashtable(htable, conn);
+}
+
 pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tcp_ipv4_conn *conn)
 {
 	uint32_t seg_seq = ntohl(seg->header->seq_num);
 	uint32_t seg_ack = ntohl(seg->header->ack_num);
 	uint16_t flags = seg->header->flags;
 
+	uint32_t snd_next = conn->snd_buffer->snd_nxt;
+	uint32_t snd_una = conn->snd_buffer->snd_una;
 	uint32_t rcv_next = conn->rcv_buffer->rcv_nxt;
 	uint32_t rcv_wnd = conn->rcv_buffer->rcv_wnd;
+
 	size_t s_len = seg_seq_len(seg);
 
 	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
 	struct timer_manager *tmgr = ctx->rx_timer_mgr;
-
-	// RST processing, cleanup (ignored for TIME_WAIT connections)
-	if (flags & TCP_RST && conn->state != TIME_WAIT) {
-		tcp_transition_to_state(conn, CLOSED);
-		// notify threads waiting to read/write to cancel
-		pthread_cond_broadcast(&conn->snd_buffer->cond);
-		pthread_cond_broadcast(&conn->rcv_buffer->cond);
-		struct tcp_ipv4_conn_htable *htable =
-		    ((struct tcp_context *)conn->tcp_layer->context)
-			->socket_manager->tcp_ipv4_conn_htable;
-		remove_from_tcp_conn_hashtable(htable, conn);
-
-		return INC_RST_CONN_DEAD;
-	}
 
 	// window Validation
 	bool in_window = false;
@@ -64,6 +78,20 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		return TCP_SEG_OUT_OF_WNDW_RANGE;
 	}
 
+	// RST processing
+	if (flags & TCP_RST) {
+		if (seg_ack == snd_next) {
+			rst_connection(conn);
+			return INC_RST_CONN_DEAD;
+		}
+		// per RFC 5961
+		if (conn->state != SYN_SENT && in_window) {
+			tcp_fast_reply_pure_ack(p, conn);
+			return INC_RST_CHALL_ACK_SENT;
+		}
+		return INVALID_RST_DROPPED;
+	}
+
 	// SYN handling
 	if (flags & TCP_SYN) {
 		if (conn->state == SYN_SENT) {
@@ -72,7 +100,8 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 
 			if (!(flags & TCP_ACK)) {
 				// simultaneous open: received SYN while expecting SYN-ACK
-				// trigger SYN-retransmission, SYN_RECEIVED state will append ACK
+				// trigger SYN-retransmission, SYN_RECEIVED state will
+				// append ACK
 				tcp_transition_to_state(conn, SYN_RECEIVED);
 				rto_callback(conn);
 				return TCP_SIMULTANEOUS_OPEN;
@@ -93,20 +122,18 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 
 	// ACK processing
 	if (flags & TCP_ACK) {
-		lock_snd_buff(conn->snd_buffer);
-		bool valid_new_ack = tcp_seq_after(seg_ack, conn->snd_buffer->snd_una) &&
-				     tcp_seq_before_eq(seg_ack, conn->snd_buffer->snd_nxt);
-		bool dupe_ack = (seg_ack == conn->snd_buffer->snd_una);
+		bool valid_new_ack =
+		    tcp_seq_after(seg_ack, snd_una) && tcp_seq_before_eq(seg_ack, snd_next);
+		bool dupe_ack = (seg_ack == snd_una);
 
 		if (valid_new_ack || dupe_ack) {
 			switch (conn->state) {
 			case SYN_SENT:
 				if (valid_new_ack && (seg_ack == conn->iss + 1)) {
-					conn->irs = seg_seq;
-					conn->rcv_buffer->rcv_nxt = seg_seq + 1;
-					tcp_transition_to_state(conn, ESTABLISHED);
 					conn->snd_buffer->snd_una = seg_ack;
 					conn->snd_buffer->ctrl_count--;
+					if (flags & TCP_SYN)
+						tcp_transition_to_state(conn, ESTABLISHED);
 				}
 				break;
 
@@ -125,39 +152,51 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 					uint32_t data_ackd = seg_ack - old_una;
 
 					// update snd_una and head
-					sb->snd_una = seg_ack;
-					sb->used_bytes -= data_ackd;
-					sb->head = (sb->head + data_ackd) & (sb->capacity - 1);
+					lock_snd_buff(sb);
+					update_snd_nxt_head(sb, seg_ack, data_ackd);
 
-					// remove SACK blocks that are overtaken by progressed
-					// snd_una
-					int sack = 0;
-					for (size_t i = 0; i < sb->sack_blocks_count; i++) {
-						// only keep blocks that start after snd_una
-						if (tcp_seq_after(sb->sack_blocks[i].start_seq,
-								  sb->snd_una)) {
-							sb->sack_blocks[sack++] =
-							    sb->sack_blocks[i];
+					// remove SACK blocks that are overtaken by
+					// progressed snd_una
+					if (sb->sack_blocks_count > 0) {
+						size_t overtaken_sacks =
+						    bin_search_seq_after_eq_indx(
+							sb->snd_una,
+							sb->sack_blocks,
+							sb->sack_blocks_count);
+
+						if (overtaken_sacks < sb->sack_blocks_count &&
+						    sb->sack_blocks[overtaken_sacks].start_seq ==
+							sb->snd_una)
+							overtaken_sacks++;
+
+						if (overtaken_sacks > 0) {
+							memmove(&sb->sack_blocks,
+								&sb->sack_blocks[overtaken_sacks],
+								(sb->sack_blocks_count -
+								 overtaken_sacks) *
+								    sizeof(struct ooo_seg));
+							sb->sack_blocks_count -= overtaken_sacks;
 						}
 					}
-					sb->sack_blocks_count = sack;
 
 					// process new sack blocks
 					size_t sack_count = seg->options->sack_block_count;
 					struct ooo_seg *sacks = seg->options->sacks;
-					if (seg->options->sack_block_count > 0) {
-						for (size_t i = 0; i < sack_count; i++) {
-							uint32_t s_start = sacks[i].start_seq;
-							uint32_t s_end = sacks[i].end_seq;
+					for (size_t i = 0; i < sack_count; i++) {
+						uint32_t s_start = sacks[i].start_seq;
+						uint32_t s_end = sacks[i].end_seq;
 
-							// only add SACKs that are
-							// "ahead" of our cumulative ACK
-							if (tcp_seq_after(s_end, seg_ack) &&
-							    tcp_seq_before_eq(s_end, sb->snd_nxt)) {
-
-								///////////////////////////
-								// ADD/MERGE BLOCKS
-							}
+						if (should_store_sack_block(
+							sb, s_start, s_end, sb->snd_una)) {
+							size_t idx = bin_search_seq_after_eq_indx(
+							    sacks[i].start_seq,
+							    sb->sack_blocks,
+							    sb->sack_blocks_count);
+							insert_ooo_segment(sb->sack_blocks,
+									   &(sb->sack_blocks_count),
+									   sb->sack_capacity,
+									   sacks[i],
+									   idx);
 						}
 					}
 
@@ -167,38 +206,34 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 						start_timer(tmgr, conn->rto_timer, conn->rto);
 					}
 
-					pthread_cond_broadcast(&sb->cond);
-					pthread_cond_broadcast(&conn->snd_buffer->cond);
 
 					// update peer's window and reset duplicate count
 					conn->snd_wndw = ntohs(seg->header->window);
 					conn->dup_ack_cnt = 0;
+					unlock_snd_buff(sb);
+					pthread_cond_broadcast(&sb->cond);
 
-				} else if (dupe_ack && s_len == 0) {
-
+					// pure dupe ack, no data
+				} else if (s_len == 0) {
 					conn->dup_ack_cnt++;
 					if (conn->dup_ack_cnt == 3)
-						rto_callback(conn); // CHANGE TO SEPARATE FAST
-								    // RETRANSMIT CALL!
+						rto_callback(conn); // CHANGE TO SEPARATE
+								    // FAST RETRANSMIT CALL!
 				}
 				break;
 			}
-		} else if (tcp_seq_after(seg_ack, conn->snd_buffer->snd_nxt)) {
+		} else if (tcp_seq_after(seg_ack, snd_next)) {
 			// ACK out of sync, send challenge ACK
 			tcp_fast_reply_pure_ack(p, conn);
-			unlock_snd_buff(conn->snd_buffer);
 			return TCP_ACK_OUT_OF_SYNC;
 		}
-		unlock_snd_buff(conn->snd_buffer);
 	}
 
 	// data handling: trimming is done by rcv_buffer_write_tcp_segment
 	if (conn->state >= ESTABLISHED && seg->payload_len > 0) {
-		lock_rcv_buff(conn->rcv_buffer);
 		rcv_buffer_write_tcp_segment(conn->rcv_buffer, seg);
-		unlock_rcv_buff(conn->rcv_buffer);
-
-		// delayed ACK logic: 1st packet starts timer, 2nd packet triggers immediate ACK
+		// delayed ACK logic: 1st packet starts timer, 2nd packet triggers immediate
+		// ACK
 		if (!conn->ack_pending) {
 			conn->ack_pending = true;
 			start_timer(tmgr, conn->del_ack_timer, TCP_DEL_ACK_MS);
@@ -211,15 +246,18 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 
 	// FIN handling
 	if (flags & TCP_FIN) {
+		conn->rcv_buffer->fin_received = true;
 		conn->rcv_buffer->rcv_nxt++; // add FIN ghost byte
 		printf("FIN ACKING \n");
 
 		tcp_fast_reply_pure_ack(p, conn);
 		if (conn->state == ESTABLISHED)
 			tcp_transition_to_state(conn, CLOSE_WAIT);
-		else if (conn->state == FIN_WAIT_1)
-			tcp_transition_to_state(conn, (flags & TCP_ACK) ? TIME_WAIT : CLOSING);
-		else if (conn->state == FIN_WAIT_2) {
+		else if (conn->state == FIN_WAIT_1) {
+			bool fin_acked = (flags & TCP_ACK) && (seg_ack == snd_next);
+			tcp_transition_to_state(conn, fin_acked ? TIME_WAIT : CLOSING);
+
+		} else if (conn->state == FIN_WAIT_2) {
 			struct socket_manager *mgr =
 			    ((struct tcp_context *)conn->tcp_layer->context)->socket_manager;
 			tcp_transition_to_state(conn, TIME_WAIT);
@@ -303,7 +341,7 @@ void rto_callback(void *c)
 	lock_snd_buff(conn->snd_buffer);
 	conn->cwnd = conn->snd_mss;
 	conn->snd_buffer->rcov_mode = true;
-	conn->snd_buffer->rcov_snd_next = conn->snd_buffer->snd_una;
+	conn->snd_buffer->rcov_snd_nxt = conn->snd_buffer->snd_una;
 	conn->snd_buffer->rcov_snd_nxt_i = conn->snd_buffer->head;
 	conn->rto *= 2;
 	unlock_snd_buff(conn->snd_buffer);
@@ -392,7 +430,7 @@ void write_pkt_tcp_general_metadata(struct tcp_ipv4_conn *conn, struct pkt *p)
 {
 	tcp_init_packet_addresses(p, conn);
 	tcp_lock_conn(conn);
-	p->tcp_seq = conn->snd_buffer->rcov_mode ? conn->snd_buffer->rcov_snd_next
+	p->tcp_seq = conn->snd_buffer->rcov_mode ? conn->snd_buffer->rcov_snd_nxt
 						 : conn->snd_buffer->snd_nxt;
 	p->tcp_ack = conn->rcv_buffer->rcv_nxt;
 	p->rcv_window = calc_rcv_wnd_sws(conn);
@@ -536,21 +574,23 @@ struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq
 	p->len = payload_len + sizeof(struct tcp_header_no_options) +
 		 calc_tcp_options_len(p->tcp_options);
 	p->offset = PKT_SIZE - p->len;
-	copy_bytes_to_snd_from_snd_buff(conn->snd_buffer, p->data + p->offset, payload_len);
+	copy_from_snd_buff(conn->snd_buffer, p->data + p->offset, payload_len);
 
 	////////////////// DO THIS AFTER ATUALLY SENDING THE PACKET ?!!!//////////////
 	if (conn->snd_buffer->rcov_mode) {
-		conn->snd_buffer->rcov_snd_next += seq_len;
+		conn->snd_buffer->rcov_snd_nxt += seq_len;
 		conn->snd_buffer->rcov_snd_nxt_i =
 		    (conn->snd_buffer->rcov_snd_nxt_i + payload_len) &
 		    (conn->snd_buffer->capacity - 1);
-		if (conn->snd_buffer->rcov_snd_next >= conn->snd_buffer->snd_nxt)
+		if (conn->snd_buffer->rcov_snd_nxt >= conn->snd_buffer->snd_nxt)
 			conn->snd_buffer->rcov_mode = false;
 	} else {
 		conn->snd_buffer->snd_nxt += seq_len;
 		conn->snd_buffer->snd_nxt_i =
 		    (conn->snd_buffer->snd_nxt_i + payload_len) & (conn->snd_buffer->capacity - 1);
 	}
+	// start timer
+
 	///////////////////////////////////////////////////////
 
 	printf("\nRETURNING PACKET\n");
@@ -569,7 +609,7 @@ struct pkt *tcp_try_get_pkt(void *s)
 	struct pkt *p;
 
 	lock_snd_buff(buff);
-	uint32_t snd_seq = !buff->rcov_mode ? buff->snd_nxt : buff->rcov_snd_next;
+	uint32_t snd_seq = !buff->rcov_mode ? buff->snd_nxt : buff->rcov_snd_nxt;
 	uint32_t window = usable_window(conn);
 	printf("WINDOW = %d \n", window);
 	if (window == 0) {

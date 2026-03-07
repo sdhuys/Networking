@@ -2,10 +2,6 @@
 #include "tcp_segment.h"
 #include <arpa/inet.h>
 
-static void insert_ooo_segment(struct byte_reassembly_rcv_buffer *b,
-			       struct ooo_seg seg,
-			       size_t idx);
-
 struct byte_reassembly_rcv_buffer *create_byte_rcv_buffer(size_t capacity)
 {
 	// enforce only power of 2 sizes
@@ -22,6 +18,19 @@ struct byte_reassembly_rcv_buffer *create_byte_rcv_buffer(size_t capacity)
 		return NULL;
 	}
 
+	if (pthread_mutex_init(&b->lock, NULL) != 0) {
+		free(b->data);
+		free(b);
+		return NULL;
+	}
+
+	if (pthread_cond_init(&b->cond, NULL) != 0) {
+		pthread_mutex_destroy(&b->lock);
+		free(b->data);
+		free(b);
+		return NULL;
+	}
+
 	b->capacity = capacity;
 	b->ooo_count = 0;
 	b->ooo_capacity = MAX_OOO_RCV_SEG_STORED;
@@ -29,9 +38,6 @@ struct byte_reassembly_rcv_buffer *create_byte_rcv_buffer(size_t capacity)
 	b->contiguous_bytes = 0;
 	b->head = 0;
 	b->tail = 0;
-
-	pthread_mutex_init(&b->lock, NULL);
-	pthread_cond_init(&b->cond, NULL);
 
 	return b;
 }
@@ -65,17 +71,25 @@ struct byte_snd_buffer *create_byte_snd_buffer(size_t capacity)
 	}
 	b->capacity = capacity;
 
-	if (pthread_mutex_init(&b->lock, NULL) < 0)
+	if (pthread_mutex_init(&b->lock, NULL) != 0) {
+		free(b->data);
+		free(b);
 		return NULL;
-	if (pthread_cond_init(&b->cond, NULL) < 0)
+	}
+
+	if (pthread_cond_init(&b->cond, NULL) != 0) {
+		free(b->data);
+		free(b);
+		pthread_mutex_destroy(&b->lock);
 		return NULL;
+	}
 
 	b->rcov_mode = false;
 	b->sack_blocks_count = 0;
+	b->sack_capacity = MAX_SACK_TRACKED;
 	memset(b->sack_blocks, 0, sizeof(b->sack_blocks));
 	b->sacked_bytes = 0;
 
-	b->used_bytes = 0;
 	b->head = 0;
 	b->snd_nxt_i = 0;
 	b->tail = 0;
@@ -128,10 +142,10 @@ size_t write_to_snd_buff(struct byte_snd_buffer *b, unsigned char *data, size_t 
 }
 
 // caller must make sure not to provide len > available bytes to read
-size_t copy_bytes_to_snd_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t len)
+void copy_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t len)
 {
 	if (!b || !buffer)
-		return 0;
+		return;
 
 	size_t snd_i = b->rcov_mode ? b->rcov_snd_nxt_i : b->snd_nxt_i;
 	size_t first_part = len;
@@ -171,13 +185,13 @@ static size_t write_to_rcv_buff(struct byte_reassembly_rcv_buffer *b,
 }
 
 // returns index of first element in ooo_segs whose .seq is equal to or comes after seq
-size_t bin_search_seq_after_eq_indx(uint32_t seq, struct byte_reassembly_rcv_buffer *b)
+size_t bin_search_seq_after_eq_indx(uint32_t seq, struct ooo_seg *segs, size_t count)
 {
 	size_t lo = 0;
-	size_t hi = b->ooo_count;
+	size_t hi = count;
 	while (lo < hi) {
 		size_t mid = lo + (hi - lo) / 2;
-		if (tcp_seq_after_eq(b->ooo_segs[mid].start_seq, seq))
+		if (tcp_seq_after_eq(segs[mid].start_seq, seq))
 			hi = mid;
 		else
 			lo = mid + 1;
@@ -203,7 +217,7 @@ static size_t write_unwritten_bytes(struct byte_reassembly_rcv_buffer *b,
 	size_t data_offset;
 	size_t data_len;
 
-	size_t i = bin_search_seq_after_eq_indx(seq_start, b);
+	size_t i = bin_search_seq_after_eq_indx(seq_start, b->ooo_segs, b->ooo_count);
 
 	if (ooo_i)
 		*ooo_i = i;
@@ -213,13 +227,15 @@ static size_t write_unwritten_bytes(struct byte_reassembly_rcv_buffer *b,
 		// check previous one, might overlap as well due to length
 		if (i != 0) {
 			uint32_t ooo_end = b->ooo_segs[i - 1].end_seq;
+			if (tcp_seq_before_eq(current_end, ooo_end))
+				return written;
 			// trim left
 			if (tcp_seq_before_eq(current_start, ooo_end))
 				current_start = ooo_end;
 		}
 
 		// go through all ooo segs up until seq_end
-		for (; tcp_seq_before(b->ooo_segs[i].start_seq, seq_end); i++) {
+		for (; tcp_seq_before(b->ooo_segs[i].start_seq, seq_end) && i < b->ooo_count; i++) {
 			// trim right
 			current_end = b->ooo_segs[i].start_seq;
 			data_offset = current_start - seq_start;
@@ -247,7 +263,6 @@ static size_t write_unwritten_bytes(struct byte_reassembly_rcv_buffer *b,
 // writes a tcp segment into the receive buffer, either contigously or leaves appropriate gap space
 // if segment is out of order keeps track of ooo_segments metadata, merges if possible "first
 // arrival wins", bytes are never overwritten returns the number of bytes written
-// caller must hold lock
 size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct tcp_segment *seg)
 {
 	if (!b || !seg || seg->payload_len == 0)
@@ -280,7 +295,7 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct
 		// Fill all gaps in [rcv_nxt, rcv_nxt + min(data_len, available)) that
 		// are not already covered by OOO
 		written += write_unwritten_bytes(b, data_seq, data_seq + data_len, data, NULL);
-		b->contiguous_bytes += data_len;
+		lock_rcv_buff(b);
 		update_rcv_nxt_tail(b, data_len);
 		// check if OOO ranges have become fully or partly overtaken by contiguous data
 		while (b->ooo_count > 0) {
@@ -298,7 +313,6 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct
 				uint32_t delta = b->rcv_nxt - seg_start;
 				size_t seg_len = seg_end - seg_start;
 				update_rcv_nxt_tail(b, seg_len - delta);
-				b->contiguous_bytes += seg_len - delta;
 			}
 
 			// drop obsolete metadata //
@@ -306,6 +320,7 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct
 				&b->ooo_segs[1],
 				(b->ooo_count - 1) * sizeof(b->ooo_segs[0]));
 			b->ooo_count--;
+			unlock_rcv_buff(b);
 		}
 	} else {
 		// out-of-order segment (data_seq > rcv_nxt)
@@ -321,32 +336,34 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct
 			    write_unwritten_bytes(b, data_seq, data_seq + data_len, data, &ooo_i);
 			struct ooo_seg seg = {.start_seq = data_seq,
 					      .end_seq = data_seq + data_len};
-			insert_ooo_segment(b, seg, ooo_i);
+			lock_rcv_buff(b);
+			insert_ooo_segment(b->ooo_segs, &b->ooo_count, b->ooo_capacity, seg, ooo_i);
+			unlock_rcv_buff(b);
 		}
 	}
 
 	return written;
 }
 
-static void merge_next_ooo_segs(struct byte_reassembly_rcv_buffer *b, size_t idx)
+static void merge_next_ooo_segs(struct ooo_seg *segs, size_t *count, size_t idx)
 {
-	if (idx == b->ooo_count - 1)
+	if (idx == *count - 1)
 		return;
 
-	while (b->ooo_count > 0 && idx + 1 < b->ooo_count) {
-		uint32_t cur_end = b->ooo_segs[idx].end_seq;
-		uint32_t nxt_start = b->ooo_segs[idx + 1].start_seq;
-		uint32_t nxt_end = b->ooo_segs[idx + 1].end_seq;
+	while (*count > 0 && idx + 1 < *count) {
+		uint32_t cur_end = segs[idx].end_seq;
+		uint32_t nxt_start = segs[idx + 1].start_seq;
+		uint32_t nxt_end = segs[idx + 1].end_seq;
 
 		// can merge
 		if (tcp_seq_before_eq(nxt_start, cur_end)) {
 			if (tcp_seq_after(nxt_end, cur_end))
-				b->ooo_segs[idx].end_seq = nxt_end;
+				segs[idx].end_seq = nxt_end;
 
-			memmove(&b->ooo_segs[idx + 1],
-				&b->ooo_segs[idx + 2],
-				(b->ooo_count - (idx + 2)) * sizeof(struct ooo_seg));
-			b->ooo_count--;
+			memmove(&segs[idx + 1],
+				&segs[idx + 2],
+				(*count - (idx + 2)) * sizeof(struct ooo_seg));
+			(*count)--;
 		} else
 			break;
 	}
@@ -354,13 +371,14 @@ static void merge_next_ooo_segs(struct byte_reassembly_rcv_buffer *b, size_t idx
 }
 
 // insert ooo into ordered array at index, caller must hold lock
-static void insert_ooo_segment(struct byte_reassembly_rcv_buffer *b, struct ooo_seg seg, size_t idx)
+void insert_ooo_segment(
+    struct ooo_seg *segs, size_t *count, size_t capacity, struct ooo_seg seg, size_t idx)
 {
 	uint32_t new_start = seg.start_seq;
 	uint32_t new_end = seg.end_seq;
 
 	if (idx > 0) {
-		uint32_t prev_end = b->ooo_segs[idx - 1].end_seq;
+		uint32_t prev_end = segs[idx - 1].end_seq;
 
 		// merge into the previous segment if overlaps or touches (modulo 32-bit)
 		if (tcp_seq_before_eq(new_start, prev_end)) {
@@ -368,39 +386,39 @@ static void insert_ooo_segment(struct byte_reassembly_rcv_buffer *b, struct ooo_
 			// insert [4, 6) at index 1
 			if (tcp_seq_after(new_end, prev_end)) {
 				// => [1, 6), [5, 8)
-				b->ooo_segs[idx - 1].end_seq = new_end;
+				segs[idx - 1].end_seq = new_end;
 				// then merge [5, 8) into [1, 6)
-				merge_next_ooo_segs(b, idx - 1);
+				merge_next_ooo_segs(segs, count, idx - 1);
 			}
 			return;
 		}
 	}
 
-	if (idx < b->ooo_count) {
-		uint32_t next_start = b->ooo_segs[idx].start_seq;
-		uint32_t next_end = b->ooo_segs[idx].end_seq;
+	if (idx < *count) {
+		uint32_t next_start = segs[idx].start_seq;
+		uint32_t next_end = segs[idx].end_seq;
 		// merge into next element if overlaps or touches next
 		if (tcp_seq_after_eq(new_end, next_start)) {
 			// ooo_segs = [1, 4), [8, 10), ...
 			// insert [7, 12) at index => [1, 4), [7, x), ...
-			b->ooo_segs[idx].start_seq = new_start;
+			segs[idx].start_seq = new_start;
 			if (tcp_seq_after(new_end, next_end)) {
 				// => [1, 4), [7, 12), ...
-				b->ooo_segs[idx].end_seq = new_end;
+				segs[idx].end_seq = new_end;
 				// then merge nexts into [7, 12)
-				merge_next_ooo_segs(b, idx);
+				merge_next_ooo_segs(segs, count, idx);
 			}
 			return;
 		}
 	}
 
 	// no merging with prev or next, insert fully new block
-	size_t shifts = b->ooo_count - idx;
-	if (b->ooo_count == b->ooo_capacity && shifts != 0)
+	size_t shifts = *count - idx;
+	if (*count == capacity && shifts != 0)
 		shifts--;
 	if (shifts > 0)
-		memmove(&b->ooo_segs[idx + 1], &b->ooo_segs[idx], shifts * sizeof(struct ooo_seg));
+		memmove(&segs[idx + 1], &segs[idx], shifts * sizeof(struct ooo_seg));
 
-	b->ooo_count += b->ooo_count == b->ooo_capacity ? 0 : 1;
-	b->ooo_segs[idx] = seg;
+	*count += *count == capacity ? 0 : 1;
+	segs[idx] = seg;
 }
