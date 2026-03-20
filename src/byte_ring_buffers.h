@@ -27,7 +27,8 @@ struct byte_reassembly_rcv_buffer {
 	size_t ooo_count;
 	size_t ooo_capacity;
 
-	uint16_t rcv_wnd; // our last advertised rcv_window
+	uint16_t rcv_wnd;   // our last advertised rcv_window
+	uint8_t rcv_wscale; // our scale
 
 	uint32_t rcv_nxt; // sequence number of the first "hole"
 	size_t head;	  // physical index where the App starts reading
@@ -66,6 +67,12 @@ struct byte_snd_buffer {
 	size_t rcov_snd_nxt_i; // physical index of rcov_snd_next
 
 	size_t used_bytes; // total bytes currently in buffer (unacked sent + unsent)
+
+	uint16_t snd_wndw;  // peer's advertised window (not scaled)
+	uint8_t snd_wscale; // peer's scale
+
+	uint32_t cwnd;
+	uint32_t ssthresh;
 
 	struct ctrl_seg ctrl[CTRL_BLOCKS]; // keep track of ghost bytes seqs
 	uint8_t ctrl_count;		   // 0..2

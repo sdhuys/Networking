@@ -31,7 +31,7 @@ void start_listening(struct nw_layer *interface)
 
 				packet->len = (size_t)nread;
 				packet->offset = 0;
-				FILE *log = fopen("in.txt", "a");
+				FILE *log = fopen("io.txt", "a");
 				if (log) {
 					for (size_t i = 0; i < packet->len; i++)
 						fprintf(
@@ -41,7 +41,8 @@ void start_listening(struct nw_layer *interface)
 				}
 				pkt_result result = interface->rcv_up(interface, packet);
 
-				if (result != SENT && result != SYN_COOKIE_SENT) {
+				// multiples of 10 have been released by write_to_interface
+				if (result % 10 != 0) {
 					printf("LISTEN LOOP RELEASING \n");
 					release_pkt(packet);
 				}
@@ -77,7 +78,7 @@ pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
 		return WRITE_ERROR;
 	}
 
-	FILE *log = fopen("out.txt", "a");
+	FILE *log = fopen("io.txt", "a");
 	if (log) {
 		for (size_t i = 0; i < packet->len; i++)
 			fprintf(log, "%02X", packet->data[i + packet->offset]);

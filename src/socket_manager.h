@@ -1,11 +1,6 @@
 #pragma once
 #include "socket_types.h"
-#include "tcp_conn_socket.h"
-#include "tcp_listener_htable.h"
-#include "tcp_listener_socket.h"
 #include "types.h"
-#include "udp_hashtable.h"
-#include "udp_socket.h"
 #include <stdlib.h>
 
 struct socket_handle {
@@ -64,7 +59,7 @@ void notify_socket_readable_snd(struct socket_manager *mgr,
 				void *sock,
 				const struct socket_ops *ops);
 struct socket_handle dequeue_sock_snd_down_q(struct socket_manager *mgr);
-void release_socket_from_queue(struct socket_handle sock);
+void release_socket(struct socket_handle sock);
 struct socket_h_q_node *dequeue_q_node(struct socket_h_q *q);
 void enqueue_socket(struct socket_h_q *q, struct socket_handle sock);
 int create_socket_handle(struct stack *stack,

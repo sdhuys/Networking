@@ -18,10 +18,10 @@ bool add_to_tcp_listener_hashtable(struct tcp_ipv4_listener_htable *htable,
 		node = node->next;
 	}
 
-	retain_tcp_listener(listener);
 	struct tcp_ipv4_listener_node *new_node = malloc(sizeof(struct tcp_ipv4_listener_node));
 	if (new_node == NULL)
 		return false;
+	retain_tcp_listener(listener);
 
 	new_node->listener = listener;
 	new_node->next = htable->buckets[hash];

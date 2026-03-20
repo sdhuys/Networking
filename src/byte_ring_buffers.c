@@ -38,7 +38,7 @@ struct byte_reassembly_rcv_buffer *create_byte_rcv_buffer(size_t capacity)
 	b->contiguous_bytes = 0;
 	b->head = 0;
 	b->tail = 0;
-
+	b->rcv_wscale = 0;
 	return b;
 }
 
@@ -96,7 +96,7 @@ struct byte_snd_buffer *create_byte_snd_buffer(size_t capacity)
 	b->used_bytes = 0;
 	memset(b->ctrl, 0, sizeof(b->ctrl));
 	b->ctrl_count = 0;
-
+	b->ssthresh = UINT32_MAX;
 	return b;
 }
 
@@ -235,7 +235,7 @@ static size_t write_unwritten_bytes(struct byte_reassembly_rcv_buffer *b,
 		}
 
 		// go through all ooo segs up until seq_end
-		for (; tcp_seq_before(b->ooo_segs[i].start_seq, seq_end) && i < b->ooo_count; i++) {
+		for (; i < b->ooo_count && tcp_seq_before(b->ooo_segs[i].start_seq, seq_end); i++) {
 			// trim right
 			current_end = b->ooo_segs[i].start_seq;
 			data_offset = current_start - seq_start;
@@ -284,18 +284,19 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct
 	}
 
 	// right-trim any part of the payload exceeding right edge of receive window
-	uint32_t wndw_right_edge = rcv_nxt + b->rcv_wnd;
+	uint32_t wndw_right_edge = rcv_nxt + (b->rcv_wnd << b->rcv_wscale);
 	if (tcp_seq_after_eq(data_seq + data_len, wndw_right_edge)) {
 		uint32_t delta = (data_seq + data_len) - wndw_right_edge;
 		data_len -= delta;
 	}
+
+	lock_rcv_buff(b);
 
 	// in order data
 	if (data_seq == rcv_nxt) {
 		// Fill all gaps in [rcv_nxt, rcv_nxt + min(data_len, available)) that
 		// are not already covered by OOO
 		written += write_unwritten_bytes(b, data_seq, data_seq + data_len, data, NULL);
-		lock_rcv_buff(b);
 		update_rcv_nxt_tail(b, data_len);
 		// check if OOO ranges have become fully or partly overtaken by contiguous data
 		while (b->ooo_count > 0) {
@@ -320,7 +321,6 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct
 				&b->ooo_segs[1],
 				(b->ooo_count - 1) * sizeof(b->ooo_segs[0]));
 			b->ooo_count--;
-			unlock_rcv_buff(b);
 		}
 	} else {
 		// out-of-order segment (data_seq > rcv_nxt)
@@ -331,16 +331,14 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct
 		if (b->ooo_count != b->ooo_capacity ||
 		    tcp_seq_before_eq(data_seq, b->ooo_segs[b->ooo_capacity - 1].end_seq)) {
 			size_t ooo_i;
-
 			written +=
 			    write_unwritten_bytes(b, data_seq, data_seq + data_len, data, &ooo_i);
 			struct ooo_seg seg = {.start_seq = data_seq,
 					      .end_seq = data_seq + data_len};
-			lock_rcv_buff(b);
 			insert_ooo_segment(b->ooo_segs, &b->ooo_count, b->ooo_capacity, seg, ooo_i);
-			unlock_rcv_buff(b);
 		}
 	}
+	unlock_rcv_buff(b);
 
 	return written;
 }
@@ -374,6 +372,9 @@ static void merge_next_ooo_segs(struct ooo_seg *segs, size_t *count, size_t idx)
 void insert_ooo_segment(
     struct ooo_seg *segs, size_t *count, size_t capacity, struct ooo_seg seg, size_t idx)
 {
+	if (idx >= capacity)
+		return;
+
 	uint32_t new_start = seg.start_seq;
 	uint32_t new_end = seg.end_seq;
 

@@ -21,9 +21,9 @@ void *stack_transmission_loop(void *arg)
 			struct pkt *p;
 			while ((p = h.ops->try_get_pkt(h.sock)) != NULL) {
 				res = h.ops->send_pkt(stack, p);
+				printf("WORKER RESULT: %d \n", res);
 			}
-			printf("WORKER RESULT: %d \n", res);
-			release_socket_from_queue(h);
+			release_socket(h);
 		}
 	}
 	return NULL;

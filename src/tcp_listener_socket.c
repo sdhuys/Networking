@@ -49,17 +49,23 @@ struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack
 	if (listener == NULL)
 		return NULL;
 
+	if (pthread_mutex_init(&listener->lock, NULL) != 0) {
+		free(listener);
+		return NULL;
+	}
+	if (pthread_cond_init(&listener->accept_cond, NULL) != 0) {
+		pthread_mutex_destroy(&listener->lock);
+		free(listener);
+		return NULL;
+	}
+
 	listener->ready_q = create_q(
 	    q_release_tcp_conn, q_retain_tcp_conn, &listener->accept_cond, &listener->lock);
 	if (!listener->ready_q) {
 		destroy_tcp_listener(listener);
 		return NULL;
 	}
-	if (pthread_mutex_init(&listener->lock, NULL) != 0 || pthread_cond_init(&listener->accept_cond, NULL) != 0) {
-		destroy_tcp_listener(listener);
-		return NULL;
-	}
-	
+
 	listener->ref_count = 0;
 	listener->half_open_limit = TCP_LSTNR_HALF_OPENS_LIMIT;
 	listener->local_port = port;
@@ -83,7 +89,7 @@ void release_tcp_listener(struct tcp_ipv4_listener *listener)
 	pthread_mutex_lock(&(listener->lock));
 
 	listener->ref_count--;
-	if (listener->ref_count <= 0)
+	if (listener->ref_count == 0)
 		should_destroy = true;
 
 	pthread_mutex_unlock(&(listener->lock));

@@ -22,10 +22,10 @@ bool add_to_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct tcp_i
 		}
 		node = node->next;
 	}
-	retain_tcp_conn(conn);
 	struct tcp_ipv4_conn_htbl_node *new_node = malloc(sizeof(struct tcp_ipv4_conn_htbl_node));
 	if (new_node == NULL)
 		return false;
+	retain_tcp_conn(conn);
 
 	new_node->conn = conn;
 	new_node->next = htable->buckets[hash];

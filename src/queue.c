@@ -62,8 +62,7 @@ void push_q(struct queue *q, struct queue_node *n, bool lock)
 
 	if (q->lock && lock)
 		pthread_mutex_unlock(q->lock);
-			printf("PUSHING DONE \n");
-
+	printf("PUSHING DONE \n");
 }
 
 // no release_parent call, ownership transferred to caller

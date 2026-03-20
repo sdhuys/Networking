@@ -8,7 +8,7 @@ struct tcp_segment {
 	struct tcp_options *options;
 	size_t options_len;
 	unsigned char *payload;
-	size_t payload_len;
+	uint32_t payload_len;
 };
 
 uint32_t seg_seq_len(struct tcp_segment *seg);

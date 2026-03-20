@@ -1,8 +1,8 @@
 #pragma once
 #include "container_of.h"
 #include "stdlib.h"
-#include <stdbool.h>
 #include <pthread.h>
+#include <stdbool.h>
 #include <stddef.h>
 
 struct queue_node {

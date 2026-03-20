@@ -53,11 +53,8 @@ struct tcp_ipv4_conn {
 	uint32_t iss; // initial Send Sequence
 	uint32_t irs; // initial Receive Sequence
 
-	uint32_t cwnd;
-	uint32_t ssthresh;
-	uint32_t rcv_mss;  // local mss
-	uint32_t snd_mss;  // peer's advertised mss
-	uint16_t snd_wndw; // peer's advertised window (calculated with scale)
+	uint32_t rcv_mss; // local mss
+	uint32_t snd_mss; // peer's advertised mss
 
 	// features & options
 	uint32_t ts_recent;   // the last TSval received from peer (to echo back in TSecr)
@@ -69,8 +66,6 @@ struct tcp_ipv4_conn {
 	bool ece_enabled; // set during handshake
 
 	bool wscale_enabled;
-	uint8_t snd_wscale; // peer's scale
-	uint8_t rcv_wscale; // our scale
 	uint8_t dup_ack_cnt;
 	bool sack_enabled;
 	bool ts_enabled;
@@ -94,6 +89,8 @@ struct tcp_ipv4_conn {
 	struct timer *zwp_timer; // start timer as soon as peer advertises window < mss
 	bool snd_zwp;
 
+	bool timers_cancelled;
+
 	// Intrusive data structures
 	struct queue_node q_node;
 };
@@ -103,6 +100,7 @@ void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *
 void delayed_ack_callback(void *c);
 void zwp_callback(void *c);
 void rto_callback(void *c);
+void fast_retransmit(struct tcp_ipv4_conn *conn);
 
 pkt_result tcp_fast_reply_pure_ack(struct pkt *p, struct tcp_ipv4_conn *conn);
 void destroy_tcp_conn(struct tcp_ipv4_conn *conn);

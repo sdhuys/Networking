@@ -92,6 +92,9 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	memcpy(id.loc_addr, listener->local_addr, IPV4_ADDR_LEN);
 
 	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, listener->tcp_layer);
+	if (!conn)
+		return SYN_COOKIE_OUT_OF_MEMORY;
+
 	// negotiated options
 	conn->sack_enabled = sack_permitted;
 	conn->snd_mss = mss;
@@ -99,17 +102,20 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	// lost options/features
 	conn->ece_enabled = 0;
 	conn->ts_enabled = false;
-	conn->rcv_wscale = 0;
-	conn->snd_wscale = 0;
+	conn->rcv_buffer->rcv_wscale = 0;
+	conn->snd_buffer->snd_wscale = 0;
 
 	struct tcp_context *cntx = (struct tcp_context *)(listener->tcp_layer->context);
 	struct routing_table *table = cntx->routing_tbl;
-	get_route(table, conn->extern_addr, &conn->route);
 
+	if (get_route(table, conn->extern_addr, &conn->route)){
 	conn->rcv_mss =
 	    conn->route->mtu - sizeof(struct ipv4_header) - sizeof(struct tcp_header_no_options);
+	} else {
+		conn->rcv_mss = TCP_MSS_DEFAULT_FALLBACK;
+	}
 
-	conn->cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
+	conn->snd_buffer->cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
 
 	conn->iss = cookie;
 	conn->irs = ntohl(seg->header->seq_num) - 1; // -1 to account for original SYN
@@ -121,6 +127,5 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 
 	add_to_tcp_conn_hashtable(cntx->socket_manager->tcp_ipv4_conn_htable, conn);
 	push_q(listener->ready_q, &conn->q_node, true);
-	printf("MSS: %u, CWND: %u \n", conn->snd_mss, conn->cwnd);
 	return SYN_COOKIE_CONN_CREATED;
 }

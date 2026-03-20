@@ -27,7 +27,10 @@ pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet)
 			return ARP_RQST_TARGET_NOT_RELEVANT;
 
 		inc_arp_request_to_reply(packet, arp_data, cntx->mac_addr);
-		return send_arp_down(self, packet);
+		pkt_result r = send_arp_down(self, packet);
+		if (r == SENT)
+			return ARP_REPLY_SENT;
+		return r;
 	}
 
 	else if (op == ARP_REPLY) {
@@ -204,8 +207,5 @@ pkt_result send_arp_down(struct nw_layer *self, struct pkt *packet)
 	packet->offset -= sizeof(struct ethernet_header);
 	packet->len += sizeof(struct ethernet_header);
 	pkt_result r = self->downs[0]->send_down(self->downs[0], packet);
-	if (r == SENT)
-		return ARP_REPLY_SENT;
-	else
-		return r;
+	return r;
 }

@@ -1,4 +1,9 @@
 #include "socket_manager.h"
+#include "tcp_conn_socket.h"
+#include "tcp_listener_htable.h"
+#include "tcp_listener_socket.h"
+#include "udp_hashtable.h"
+#include "udp_socket.h"
 #include <assert.h>
 #include <stdio.h>
 
@@ -6,15 +11,16 @@ void notify_socket_readable_snd(struct socket_manager *mgr,
 				void *sock,
 				const struct socket_ops *ops)
 {
+	ops->retain(sock);
 	ops->lock(sock);
 	if (!ops->is_snd_queued(sock)) {
 		ops->set_snd_queued(sock, true);
 		ops->unlock(sock);
-		ops->retain(sock);
 		struct socket_handle h = {.sock = sock, .ops = ops};
 		enqueue_socket(mgr->send_down_sock_q, h);
 	} else {
 		ops->unlock(sock);
+		ops->release(sock);
 	}
 }
 
@@ -25,17 +31,17 @@ struct socket_handle dequeue_sock_snd_down_q(struct socket_manager *mgr)
 	struct socket_handle sock = {0};
 	if (node) {
 		sock = node->socket;
+		sock.ops->lock(sock.sock);
+		sock.ops->set_snd_queued(sock.sock, false);
+		sock.ops->unlock(sock.sock);
 		free(node);
 	}
+
 	return sock;
 }
 
-void release_socket_from_queue(struct socket_handle sock)
+void release_socket(struct socket_handle sock)
 {
-	sock.ops->lock(sock.sock);
-
-	sock.ops->set_snd_queued(sock.sock, false);
-	sock.ops->unlock(sock.sock);
 	sock.ops->release(sock.sock);
 }
 
