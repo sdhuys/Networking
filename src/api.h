@@ -17,3 +17,7 @@ int receive_from(struct stack *stack,
 int send_down(struct stack *stack, int sockfd, struct send_request req);
 int close_socket(struct stack *stack, int sockfd);
 int accept_connection(struct stack *stack, int sockfd);
+int tcp_connect(struct stack *stack,
+		uint16_t local_port,
+		uint16_t extern_port,
+		ipv4_address_t extern_addr);

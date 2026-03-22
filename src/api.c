@@ -1,6 +1,8 @@
 #include "api.h"
 #include "socket_manager.h"
 #include "sockfd_manager.h"
+#include "tcp_common_types.h"
+#include "tcp_conn_htable.h"
 
 int open_listener(struct stack *stack, socket_type type, uint16_t local_port)
 {
@@ -92,6 +94,45 @@ int accept_connection(struct stack *stack, int sockfd)
 	struct tcp_ipv4_conn *conn = lis_h.ops->accept(lis_h.sock);
 	struct socket_handle conn_h = create_conn_sock_h(conn);
 
+	int fd = get_sockfd(sockfd_mgr);
+	if (fd == -1)
+		return -1; // MAX FD REACHED
+
+	assign_sock_h(sockfd_mgr, fd, conn_h);
+	return fd;
+}
+
+int tcp_connect(struct stack *stack,
+		uint16_t local_port,
+		uint16_t extern_port,
+		ipv4_address_t extern_addr)
+{
+	struct tcp_ipv4_conn_htable *htable = stack->sock_manager->tcp_ipv4_conn_htable;
+	struct tcp_ipv4_conn_htable *tw_htable =
+	    stack->sock_manager->tcp_ipv4_conn_time_wait_htable;
+	struct tcp_conn_id id = {.extern_port = extern_port, .loc_port = local_port};
+	memcpy(id.extern_addr, extern_addr, IPV4_ADDR_LEN);
+	memcpy(id.loc_addr, stack->local_address, IPV4_ADDR_LEN);
+
+	if (query_tcp_conn_hashtable(htable, id) || query_tcp_conn_hashtable(tw_htable, id))
+		return -1; // CONNECTION ALREADY IN USE
+
+	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, stack->tcp_layer);
+	retain_tcp_conn(conn);
+	client_init_tcp_connection(conn);
+	add_to_tcp_conn_hashtable(htable, conn);
+	tcp_transition_to_state(conn, SYN_SENT);
+	tcp_syn_to_snd_buff(conn);
+	tcp_lock_conn(conn);
+
+	while (conn->state != ESTABLISHED) {
+		if (conn->state == CLOSED)
+			return -2; // CONNECTION FAILED
+		pthread_cond_wait(&conn->cond, &conn->lock);
+	}
+	tcp_unlock_conn(conn);
+	struct socket_handle conn_h = create_conn_sock_h(conn);
+	struct sockfd_manager *sockfd_mgr = stack->sock_manager->sockfd_manager;
 	int fd = get_sockfd(sockfd_mgr);
 	if (fd == -1)
 		return -1; // MAX FD REACHED

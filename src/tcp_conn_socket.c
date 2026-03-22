@@ -64,7 +64,9 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 
 	// window Validation
 	bool in_window = false;
-	if (s_len == 0) {
+	if (conn->state == SYN_SENT)
+		in_window = true;
+	else if (s_len == 0) {
 		// accepting pure acks if they aren't "from the future"
 		in_window =
 		    tcp_seq_before(seg_seq, rcv_next + scaled_rcv_wnd + (scaled_rcv_wnd == 0));
@@ -101,8 +103,10 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		return INVALID_RST_DROPPED;
 	}
 
+	bool immediate_ack = false;
 	// SYN handling
 	if (flags & TCP_SYN) {
+		immediate_ack = true;
 		if (conn->state == SYN_SENT) {
 			conn->irs = seg_seq;
 			conn->rcv_buffer->rcv_nxt = seg_seq + 1;
@@ -125,6 +129,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		} else if (conn->state >= ESTABLISHED) {
 			// unexpected SYN in established session
 			tcp_fast_reply_rst(conn->tcp_layer, p, seg);
+			rst_connection(conn);
 			return RST_UNEXPECTED_SYN;
 		}
 	}
@@ -223,12 +228,6 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 						}
 					}
 
-					// retransmission timer
-					cancel_timer(tmgr, conn->rto_timer);
-					if (sb->snd_nxt != sb->snd_una) {
-						start_timer(tmgr, conn->rto_timer, conn->rto);
-					}
-
 					conn->dup_ack_cnt = 0;
 					unlock_snd_buff(sb);
 					pthread_cond_broadcast(&sb->cond);
@@ -241,6 +240,15 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 				}
 				break;
 			}
+
+			if (valid_new_ack) {
+				// retransmission timer
+				printf("  CANCEL RTO TIMER \n");
+				cancel_timer(tmgr, conn->rto_timer);
+				if (sb->snd_nxt != sb->snd_una) {
+					start_timer(tmgr, conn->rto_timer, conn->rto);
+				}
+			}
 		} else if (tcp_seq_after(seg_ack, snd_next)) {
 			// ACK out of sync, send challenge ACK
 			tcp_fast_reply_pure_ack(p, conn);
@@ -248,7 +256,6 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		}
 	}
 
-	bool immediate_ack = false;
 	// data handling: trimming is done by rcv_buffer_write_tcp_segment
 	if (conn->state >= ESTABLISHED && seg->payload_len > 0) {
 		rcv_buffer_write_tcp_segment(conn->rcv_buffer, seg);
@@ -257,7 +264,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		// ACK
 		if (!conn->ack_pending) {
 			conn->ack_pending = true;
-			start_timer(tmgr, conn->del_ack_timer, TCP_DEL_ACK_MS);
+			// start_timer(tmgr, conn->del_ack_timer, TCP_DEL_ACK_MS);
 		} else {
 			immediate_ack = true;
 		}
@@ -278,7 +285,10 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		if (conn->state == ESTABLISHED)
 			tcp_transition_to_state(conn, CLOSE_WAIT);
 		else if (conn->state == FIN_WAIT_1) {
-			bool fin_acked = (flags & TCP_ACK) && (seg_ack == snd_next); // no more data after FIN, so snd_next is FIN's seq + 1
+			bool fin_acked =
+			    (flags & TCP_ACK) &&
+			    (seg_ack ==
+			     snd_next); // no more data after FIN, so snd_next is FIN's seq + 1
 			tcp_transition_to_state(conn, fin_acked ? TIME_WAIT : CLOSING);
 
 		} else if (conn->state == FIN_WAIT_2)
@@ -319,10 +329,15 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 		free(conn);
 		return NULL;
 	}
+	if (pthread_cond_init(&conn->cond, NULL) < 0) {
+		pthread_mutex_destroy(&conn->lock);
+		free(conn);
+	}
 
 	conn->snd_buffer = create_byte_snd_buffer(TCP_DEFAULT_BUFFER_SIZE);
 	if (!conn->snd_buffer) {
 		pthread_mutex_destroy(&conn->lock);
+		pthread_cond_destroy(&conn->cond);
 		free(conn);
 		return NULL;
 	}
@@ -331,6 +346,7 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 	if (!conn->rcv_buffer) {
 		destroy_byte_snd_buffer(conn->snd_buffer);
 		pthread_mutex_destroy(&conn->lock);
+		pthread_cond_destroy(&conn->cond);
 		free(conn);
 		return NULL;
 	}
@@ -344,6 +360,7 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 
 	// 0 used as "previous" value to calculate increase for current
 	conn->rcv_buffer->rcv_wnd = 0;
+	conn->rcv_buffer->rcv_wscale = tcp_calc_wndw_scale();
 
 	conn->del_ack_timer = create_timer(delayed_ack_callback, conn);
 	conn->rto_timer = create_timer(rto_callback, conn);
@@ -425,6 +442,23 @@ void fast_retransmit(struct tcp_ipv4_conn *conn)
 	notify_socket_readable_snd(mgr, conn, &tcp_conn_ops);
 }
 
+void client_init_tcp_connection(struct tcp_ipv4_conn *conn)
+{
+	uint32_t iss = generate_random_iss();
+	conn->iss = iss;
+	conn->snd_buffer->snd_nxt = iss;
+	conn->snd_buffer->snd_una = iss;
+
+	conn->ece_enabled = false;
+	conn->wscale_enabled = true;
+	conn->sack_enabled = true;
+	conn->ts_enabled = true;
+
+	conn->snd_mss = TCP_MSS_DEFAULT_FALLBACK;
+	conn->snd_buffer->cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
+	conn->rcv_buffer->rcv_wnd = calc_rcv_wnd_sws(conn);
+}
+
 // initialse seq/ack numbers and options connection based on incoming seg
 // called on SYN receive (no cookies)
 void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *seg)
@@ -449,10 +483,9 @@ void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *
 	}
 	conn->snd_buffer->cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
 
-	if (opt->wscale_present) {
+	if (opt->wscale_present)
 		conn->snd_buffer->snd_wscale = opt->wscale;
-		conn->rcv_buffer->rcv_wscale = tcp_calc_wndw_scale();
-	}
+
 	if (opt->ts_present)
 		conn->ts_recent = opt->tsval;
 
@@ -557,7 +590,9 @@ void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state st
 	if (l && state == ESTABLISHED) {
 		l->half_open_count--;
 		push_q(l->ready_q, &conn->q_node, false);
-	}
+	} else if (state == ESTABLISHED)
+		pthread_cond_signal(&conn->cond);
+
 	if (state == CLOSED || state == TIME_WAIT || state == LAST_ACK) {
 		conn->timers_cancelled = true;
 
@@ -666,6 +701,7 @@ void destroy_tcp_conn(struct tcp_ipv4_conn *conn)
 	free(conn->del_ack_timer);
 	free(conn->rto_timer);
 	free(conn->zwp_timer);
+	pthread_cond_destroy(&conn->cond);
 	pthread_mutex_unlock(&conn->lock);
 	pthread_mutex_destroy(&conn->lock);
 	free(conn);
@@ -674,7 +710,7 @@ void destroy_tcp_conn(struct tcp_ipv4_conn *conn)
 // caller must hold send buffer lock
 struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq_len)
 {
-	printf("\nCREATING PACKET\n");
+	// printf("\nCREATING PACKET\n");
 	struct pkt *p = allocate_pkt();
 	if (!p)
 		return NULL;
@@ -735,14 +771,14 @@ struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq
 	}
 	///////////////////////////////////////////////////////
 
-	printf("\nRETURNING PACKET\n");
+	// printf("\nRETURNING PACKET\n");
 
 	return p;
 }
 
 struct pkt *tcp_try_get_pkt(void *s)
 {
-	printf("TRY GET PACKET!!!! \n");
+	// printf("TRY GET PACKET!!!! \n");
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)s;
 	tcp_lock_conn(conn);
 	if (conn->state == CLOSED || conn->state == TIME_WAIT) {
@@ -756,8 +792,8 @@ struct pkt *tcp_try_get_pkt(void *s)
 
 	lock_snd_buff(buff);
 	uint32_t snd_seq = !buff->rcov_mode ? buff->snd_nxt : buff->rcov_snd_nxt;
-	uint32_t window = usable_window(conn);
-	printf("WINDOW = %d \n", window);
+	uint32_t window = conn->state == SYN_SENT ? 1 : usable_window(conn);
+	// printf("WINDOW = %d \n", window);
 	if (window == 0) {
 		unlock_snd_buff(buff);
 		return NULL;
@@ -766,11 +802,11 @@ struct pkt *tcp_try_get_pkt(void *s)
 	uint32_t tail_seq = buff->snd_una + (uint32_t)buff->used_bytes + buff->ctrl_count;
 	uint32_t bytes_ready = tail_seq - snd_seq;
 
-	printf("snd_una: %u, used_bytes: %d, ctrl_count: %u \n",
-	       buff->snd_una,
-	       (uint32_t)buff->used_bytes,
-	       buff->ctrl_count);
-	printf("BYTES READY = %u \n", bytes_ready);
+	// printf("snd_una: %u, used_bytes: %d, ctrl_count: %u \n",
+	//        buff->snd_una,
+	//       (uint32_t)buff->used_bytes,
+	//        buff->ctrl_count);
+	// printf("BYTES READY = %u \n", bytes_ready);
 
 	if (bytes_ready == 0) {
 		unlock_snd_buff(buff);

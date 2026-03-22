@@ -36,6 +36,7 @@ typedef enum {
 struct tcp_ipv4_conn {
 	pthread_mutex_t
 	    lock; // global lock for state checks/transitions (e.g., ESTABLISHED -> FIN_WAIT)
+	pthread_cond_t cond;
 
 	struct byte_reassembly_rcv_buffer *rcv_buffer;
 	struct byte_snd_buffer *snd_buffer;
@@ -97,6 +98,7 @@ struct tcp_ipv4_conn {
 
 struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct nw_layer *tcp);
 void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *seg);
+void client_init_tcp_connection(struct tcp_ipv4_conn *conn);
 void delayed_ack_callback(void *c);
 void zwp_callback(void *c);
 void rto_callback(void *c);
