@@ -108,9 +108,9 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	struct tcp_context *cntx = (struct tcp_context *)(listener->tcp_layer->context);
 	struct routing_table *table = cntx->routing_tbl;
 
-	if (get_route(table, conn->extern_addr, &conn->route)){
-	conn->rcv_mss =
-	    conn->route->mtu - sizeof(struct ipv4_header) - sizeof(struct tcp_header_no_options);
+	if (get_route(table, conn->extern_addr, &conn->route)) {
+		conn->rcv_mss = conn->route->mtu - sizeof(struct ipv4_header) -
+				sizeof(struct tcp_header_no_options);
 	} else {
 		conn->rcv_mss = TCP_MSS_DEFAULT_FALLBACK;
 	}
