@@ -13,7 +13,7 @@ struct route {
 	uint32_t prefix;      // network byte order
 	uint32_t subnet_mask; // network byte order
 	uint8_t prefix_len;   // CIDR mask (0–32)
-	uint8_t mtu;	      // max transmission unit
+	uint32_t mtu;	      // max transmission unit
 	route_type type;
 	uint32_t gateway; // valid only if type == ROUTE_VIA
 	uint32_t iface_id;
