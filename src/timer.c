@@ -99,6 +99,8 @@ int get_timeout(struct timer_manager *mgr)
 
 void cancel_timer(struct timer_manager *mgr, struct timer *timer)
 {
+	if (!timer)
+		return;
 	struct min_heap *h = mgr->timer_heap;
 	heap_remove(h, &timer->node);
 }

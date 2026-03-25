@@ -19,6 +19,7 @@ extern const struct socket_ops tcp_conn_ops;
 #define TCP_MAX_WND_SCALE 14		// per RFC 7323
 #define TCP_DEFAULT_BUFFER_SIZE 0x80000 // 512KB
 #define TCP_MAX_BUFFER_SIZE 0x80000	// useful when we implement dynamic buffer growth
+#define TCP_TIMEWAIT_LEN 60000		// 1 min time_wait
 
 typedef enum {
 	CLOSED,
@@ -90,6 +91,8 @@ struct tcp_ipv4_conn {
 	struct timer *zwp_timer; // start timer as soon as peer advertises window < mss
 	bool snd_zwp;
 
+	struct timer *time_wait_timer;
+
 	bool timers_cancelled;
 
 	// Intrusive data structures
@@ -102,6 +105,7 @@ void client_init_tcp_connection(struct tcp_ipv4_conn *conn);
 void delayed_ack_callback(void *c);
 void zwp_callback(void *c);
 void rto_callback(void *c);
+void time_wait_callback(void *c);
 void fast_retransmit(struct tcp_ipv4_conn *conn);
 
 pkt_result tcp_fast_reply_pure_ack(struct pkt *p, struct tcp_ipv4_conn *conn);
