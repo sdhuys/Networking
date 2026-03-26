@@ -16,7 +16,8 @@ const struct socket_ops tcp_listener_ops = {.is_snd_queued = NULL,
 					    .try_get_pkt = NULL,
 					    .send_pkt = NULL,
 					    .close = tcp_close_listener,
-					    .accept = tcp_lstnr_accept_conn};
+					    .accept = tcp_lstnr_accept_conn,
+					    .end_snd = NULL};
 
 pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lstnr,
 					  struct pkt *pkt,

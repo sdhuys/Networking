@@ -11,8 +11,9 @@ const struct socket_ops tcp_conn_ops = {.is_snd_queued = tcp_is_snd_queued,
 					.lock = tcp_lock_conn,
 					.try_get_pkt = tcp_try_get_pkt,
 					.send_pkt = tcp_send_packet,
-					.close = NULL,
-					.accept = NULL};
+					.close = tcp_close_conn,
+					.accept = NULL,
+					.end_snd = tcp_end_snd};
 
 // only store SACKs if start < end
 // AND end after seg_ack but before_eq snd_next
@@ -878,4 +879,26 @@ pkt_result tcp_send_packet(struct stack *stack, struct pkt *p)
 
 	// edit rcv_next, start timers, etc?
 	return r;
+}
+
+void tcp_end_snd(struct stack *stack, void *sock)
+{
+	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)sock;
+	struct byte_snd_buffer *buff = conn->snd_buffer;
+	lock_snd_buff(buff);
+	sndbuf_insert_ghost_byte(buff, TCP_FIN);
+	unlock_snd_buff(buff);
+	notify_socket_readable_snd(stack->sock_manager, sock, &tcp_conn_ops);
+
+	if (conn->state == ESTABLISHED)
+		tcp_transition_to_state(conn, FIN_WAIT_1);
+	else if (conn->state == CLOSE_WAIT)
+		tcp_transition_to_state(conn, LAST_ACK);
+}
+
+void tcp_close_conn(struct stack *stack, void *sock)
+{
+	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)sock;
+	if (conn->state == ESTABLISHED || conn->state == CLOSE_WAIT)
+		tcp_end_snd(stack, sock);
 }

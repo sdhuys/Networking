@@ -77,7 +77,7 @@ int close_socket(struct stack *stack, int sockfd)
 	h.ops->release(h.sock);
 
 	sockfd_free(stack->sock_manager->sockfd_manager, sockfd);
-	return 1;
+	return 0;
 }
 
 int accept_connection(struct stack *stack, int sockfd)
@@ -139,4 +139,17 @@ int tcp_connect(struct stack *stack,
 
 	assign_sock_h(sockfd_mgr, fd, conn_h);
 	return fd;
+}
+
+int tcp_end_send(struct stack *stack, int sockfd)
+{
+	struct socket_handle h;
+	int r = get_socket_handle(stack->sock_manager->sockfd_manager, sockfd, &h);
+	if (r < 0)
+		return r;
+	
+	if (!h.ops->end_snd)
+		return -2; // INVALID SOCKET TYPE
+	h.ops->end_snd(stack, h.sock);
+	return 0;
 }

@@ -6,6 +6,7 @@ void start_app(struct stack *stack)
 	ipv4_address_t gdns = {8, 8, 8, 8};
 	int g_dns = tcp_connect(stack, 1234, 53, gdns);
 	printf("\n\nGDNS FD: %i \n\n", g_dns);
+	printf("CLOSE: %i\n", close_socket(stack, g_dns));
 	int tcp_9000 = open_listener(stack, SOCK_TCP, 9000);
 	int udp_9001 = open_listener(stack, SOCK_UDP, 9001);
 	printf("FD 9000: %d \n", tcp_9000);

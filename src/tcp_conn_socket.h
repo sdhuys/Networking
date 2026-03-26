@@ -134,3 +134,5 @@ struct pkt *tcp_try_get_pkt(void *s);
 pkt_result tcp_send_packet(struct stack *stack, struct pkt *p);
 bool tcp_is_snd_queued(void *s);
 void tcp_set_snd_queued(void *s, bool v);
+void tcp_end_snd(struct stack *stack, void *sock);
+void tcp_close_conn(struct stack *stack, void *sock);
