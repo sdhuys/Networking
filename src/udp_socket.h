@@ -6,7 +6,9 @@
 #include <stdlib.h>
 
 #define UDP_RING_BUFF_SIZE 256
-
+#define UDP_MAX_PAYLOAD                                                                            \
+	(PKT_SIZE - sizeof(struct udp_header) - sizeof(struct ipv4_header) -                       \
+	 sizeof(struct ethernet_header))
 extern const struct socket_ops udp_socket_ops;
 
 struct udp_ipv4_socket *create_udp_socket(uint16_t port, struct stack *stack);
@@ -20,8 +22,8 @@ bool udp_is_snd_queued(void *s);
 void udp_set_snd_queued(void *s, bool v);
 void udp_retain(void *s);
 void udp_release(void *s);
-bool udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_request req);
-int udp_read_rcv_buffer(void *s, size_t len, unsigned char *buff);
+ssize_t udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_request req);
+ssize_t udp_read_rcv_buffer(void *s, size_t len, unsigned char *buff);
 int udp_read_rcv_buffer_from(
     void *s, size_t len, unsigned char *buff, ipv4_address_t addr_out, uint16_t *port_out);
 void lock_socket(void *s);

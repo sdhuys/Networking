@@ -26,9 +26,9 @@ typedef enum {
 	SYN_SENT,     // Sent SYN, waiting for SYN+ACK
 	SYN_RECEIVED, // Received SYN, sent SYN+ACK
 	ESTABLISHED,  // Connection established
+	CLOSE_WAIT,   // Received FIN from remote, waiting for application close
 	FIN_WAIT_1,   // Application closed, sent FIN, waiting for ACK
 	FIN_WAIT_2,   // Received ACK of FIN, waiting for remote FIN
-	CLOSE_WAIT,   // Received FIN from remote, waiting for application close
 	CLOSING,      // Simultaneous close, sent FIN, waiting for ACK of FIN
 	LAST_ACK,     // Waiting for ACK of our FIN after close
 	TIME_WAIT     // Waiting for 2*MSL (maximum segment lifetime) before releasing
@@ -37,10 +37,10 @@ typedef enum {
 struct tcp_ipv4_conn {
 	pthread_mutex_t
 	    lock; // global lock for state checks/transitions (e.g., ESTABLISHED -> FIN_WAIT)
-	pthread_cond_t cond;
+	pthread_cond_t estblshd_cond; // broadcast for connect/accept
 
-	struct byte_reassembly_rcv_buffer *rcv_buffer;
-	struct byte_snd_buffer *snd_buffer;
+	struct byte_reassembly_rcv_buffer rcv_buffer;
+	struct byte_snd_buffer snd_buffer;
 	struct timer *rto_timer;
 	uint32_t rto; // Current Retransmission Timeout value
 
@@ -93,7 +93,8 @@ struct tcp_ipv4_conn {
 
 	struct timer *time_wait_timer;
 
-	bool timers_cancelled;
+	// doesn't include TIME_WAIT timer!!
+	bool data_timers_cancelled;
 
 	// Intrusive data structures
 	struct queue_node q_node;
@@ -136,3 +137,12 @@ bool tcp_is_snd_queued(void *s);
 void tcp_set_snd_queued(void *s, bool v);
 void tcp_end_snd(struct stack *stack, void *sock);
 void tcp_close_conn(struct stack *stack, void *sock);
+
+static inline bool tcp_conn_alive(struct tcp_ipv4_conn *conn)
+{
+	tcp_connection_state state = conn->state;
+	return state != CLOSED && state != TIME_WAIT;
+}
+
+ssize_t tcp_write_to_snd_buff(struct stack *stack, void *sock, struct send_request req);
+ssize_t tcp_read_from_rcv_buff(void *sock, size_t len, unsigned char *buff);

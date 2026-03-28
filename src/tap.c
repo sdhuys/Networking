@@ -71,12 +71,6 @@ pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
 	struct nw_interface *nw_interfaces = if_cntx->interfaces;
 	struct nw_interface nw_if = nw_interfaces[packet->if_index];
 	int fd = nw_if.fd;
-	ssize_t nwrite = write(fd, (packet->data + packet->offset), packet->len);
-
-	if (nwrite < 0) {
-		perror("Writing to TAP interface");
-		return WRITE_ERROR;
-	}
 
 	FILE *log = fopen("io.txt", "a");
 	if (log) {
@@ -85,8 +79,26 @@ pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
 		fprintf(log, "\n");
 		fclose(log);
 	}
-	printf("TAP SENT RELEASING \n");
-	release_pkt(packet);
+
+	// mac address all zeros is sentinel value for loopback!
+	bool loopback = ((packet->dest_mac[0] | packet->dest_mac[1] | packet->dest_mac[2] |
+			  packet->dest_mac[3] | packet->dest_mac[4] | packet->dest_mac[5]) == 0);
+	bool release = true;
+
+	if (!loopback) {
+		ssize_t nwrite = write(fd, (packet->data + packet->offset), packet->len);
+
+		if (nwrite < 0) {
+			perror("Writing to TAP interface");
+			return WRITE_ERROR;
+		}
+	} else
+		release = send_up_to_ethernet(interface, packet) % 10 != 0;
+
+	if (release) {
+		printf("TAP SENT RELEASING \n");
+		release_pkt(packet);
+	}
 	printf("SENT \n");
 	return SENT;
 }

@@ -11,6 +11,8 @@
 #define MAX_SACK_TRACKED 32	  // to avoind unneccessary retransmissions
 #define MAX_OOO_RCV_SEG_STORED 64 // to avoid dropping data within window
 
+struct tcp_ipv4_conn;
+
 struct ctrl_seg {
 	uint32_t seq;  // sequence number where this lives
 	uint8_t flags; // TCP_SYN (+ACK/ECE/CWR) or TCP_FIN, only one each/connection
@@ -38,6 +40,7 @@ struct byte_reassembly_rcv_buffer {
 
 	uint32_t fin_seq;
 	bool fin_received;
+	uint32_t consumed_seq;
 };
 
 struct byte_snd_buffer {
@@ -78,22 +81,34 @@ struct byte_snd_buffer {
 	uint8_t ctrl_count;		   // 0..2
 };
 
-struct byte_reassembly_rcv_buffer *create_byte_rcv_buffer(size_t capacity);
+int init_byte_rcv_buffer(struct byte_reassembly_rcv_buffer *b, size_t capacity);
 void destroy_byte_rcv_buffer(struct byte_reassembly_rcv_buffer *b);
-struct byte_snd_buffer *create_byte_snd_buffer(size_t capacity);
+int init_byte_snd_buffer(struct byte_snd_buffer *b, size_t capacity);
 void destroy_byte_snd_buffer(struct byte_snd_buffer *b);
 size_t write_to_snd_buff(struct byte_snd_buffer *b, unsigned char *data, size_t len);
-void copy_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t len);
+ssize_t blocking_write_to_snd_buff(struct byte_snd_buffer *b,
+				   unsigned char *data,
+				   size_t len,
+				   struct tcp_ipv4_conn *conn);
+ssize_t blocking_write_all_to_snd_buff(struct byte_snd_buffer *b, unsigned char *data, size_t len);
+void read_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t len);
 void insert_ooo_segment(
     struct ooo_seg *segs, size_t *count, size_t capacity, struct ooo_seg seg, size_t idx);
 size_t bin_search_seq_after_eq_indx(uint32_t seq, struct ooo_seg *segs, size_t count);
 size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct tcp_segment *seg);
 
+ssize_t blocking_read_from_rcv_buff(struct byte_reassembly_rcv_buffer *b,
+				    unsigned char *buffer,
+				    size_t len);
+
 static inline void sndbuf_insert_ghost_byte(struct byte_snd_buffer *b, uint8_t flag)
 {
 	if ((flag != TCP_SYN && flag != TCP_FIN) || b->ctrl_count == 2)
 		return;
-	b->ctrl[b->ctrl_count++] = (struct ctrl_seg){.seq = b->snd_nxt, .flags = flag};
+	uint32_t tail_seq = b->snd_una + (uint32_t)b->used_bytes;
+	size_t unset_bytes = tail_seq - b->snd_nxt;
+	b->ctrl[b->ctrl_count++] =
+	    (struct ctrl_seg){.seq = b->snd_nxt + unset_bytes, .flags = flag};
 }
 
 static inline void lock_snd_buff(struct byte_snd_buffer *buff)

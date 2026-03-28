@@ -15,8 +15,8 @@ struct socket_ops {
 	void (*retain)(void *sock);
 	void (*release)(void *sock);
 
-	bool (*write_to_snd_buffer)(struct stack *stack, void *sock, struct send_request req);
-	int (*read_rcv_buffer)(void *sock, size_t len, unsigned char *buff);
+	ssize_t (*write_to_snd_buffer)(struct stack *stack, void *sock, struct send_request req);
+	ssize_t (*read_rcv_buffer)(void *sock, size_t len, unsigned char *buff);
 	int (*read_rcv_buffer_from)(void *sock,
 				    size_t len,
 				    unsigned char *buff,

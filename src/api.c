@@ -92,8 +92,9 @@ int accept_connection(struct stack *stack, int sockfd)
 		return -2; // INVALID SOCKET TYPE
 
 	struct tcp_ipv4_conn *conn = lis_h.ops->accept(lis_h.sock);
-	struct socket_handle conn_h = create_conn_sock_h(conn);
+	retain_tcp_conn(conn);
 
+	struct socket_handle conn_h = create_conn_sock_h(conn);
 	int fd = get_sockfd(sockfd_mgr);
 	if (fd == -1)
 		return -1; // MAX FD REACHED
@@ -128,7 +129,7 @@ int tcp_connect(struct stack *stack,
 	while (conn->state != ESTABLISHED) {
 		if (conn->state == CLOSED)
 			return -2; // CONNECTION FAILED
-		pthread_cond_wait(&conn->cond, &conn->lock);
+		pthread_cond_wait(&conn->estblshd_cond, &conn->lock);
 	}
 	tcp_unlock_conn(conn);
 	struct socket_handle conn_h = create_conn_sock_h(conn);
@@ -147,7 +148,7 @@ int tcp_end_send(struct stack *stack, int sockfd)
 	int r = get_socket_handle(stack->sock_manager->sockfd_manager, sockfd, &h);
 	if (r < 0)
 		return r;
-	
+
 	if (!h.ops->end_snd)
 		return -2; // INVALID SOCKET TYPE
 	h.ops->end_snd(stack, h.sock);

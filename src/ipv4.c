@@ -73,6 +73,12 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 	packet->offset -= sizeof(struct ethernet_header);
 	packet->len += sizeof(struct ethernet_header);
 
+	// LOOPBACK!!
+	if (memcmp(packet->dest_ip, ipv4_cntxt->stack_ipv4_addr, IPV4_ADDR_LEN) == 0) {
+		memset(packet->dest_mac, 0, MAC_ADDR_LEN); // SENTINEL VALUE FOR LOOPBACK
+		return self->downs[0]->send_down(self->downs[0], packet);
+	}
+
 	// Prepare MAC metadata for lower layer
 	unsigned char *next_hop = (packet->route->type == ROUTE_VIA)
 				      ? (unsigned char *)&packet->route->gateway

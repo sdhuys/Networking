@@ -113,24 +113,28 @@ void udp_release(void *s)
 	release_udp_socket((struct udp_ipv4_socket *)s);
 }
 
-// return false doesn't differentiate between free packet pool empty and ring buffer full
-bool udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_request req)
+ssize_t udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_request req)
 {
 	struct udp_ipv4_socket *socket = (struct udp_ipv4_socket *)s;
-	pthread_mutex_lock(&socket->lock);
 
+	pthread_mutex_lock(&socket->lock);
 	if (socket->state == UDP_CLOSED) {
 		pthread_mutex_unlock(&socket->lock);
-		return false;
+		return -1; // SOCKET CLOSED
 	}
 	pthread_mutex_unlock(&socket->lock);
+
+	if (!req.data || req.len < 1)
+		return -2; // INVALID DATA
+
+	req.len = req.len > UDP_MAX_PAYLOAD ? UDP_MAX_PAYLOAD : req.len;
 
 	struct pkt_ring_buffer *buffer = socket->snd_buffer;
 
 	printf("UDP SOCKET ALLOCATING \n");
 	struct pkt *packet = allocate_pkt(); // caller ownership
 	if (packet == NULL)
-		return false;
+		return -3; // PKT POOL EXHAUSTED
 
 	packet->len = req.len;
 	memcpy(packet->src_ip, socket->local_addr, IPV4_ADDR_LEN);
@@ -143,15 +147,15 @@ bool udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_request r
 	packet->len += sizeof(struct udp_header);
 	packet->offset -= sizeof(struct udp_header);
 
-	if (!write_to_pkt_buffer(buffer, packet)) {
-		release_pkt(packet); // failure, buffer releases ownership
-		return false;
+	if (!write_to_pkt_buffer(buffer, packet)) { // PKT BUFFER FULL
+		release_pkt(packet);		    // failure, buffer releases ownership
+		return -4;
 	}
 	notify_socket_readable_snd(stack->sock_manager, socket, &udp_socket_ops);
-	return true;
+	return req.len;
 }
 
-int udp_read_rcv_buffer(void *s, size_t len, unsigned char *buff)
+ssize_t udp_read_rcv_buffer(void *s, size_t len, unsigned char *buff)
 {
 	struct udp_ipv4_socket *socket = (struct udp_ipv4_socket *)s;
 	struct pkt_ring_buffer *rcv_buffer = socket->rcv_buffer;

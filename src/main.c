@@ -37,10 +37,17 @@ int activate_tap(char *if_name);
 int set_ipv4_addr(char *name, char *address);
 int disable_ipv6(char *ifname);
 
-void *start_app_wrapper(void *arg)
+void *start_client_app_wrapper(void *arg)
 {
 	struct stack *stack = (struct stack *)arg;
-	start_app(stack);
+	client_app(stack);
+	return NULL;
+}
+
+void *start_server_app_wrapper(void *arg)
+{
+	struct stack *stack = (struct stack *)arg;
+	server_app(stack);
 	return NULL;
 }
 
@@ -64,11 +71,13 @@ int main()
 
 	struct nw_layer *tap = stack.if_layer;
 	// struct socket_manager *socket_manager = stack.sock_manager;
-	pthread_t app_tid;
+	pthread_t client_app_tid;
+	pthread_t server_app_tid;
 	pthread_t stack_tx_tid;
 	pthread_t ping_testid;
 	// pthread_create(&ping_testid, NULL, ping_test, (void *)&stack);
-	pthread_create(&app_tid, NULL, start_app_wrapper, (void *)&stack);
+	pthread_create(&client_app_tid, NULL, start_client_app_wrapper, (void *)&stack);
+	pthread_create(&server_app_tid, NULL, start_server_app_wrapper, (void *)&stack);
 	pthread_create(&stack_tx_tid, NULL, stack_transmission_loop, (void *)&stack);
 	start_listening(tap);
 

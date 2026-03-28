@@ -2,7 +2,7 @@
 
 pkt_result receive_frame_up(struct nw_layer *self, struct pkt *packet)
 {
-	struct ethernet_header *header = (struct ethernet_header *)packet->data;
+	struct ethernet_header *header = (struct ethernet_header *)(packet->data + packet->offset);
 	// print_incoming(header);
 
 	if (relevant_destination_mac(header->dest_mac, self) == false) {
@@ -57,7 +57,9 @@ bool relevant_destination_mac(mac_address_t dest_mac, struct nw_layer *self)
 	struct ethernet_context *context = (struct ethernet_context *)self->context;
 
 	if (memcmp(dest_mac, IPV4_BROADCAST_MAC, MAC_ADDR_LEN) == 0 ||
-	    memcmp(dest_mac, context->mac_addr, MAC_ADDR_LEN) == 0)
+	    memcmp(dest_mac, context->mac_addr, MAC_ADDR_LEN) == 0 ||
+	    ((dest_mac[0] | dest_mac[1] | dest_mac[2] | dest_mac[3] | dest_mac[4] | dest_mac[5]) ==
+	     0))
 		return true;
 	return false;
 }

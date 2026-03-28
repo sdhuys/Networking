@@ -2,6 +2,7 @@
 #include "tcp_conn_socket.h"
 
 // call when writing to receive buffer, and when app reads from buffer
+// caller must hold lock
 uint16_t calc_rcv_wnd_sws(struct tcp_ipv4_conn *conn)
 {
 	/* only consider the contiguous bytes as occupied, not ooo bytes. to avoid order of segments
@@ -28,8 +29,7 @@ uint16_t calc_rcv_wnd_sws(struct tcp_ipv4_conn *conn)
 	rcv_wndw = 80
 	incoming segment: [50, 80) : 30 ooo bytes stored
 	*/
-	struct byte_reassembly_rcv_buffer *rb = conn->rcv_buffer;
-	lock_rcv_buff(rb);
+	struct byte_reassembly_rcv_buffer *rb = &conn->rcv_buffer;
 	size_t occupied = rb->contiguous_bytes;
 	if (occupied >= rb->capacity)
 		return 0;
@@ -49,7 +49,6 @@ uint16_t calc_rcv_wnd_sws(struct tcp_ipv4_conn *conn)
 		uint32_t stagnant_wnd = (last_adv_bytes > current_free)
 					    ? (current_free >> rb->rcv_wscale)
 					    : rb->rcv_wnd;
-		unlock_rcv_buff(rb);
 		return (uint16_t)stagnant_wnd;
 	}
 
@@ -57,7 +56,6 @@ uint16_t calc_rcv_wnd_sws(struct tcp_ipv4_conn *conn)
 	uint16_t scaled_window = (current_free > TCP_WND_FIELD_MAX && !conn->wscale_enabled)
 				     ? TCP_WND_FIELD_MAX
 				     : (uint16_t)(current_free >> rb->rcv_wscale);
-	unlock_rcv_buff(rb);
 	return scaled_window;
 }
 
@@ -76,7 +74,7 @@ uint8_t tcp_calc_wndw_scale()
 
 uint32_t usable_window(struct tcp_ipv4_conn *conn)
 {
-	struct byte_snd_buffer *sb = conn->snd_buffer;
+	struct byte_snd_buffer *sb = &conn->snd_buffer;
 
 	uint32_t total_allowed = ((uint32_t)(sb->snd_wndw << sb->snd_wscale) < sb->cwnd)
 				     ? (uint32_t)(sb->snd_wndw << sb->snd_wscale)

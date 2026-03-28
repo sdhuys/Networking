@@ -102,8 +102,8 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	// lost options/features
 	conn->ece_enabled = 0;
 	conn->ts_enabled = false;
-	conn->rcv_buffer->rcv_wscale = 0;
-	conn->snd_buffer->snd_wscale = 0;
+	conn->rcv_buffer.rcv_wscale = 0;
+	conn->snd_buffer.snd_wscale = 0;
 
 	struct tcp_context *cntx = (struct tcp_context *)(listener->tcp_layer->context);
 	struct routing_table *table = cntx->routing_tbl;
@@ -115,13 +115,14 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 		conn->rcv_mss = TCP_MSS_DEFAULT_FALLBACK;
 	}
 
-	conn->snd_buffer->cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
+	conn->snd_buffer.cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
 
 	conn->iss = cookie;
 	conn->irs = ntohl(seg->header->seq_num) - 1; // -1 to account for original SYN
-	conn->rcv_buffer->rcv_nxt = conn->irs + seg_seq_len(seg);
-	conn->snd_buffer->snd_nxt = cookie + 1;
-	conn->snd_buffer->snd_una = cookie + 1;
+	conn->rcv_buffer.rcv_nxt = conn->irs + seg_seq_len(seg);
+	conn->snd_buffer.snd_nxt = cookie + 1;
+	conn->snd_buffer.snd_una = cookie + 1;
+	conn->rcv_buffer.consumed_seq = conn->irs;
 
 	conn->state = ESTABLISHED;
 

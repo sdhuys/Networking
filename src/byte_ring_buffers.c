@@ -1,34 +1,27 @@
 #include "byte_ring_buffers.h"
+#include "tcp_conn_socket.h"
 #include "tcp_segment.h"
 #include <arpa/inet.h>
 
-struct byte_reassembly_rcv_buffer *create_byte_rcv_buffer(size_t capacity)
+int init_byte_rcv_buffer(struct byte_reassembly_rcv_buffer *b, size_t capacity)
 {
 	// enforce only power of 2 sizes
 	if (capacity == 0 || (capacity & (capacity - 1)) != 0)
-		return NULL;
-
-	struct byte_reassembly_rcv_buffer *b = malloc(sizeof(*b));
-	if (!b)
-		return NULL;
+		return -1;
 
 	b->data = malloc(capacity);
-	if (!b->data) {
-		free(b);
-		return NULL;
-	}
+	if (!b->data)
+		return -1;
 
 	if (pthread_mutex_init(&b->lock, NULL) != 0) {
 		free(b->data);
-		free(b);
-		return NULL;
+		return -1;
 	}
 
 	if (pthread_cond_init(&b->cond, NULL) != 0) {
 		pthread_mutex_destroy(&b->lock);
 		free(b->data);
-		free(b);
-		return NULL;
+		return -1;
 	}
 
 	b->capacity = capacity;
@@ -39,7 +32,7 @@ struct byte_reassembly_rcv_buffer *create_byte_rcv_buffer(size_t capacity)
 	b->head = 0;
 	b->tail = 0;
 	b->rcv_wscale = 0;
-	return b;
+	return 0;
 }
 
 void destroy_byte_rcv_buffer(struct byte_reassembly_rcv_buffer *b)
@@ -51,37 +44,28 @@ void destroy_byte_rcv_buffer(struct byte_reassembly_rcv_buffer *b)
 	pthread_cond_destroy(&b->cond);
 
 	free(b->data);
-	free(b);
 }
 
-struct byte_snd_buffer *create_byte_snd_buffer(size_t capacity)
+int init_byte_snd_buffer(struct byte_snd_buffer *b, size_t capacity)
 {
 	// enforce only power of 2 sizes
 	if (capacity == 0 || (capacity & (capacity - 1)) != 0)
-		return NULL;
-
-	struct byte_snd_buffer *b = malloc(sizeof(*b));
-	if (!b)
-		return NULL;
+		return -1;
 
 	b->data = malloc(capacity);
-	if (!b->data) {
-		free(b);
-		return NULL;
-	}
+	if (!b->data)
+		return -1;
 	b->capacity = capacity;
 
 	if (pthread_mutex_init(&b->lock, NULL) != 0) {
 		free(b->data);
-		free(b);
-		return NULL;
+		return -1;
 	}
 
 	if (pthread_cond_init(&b->cond, NULL) != 0) {
 		free(b->data);
 		pthread_mutex_destroy(&b->lock);
-		free(b);
-		return NULL;
+		return -1;
 	}
 
 	b->rcov_mode = false;
@@ -97,7 +81,7 @@ struct byte_snd_buffer *create_byte_snd_buffer(size_t capacity)
 	memset(b->ctrl, 0, sizeof(b->ctrl));
 	b->ctrl_count = 0;
 	b->ssthresh = UINT32_MAX;
-	return b;
+	return 0;
 }
 
 void destroy_byte_snd_buffer(struct byte_snd_buffer *b)
@@ -109,15 +93,14 @@ void destroy_byte_snd_buffer(struct byte_snd_buffer *b)
 	pthread_cond_destroy(&b->cond);
 
 	free(b->data);
-	free(b);
 }
 
+// caller must hold lock
 size_t write_to_snd_buff(struct byte_snd_buffer *b, unsigned char *data, size_t len)
 {
 	if (!b || !data || len == 0)
 		return 0;
 
-	lock_snd_buff(b);
 	size_t available = sndbuff_available_space(b);
 	if (len > available)
 		len = available;
@@ -137,12 +120,12 @@ size_t write_to_snd_buff(struct byte_snd_buffer *b, unsigned char *data, size_t 
 	b->tail = (b->tail + len) & (b->capacity - 1);
 	b->used_bytes += len;
 
-	unlock_snd_buff(b);
 	return len;
 }
 
+// read and copy from b into buffer
 // caller must make sure not to provide len > available bytes to read
-void copy_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t len)
+void read_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t len)
 {
 	if (!b || !buffer)
 		return;
@@ -267,7 +250,7 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct
 {
 	if (!b || !seg || seg->payload_len == 0)
 		return 0;
-
+	printf("\n WRITING TO RCV BUFFER!!!!! \n\n");
 	uint32_t seg_seq = ntohl(seg->header->seq_num);
 	uint32_t data_seq = seg_seq; // data starts at seq; SYN/FIN handled at TCP layer
 	uint32_t rcv_nxt = b->rcv_nxt;
@@ -291,7 +274,6 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct
 	}
 
 	lock_rcv_buff(b);
-
 	// in order data
 	if (data_seq == rcv_nxt) {
 		// Fill all gaps in [rcv_nxt, rcv_nxt + min(data_len, available)) that
@@ -322,6 +304,8 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct
 				(b->ooo_count - 1) * sizeof(b->ooo_segs[0]));
 			b->ooo_count--;
 		}
+		unlock_rcv_buff(b);
+		pthread_cond_broadcast(&b->cond);
 	} else {
 		// out-of-order segment (data_seq > rcv_nxt)
 
@@ -337,8 +321,8 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct
 					      .end_seq = data_seq + data_len};
 			insert_ooo_segment(b->ooo_segs, &b->ooo_count, b->ooo_capacity, seg, ooo_i);
 		}
+		unlock_rcv_buff(b);
 	}
-	unlock_rcv_buff(b);
 
 	return written;
 }
@@ -422,4 +406,145 @@ void insert_ooo_segment(
 
 	*count += *count == capacity ? 0 : 1;
 	segs[idx] = seg;
+}
+
+// blocking write - waits until space is available or connection closes
+// returns number of bytes written, or -1 if connection not ESTABLISHED or CLOSE_WAIT (no FIN sent!)
+ssize_t blocking_write_to_snd_buff(struct byte_snd_buffer *b,
+				   unsigned char *data,
+				   size_t len,
+				   struct tcp_ipv4_conn *conn)
+{
+	if (!b || !data || len == 0)
+		return 0;
+
+	lock_snd_buff(b);
+
+	size_t available = sndbuff_available_space(b);
+	size_t to_write = len;
+
+	// block while buffer is full and connection is still established
+	while (available == 0) {
+		pthread_cond_wait(&b->cond, &b->lock);
+
+		tcp_lock_conn(conn);
+		if (!tcp_conn_alive(conn)) {
+			tcp_unlock_conn(conn);
+			return -1;
+		}
+		tcp_unlock_conn(conn);
+		available = sndbuff_available_space(b);
+	}
+
+	// write what we can fit
+	if (to_write > available)
+		to_write = available;
+	write_to_snd_buff(b, data, to_write);
+	unlock_snd_buff(b);
+
+	return (ssize_t)to_write;
+}
+
+// blocks until ALL data is written or connection closes
+ssize_t blocking_write_all_to_snd_buff(struct byte_snd_buffer *b, unsigned char *data, size_t len)
+{
+	if (!b || !data || len == 0)
+		return 0;
+
+	struct tcp_ipv4_conn *conn = CONTAINER_OF(b, struct tcp_ipv4_conn, snd_buffer);
+	tcp_lock_conn(conn);
+	if (!tcp_conn_alive(conn)) {
+		tcp_unlock_conn(conn);
+		return -1;
+	}
+	tcp_unlock_conn(conn);
+
+	size_t total_written = 0;
+	unsigned char *current = data;
+
+	while (total_written < len) {
+		ssize_t written = blocking_write_to_snd_buff(b, current, len - total_written, conn);
+
+		if (written == -1)
+			return -1; // conn closed
+
+		total_written += written;
+		current += written;
+	}
+
+	return (ssize_t)total_written;
+}
+
+// caller must hold lock
+ssize_t blocking_read_from_rcv_buff(struct byte_reassembly_rcv_buffer *b,
+				    unsigned char *buffer,
+				    size_t len)
+{
+	if (!b || !buffer || len == 0)
+		return -1;
+	printf("       START BLOCKING READ \n");
+	struct tcp_ipv4_conn *conn = CONTAINER_OF(b, struct tcp_ipv4_conn, rcv_buffer);
+
+	tcp_lock_conn(conn);
+	int readable = tcp_conn_alive(conn);
+	tcp_unlock_conn(conn);
+
+	if (!readable)
+		return -1;
+
+	printf("\n[DEBUG] Buffer State:\n"
+	       "  contiguous_bytes: %zu\n"
+	       "  fin_received:     %s\n"
+	       "  rcv_nxt:          %u\n"
+	       "  fin_seq:          %u\n"
+	       "  consumed_seq:     %u\n"
+	       "  Condition Check:  (rcv_nxt >= fin_seq): %s, (consumed < fin-1): %s\n\n",
+	       b->contiguous_bytes,
+	       b->fin_received ? "TRUE" : "FALSE",
+	       b->rcv_nxt,
+	       b->fin_seq,
+	       b->consumed_seq,
+	       (b->rcv_nxt >= b->fin_seq) ? "YES" : "NO",
+	       (b->consumed_seq < b->fin_seq - 1) ? "YES" : "NO");
+
+	// block with state rechecked on each iteration
+	while (b->contiguous_bytes == 0 && (!b->fin_received || b->consumed_seq < b->fin_seq - 1)) {
+		pthread_cond_wait(&b->cond, &b->lock);
+
+		tcp_lock_conn(conn);
+		if (!tcp_conn_alive(conn)) {
+			tcp_unlock_conn(conn);
+			return -1;
+		}
+		tcp_unlock_conn(conn);
+	}
+	printf("FIN SEQ: %u \n", b->fin_seq);
+	// FIN received AND we've read everything up to the FIN
+	if (b->contiguous_bytes == 0 && b->fin_received && b->consumed_seq >= b->fin_seq - 1) {
+		return 0; // EOF
+	}
+
+	// read what's avialable
+	size_t to_read = len;
+	if (to_read > b->contiguous_bytes)
+		to_read = b->contiguous_bytes;
+
+	// copy data, handling wraparound
+	size_t first_part = to_read;
+	if (b->head + to_read > b->capacity) {
+		first_part = b->capacity - b->head;
+	}
+	if (first_part < to_read) {
+		memcpy(buffer, b->data + b->head, first_part);
+		memcpy(buffer + first_part, b->data, to_read - first_part);
+	} else {
+		memcpy(buffer, b->data + b->head, to_read);
+	}
+
+	// update metadata
+	b->head = (b->head + to_read) & (b->capacity - 1);
+	b->contiguous_bytes -= to_read;
+	b->consumed_seq += to_read;
+
+	return (ssize_t)to_read;
 }
