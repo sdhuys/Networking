@@ -1,5 +1,6 @@
 #include "timer.h"
 #include "container_of.h"
+#include <stdio.h>
 
 void execute_exp_timers(struct timer_manager *mgr)
 {
@@ -47,10 +48,13 @@ struct timer_manager *create_timer_manager()
 bool start_timer(struct timer_manager *mgr, struct timer *timer, uint64_t delay_ms)
 {
 	struct min_heap *h = mgr->timer_heap;
+	uint64_t curr_timeout = get_timeout(mgr);
+	printf("\nCURRENT timeout: %lu \n", curr_timeout);
+	printf("Adding new timer: timeout: %lu \n", delay_ms);
 	if (h == NULL)
 		return false;
 
-	uint32_t expiry = now_ms() + delay_ms;
+	uint64_t expiry = now_ms() + delay_ms;
 	if (timer->node.index == NODE_NOT_IN_HEAP) {
 		if (!heap_push(h, &timer->node, expiry))
 			return false;
@@ -58,8 +62,9 @@ bool start_timer(struct timer_manager *mgr, struct timer *timer, uint64_t delay_
 		heap_update(h, &timer->node, expiry);
 
 	// newly added timer is first of the heap to time out => trigger polling return to update
-	if ((uint32_t)get_timeout(mgr) > expiry) {
+	if (curr_timeout > expiry) {
 		uint64_t x = 1;
+		printf("writing to evend fd \n");
 		write(mgr->event_fd, &x, sizeof(x));
 	}
 	return true;

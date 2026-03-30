@@ -1,7 +1,15 @@
 #include "tcp.h"
+#include "random.h"
 
 pkt_result send_tcp_down(struct nw_layer *self, struct pkt *packet)
 {
+	uint8_t packet_loss_chance = 5;
+	if (chance(packet_loss_chance)) {
+		printf("\n                                                  PACKET LOSS!!!! \n \n");
+		release_pkt(packet);
+		return SENT;
+	}
+
 	struct tcp_header_no_options *header =
 	    (struct tcp_header_no_options *)(packet->data + packet->offset);
 

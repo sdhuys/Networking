@@ -15,20 +15,6 @@ const struct socket_ops tcp_conn_ops = {.is_snd_queued = tcp_is_snd_queued,
 					.accept = NULL,
 					.end_snd = tcp_end_snd};
 
-// only store SACKs if start < end
-// AND end after seg_ack but before_eq snd_next
-// AND space to store OR ealier than last stored
-static bool should_store_sack_block(struct byte_snd_buffer *sb,
-				    uint32_t s_start,
-				    uint32_t s_end,
-				    uint32_t seg_ack)
-{
-	return tcp_seq_before(s_start, s_end) && tcp_seq_after(s_end, seg_ack) &&
-	       tcp_seq_before_eq(s_end, sb->snd_nxt) &&
-	       (sb->sack_blocks_count < sb->sack_capacity ||
-		tcp_seq_before_eq(s_start, sb->sack_blocks[sb->sack_capacity - 1].start_seq));
-}
-
 static void rst_connection(struct tcp_ipv4_conn *conn)
 {
 	tcp_transition_to_state(conn, CLOSED);
@@ -77,6 +63,8 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 	if (!in_window) {
 		// challenge ack or window probe reply
 		if (s_len > 0) {
+			printf("\nTCP SEG NOT IN WINDOW, Sending challenge ACK/Replying to window "
+			       "probe! \n");
 			tcp_fast_reply_pure_ack(p, conn);
 			// our previous ACK lost, restart timer
 			if (conn->state == TIME_WAIT && flags & TCP_FIN)
@@ -104,16 +92,21 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 	if (flags & TCP_SYN) {
 		immediate_ack = true;
 		if (conn->state == SYN_SENT) {
+			// init connection
 			conn->irs = seg_seq;
 			conn->rcv_buffer.rcv_nxt = seg_seq + 1;
 			conn->rcv_buffer.consumed_seq = seg_seq;
+			conn->ts_enabled = seg->options->ts_present;
+			conn->sack_enabled = seg->options->sack_permitted;
+			if (seg->options->mss_present)
+				conn->snd_mss = seg->options->mss;
 
 			if (!(flags & TCP_ACK)) {
 				// simultaneous open: received SYN while expecting SYN-ACK
 				// trigger SYN-retransmission, SYN_RECEIVED state will
 				// append ACK
 				tcp_transition_to_state(conn, SYN_RECEIVED);
-				rto_callback(conn);
+				start_timer(tmgr, conn->rto_timer, 0);
 				return TCP_SIMULTANEOUS_OPEN;
 			}
 			// else (SYN-ACK) => fallthrough to ACK processing below to finalise
@@ -121,7 +114,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 
 		} else if (conn->state == SYN_RECEIVED && seg_seq == conn->irs) {
 			// duplicate SYN: retrigger SYN-ACK sending
-			rto_callback(conn);
+			start_timer(tmgr, conn->rto_timer, 0);
 			return RCOV_SYN_ACK_TO_SND_BUFFER;
 		} else if (conn->state >= ESTABLISHED) {
 			// unexpected SYN in established session
@@ -166,7 +159,8 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 					uint32_t old_una = sb->snd_una;
 					uint32_t data_ackd = seg_ack - old_una;
 
-					if (conn->state == FIN_WAIT_1) {
+					if (conn->state == FIN_WAIT_1 || conn->state == CLOSING ||
+					    conn->state == LAST_ACK) {
 						// substract ghost byte if FIN acked
 						for (uint8_t i = 0; i < sb->ctrl_count; i++) {
 							if (sb->ctrl[i].flags == TCP_FIN &&
@@ -182,6 +176,20 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 					}
 					// update snd_una and head
 					update_snd_nxt_head(sb, seg_ack, data_ackd);
+
+					// increase congestion window by effectife MSS
+					if (sb->cwnd < sb->ssthresh) {
+						uint32_t effective_mss =
+						    conn->snd_mss -
+						    (conn->ts_enabled ? TCP_OP_TS_LEN : 0);
+						uint32_t growth = data_ackd > 2 * effective_mss
+								      ? 2 * effective_mss
+								      : data_ackd;
+						sb->cwnd += growth;
+					} else {
+						// congestion avoidance, should be timer based?
+						sb->cwnd += TCP_MSS_DEFAULT_FALLBACK;
+					}
 
 					// remove SACK blocks that are overtaken by
 					// progressed snd_una
@@ -242,12 +250,14 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 			if (valid_new_ack) {
 				// retransmission timer
 				cancel_timer(tmgr, conn->rto_timer);
+				conn->rto = TCP_INIT_RTO_MS;
 				if (sb->snd_nxt != sb->snd_una) {
 					start_timer(tmgr, conn->rto_timer, conn->rto);
 				}
 			}
 			unlock_snd_buff(sb);
-			notify_socket_readable_snd(smgr, conn, &tcp_conn_ops);
+			pthread_cond_broadcast(&sb->cond);
+			notify_socket_readable_snd(smgr, conn, &tcp_conn_ops); // might be too aggressive adding to send queue for every ack!
 		} else if (tcp_seq_after(seg_ack, snd_next)) {
 			// ACK out of sync, send challenge ACK
 			tcp_fast_reply_pure_ack(p, conn);
@@ -257,11 +267,11 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 
 	// data handling: trimming is done by rcv_buffer_write_tcp_segment
 	if (conn->state >= ESTABLISHED && seg->payload_len > 0) {
-		rcv_buffer_write_tcp_segment(&conn->rcv_buffer, seg);
+		rcv_buffer_write_tcp_segment(&conn->rcv_buffer, seg, &immediate_ack);
 		conn->rcv_buffer.rcv_wnd = calc_rcv_wnd_sws(conn);
 		// delayed ACK logic: 1st packet starts timer, 2nd packet triggers immediate
 		// ACK
-		if (!conn->ack_pending) {
+		if (!immediate_ack && !conn->ack_pending) {
 			conn->ack_pending = true;
 			start_timer(tmgr, conn->del_ack_timer, TCP_DEL_ACK_MS);
 		} else {
@@ -395,6 +405,7 @@ void zwp_callback(void *c)
 
 void rto_callback(void *c)
 {
+	printf("\n        RTO callback! \n \n");
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)c;
 
 	pthread_mutex_lock(&conn->lock);
@@ -426,18 +437,18 @@ void time_wait_callback(void *c)
 	tcp_transition_to_state(conn, CLOSED);
 }
 
+// caller must hold lock
 void fast_retransmit(struct tcp_ipv4_conn *conn)
 {
+	printf("\n\n            FAST RETRANSMIT! \n \n");
 	struct byte_snd_buffer *sb = &conn->snd_buffer;
 
-	lock_snd_buff(sb);
 	sb->ssthresh = sb->cwnd / 2 > 2 * conn->snd_mss ? sb->cwnd / 2 : 2 * conn->snd_mss;
 	sb->cwnd = sb->ssthresh + 3 * conn->snd_mss;
 
 	sb->rcov_mode = true;
 	sb->rcov_snd_nxt = sb->snd_una;
 	sb->rcov_snd_nxt_i = sb->head;
-	unlock_snd_buff(sb);
 
 	struct socket_manager *mgr =
 	    ((struct tcp_context *)conn->tcp_layer->context)->socket_manager;
@@ -513,6 +524,7 @@ void delayed_ack_callback(void *c)
 // fast reply bypassing send buffer
 pkt_result tcp_fast_reply_pure_ack(struct pkt *p, struct tcp_ipv4_conn *conn)
 {
+	printf("Fast reply pure ACK! \n \n");
 	write_pkt_tcp_general_metadata(conn, p);
 	p->tcp_flags = TCP_ACK;
 
@@ -776,20 +788,29 @@ struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq
 	read_from_snd_buff(&conn->snd_buffer, p->data + data_offset, payload_len);
 
 	////////////////// DO THIS AFTER ATUALLY SENDING THE PACKET ?!!!//////////////
-	if (conn->snd_buffer.rcov_mode) {
-		conn->snd_buffer.rcov_snd_nxt += seq_len;
-		conn->snd_buffer.rcov_snd_nxt_i = (conn->snd_buffer.rcov_snd_nxt_i + payload_len) &
-						  (conn->snd_buffer.capacity - 1);
-		if (conn->snd_buffer.rcov_snd_nxt >= conn->snd_buffer.snd_nxt)
-			conn->snd_buffer.rcov_mode = false;
+	struct byte_snd_buffer *sb = &conn->snd_buffer;
+	if (sb->rcov_mode) {
+		sb->rcov_snd_nxt += seq_len;
+		sb->rcov_snd_nxt_i = (sb->rcov_snd_nxt_i + payload_len) & (sb->capacity - 1);
+
+		// if data got SACKED, and we resent everything in the gap until SACKED data, rcov
+		// mode done
+		if (sb->sack_blocks_count > 0) {
+			struct ooo_seg sack = sb->sack_blocks[0];
+			if (sack.start_seq == sb->rcov_snd_nxt)
+				sb->rcov_mode = false;
+		}
+		// else if we resent everything up until snd_next, rcov done
+		else if (sb->rcov_snd_nxt >= sb->snd_nxt)
+			sb->rcov_mode = false;
 	} else {
-		conn->snd_buffer.snd_nxt += seq_len;
-		conn->snd_buffer.snd_nxt_i =
-		    (conn->snd_buffer.snd_nxt_i + payload_len) & (conn->snd_buffer.capacity - 1);
+		sb->snd_nxt += seq_len;
+		sb->snd_nxt_i = (sb->snd_nxt_i + payload_len) & (sb->capacity - 1);
 	}
 	// start timer if not in recovery mode and timer not running yet
-	if (!conn->snd_buffer.rcov_mode && conn->rto_timer->node.index == NODE_NOT_IN_HEAP) {
+	if (!sb->rcov_mode && conn->rto_timer->node.index == NODE_NOT_IN_HEAP) {
 		struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
+		printf("starting RTO timer \n");
 		start_timer(ctx->rx_timer_mgr, conn->rto_timer, conn->rto);
 	}
 	///////////////////////////////////////////////////////
@@ -845,7 +866,7 @@ struct pkt *tcp_try_get_pkt(void *s)
 	// bytes it takes to reach the control seq
 	if (buff->ctrl_count > 0 && tcp_seq_after_eq(buff->ctrl[0].seq, snd_seq)) {
 		uint32_t len_to_reach_ctrl = (buff->ctrl[0].seq - snd_seq) + 1;
-		if (window >= len_to_reach_ctrl) {
+		if (window >= len_to_reach_ctrl && conn->snd_mss > len_to_reach_ctrl) {
 			p = create_tcp_packet(conn, snd_seq, len_to_reach_ctrl);
 			unlock_snd_buff(buff);
 			return p;

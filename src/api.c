@@ -62,8 +62,8 @@ int send_down(struct stack *stack, int sockfd, struct send_request req)
 	if (!h.ops->write_to_snd_buffer)
 		return -2; // INVALID SOCK TYPE!
 
-	bool success = h.ops->write_to_snd_buffer(stack, h.sock, req);
-	return success ? 0 : WRITE_ERROR;
+	ssize_t written_bytes = h.ops->write_to_snd_buffer(stack, h.sock, req);
+	return written_bytes;
 }
 
 int close_socket(struct stack *stack, int sockfd)

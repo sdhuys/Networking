@@ -8,7 +8,12 @@ void start_listening(struct nw_layer *interface)
 	struct timer_manager *timer_mgr = interface_context->rx_timer_mgr;
 
 	for (;;) {
-		uint64_t timeout_ms = get_timeout(timer_mgr);
+		int timeout_ms = get_timeout(timer_mgr);
+		if (timeout_ms == 0) {
+			execute_exp_timers(timer_mgr);
+			continue;
+		}
+		printf("Polling Timeout: %d \n", timeout_ms);
 		struct pollfd pfd[2] = {{.fd = fd, .events = POLLIN},
 					{.fd = timer_mgr->event_fd, .events = POLLIN}};
 

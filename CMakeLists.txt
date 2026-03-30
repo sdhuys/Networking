@@ -35,6 +35,7 @@ set(LIB_SOURCES
   src/ping_test.c
   src/pkt_ring_buffer.c
   src/queue.c
+  src/random.c
   src/routing_table.c
   src/socket_manager.c
   src/sockfd_manager.c

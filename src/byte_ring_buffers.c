@@ -246,7 +246,7 @@ static size_t write_unwritten_bytes(struct byte_reassembly_rcv_buffer *b,
 // writes a tcp segment into the receive buffer, either contigously or leaves appropriate gap space
 // if segment is out of order keeps track of ooo_segments metadata, merges if possible "first
 // arrival wins", bytes are never overwritten returns the number of bytes written
-size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct tcp_segment *seg)
+size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct tcp_segment *seg, bool *immediate_ack)
 {
 	if (!b || !seg || seg->payload_len == 0)
 		return 0;
@@ -296,6 +296,7 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct
 				uint32_t delta = b->rcv_nxt - seg_start;
 				size_t seg_len = seg_end - seg_start;
 				update_rcv_nxt_tail(b, seg_len - delta);
+				*immediate_ack = true;
 			}
 
 			// drop obsolete metadata //
@@ -307,6 +308,7 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct
 		unlock_rcv_buff(b);
 		pthread_cond_broadcast(&b->cond);
 	} else {
+		*immediate_ack = true;
 		// out-of-order segment (data_seq > rcv_nxt)
 
 		// only process if there's free space in ooo_segs, OR if current segment is not a

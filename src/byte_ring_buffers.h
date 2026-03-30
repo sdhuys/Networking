@@ -95,7 +95,7 @@ void read_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t
 void insert_ooo_segment(
     struct ooo_seg *segs, size_t *count, size_t capacity, struct ooo_seg seg, size_t idx);
 size_t bin_search_seq_after_eq_indx(uint32_t seq, struct ooo_seg *segs, size_t count);
-size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct tcp_segment *seg);
+size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct tcp_segment *seg, bool *immediate_ack);
 
 ssize_t blocking_read_from_rcv_buff(struct byte_reassembly_rcv_buffer *b,
 				    unsigned char *buffer,
@@ -106,9 +106,9 @@ static inline void sndbuf_insert_ghost_byte(struct byte_snd_buffer *b, uint8_t f
 	if ((flag != TCP_SYN && flag != TCP_FIN) || b->ctrl_count == 2)
 		return;
 	uint32_t tail_seq = b->snd_una + (uint32_t)b->used_bytes;
-	size_t unset_bytes = tail_seq - b->snd_nxt;
+	size_t unsent_bytes = tail_seq - b->snd_nxt;
 	b->ctrl[b->ctrl_count++] =
-	    (struct ctrl_seg){.seq = b->snd_nxt + unset_bytes, .flags = flag};
+	    (struct ctrl_seg){.seq = b->snd_nxt + unsent_bytes, .flags = flag};
 }
 
 static inline void lock_snd_buff(struct byte_snd_buffer *buff)
@@ -167,4 +167,18 @@ static inline void update_snd_nxt_head(struct byte_snd_buffer *b,
 	b->snd_una = seg_ack;
 	b->used_bytes -= data_ackd;
 	b->head = (b->head + data_ackd) & (b->capacity - 1);
+}
+
+// only store SACKs if start < end
+// AND end after seg_ack but before_eq snd_next
+// AND space to store OR ealier than last stored
+static inline bool should_store_sack_block(struct byte_snd_buffer *sb,
+				    uint32_t s_start,
+				    uint32_t s_end,
+				    uint32_t seg_ack)
+{
+	return tcp_seq_before(s_start, s_end) && tcp_seq_after(s_end, seg_ack) &&
+	       tcp_seq_before_eq(s_end, sb->snd_nxt) &&
+	       (sb->sack_blocks_count < sb->sack_capacity ||
+		tcp_seq_before_eq(s_start, sb->sack_blocks[sb->sack_capacity - 1].start_seq));
 }
