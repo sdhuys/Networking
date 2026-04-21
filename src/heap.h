@@ -2,7 +2,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 #define NODE_NOT_IN_HEAP 0xFFFFFFFF
 #define HEAP_SIZE_DEFAULT 0xFFFF

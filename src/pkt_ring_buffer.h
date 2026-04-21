@@ -1,7 +1,10 @@
 #pragma once
-#include "types.h"
-#include <stdio.h>
-#include <stdlib.h>
+#include <pthread.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+struct pkt;
 
 /* condition used for blocking reads from rcv_buff (read from snd_buff only when q'd
 => packet always available, never block)
@@ -16,8 +19,16 @@ struct pkt_ring_buffer {
 	size_t length;
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct pkt_ring_buffer *create_init_pkt_ring_buffer(size_t size);
 void destroy_pkt_ring_buffer(struct pkt_ring_buffer *b);
 bool write_to_pkt_buffer(struct pkt_ring_buffer *buff, struct pkt *packet);
 struct pkt *read_pkt_buffer(struct pkt_ring_buffer *buff);	    // TX
 struct pkt *read_pkt_buffer_blocking(struct pkt_ring_buffer *buff); // RX
+
+#ifdef __cplusplus
+}
+#endif

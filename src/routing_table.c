@@ -1,4 +1,9 @@
 #include "routing_table.h"
+#include "nw_interface.h"
+#include <arpa/inet.h>
+#include <stdlib.h>
+#include <string.h>
+
 #define ROUTES_PER_IF 2 // one direcly connected on_link, one via gateway
 
 struct routing_table *create_routing_table(struct nw_interface *interfaces, size_t if_count)

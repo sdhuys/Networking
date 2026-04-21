@@ -1,15 +1,15 @@
 #pragma once
 #include "address_types.h"
-#include "checksum.h"
-#include "layer_router.h"
-#include <arpa/inet.h>
-#include <sys/types.h>
+#include "pkt_result.h"
+#include <stdint.h>
 
 #define ECHO_REPLY 0
 #define DESTINATION_UNREACHABLE 3
 #define ECHO_REQUEST 8
 
-// ICMP LAYER
+struct pkt;
+struct nw_layer;
+
 struct icmp_context {
 };
 

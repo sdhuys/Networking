@@ -1,5 +1,16 @@
 #include "ipv4.h"
+#include "arp.h"
+#include "buffer_pool.h"
+#include "checksum.h"
+#include "constants.h"
+#include "ethernet.h"
+#include "layer_router.h"
+#include "nw_layer.h"
+#include "pkt.h"
+#include "routing_table.h"
+#include <arpa/inet.h>
 #include <stdio.h>
+#include <string.h>
 
 pkt_result receive_ipv4_up(struct nw_layer *self, struct pkt *packet)
 {

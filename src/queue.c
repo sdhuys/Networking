@@ -1,5 +1,7 @@
 #include "queue.h"
+#include "container_of.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 struct queue *create_q(void (*release_parent)(struct queue_node *),
 		       void (*retain_parent)(struct queue_node *),

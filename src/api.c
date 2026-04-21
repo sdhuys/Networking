@@ -1,8 +1,12 @@
 #include "api.h"
+#include "send_request.h"
 #include "socket_manager.h"
 #include "sockfd_manager.h"
+#include "stack.h"
 #include "tcp_common_types.h"
 #include "tcp_conn_htable.h"
+#include <string.h>
+#include <stdio.h>
 
 int open_listener(struct stack *stack, socket_type type, uint16_t local_port)
 {
@@ -52,7 +56,7 @@ int receive_from(struct stack *stack,
 	return bytes_read;
 }
 
-int send_down(struct stack *stack, int sockfd, struct send_request req)
+int send_down(struct stack *stack, int sockfd, struct send_request *req)
 {
 	struct socket_handle h;
 	int r = get_socket_handle(stack->sock_manager->sockfd_manager, sockfd, &h);
@@ -115,7 +119,7 @@ int tcp_connect(struct stack *stack,
 	memcpy(id.extern_addr, extern_addr, IPV4_ADDR_LEN);
 	memcpy(id.loc_addr, stack->local_address, IPV4_ADDR_LEN);
 
-	if (query_tcp_conn_hashtable(htable, id) || query_tcp_conn_hashtable(tw_htable, id))
+	if (query_tcp_conn_hashtable(htable, &id) || query_tcp_conn_hashtable(tw_htable, &id))
 		return -1; // CONNECTION ALREADY IN USE
 
 	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, stack->tcp_layer);

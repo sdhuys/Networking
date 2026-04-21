@@ -1,4 +1,12 @@
 #include "ethernet.h"
+#include "constants.h"
+#include "layer_router.h"
+#include "nw_layer.h"
+#include "pkt.h"
+#include <arpa/inet.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
 
 pkt_result receive_frame_up(struct nw_layer *self, struct pkt *packet)
 {

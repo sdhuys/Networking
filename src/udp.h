@@ -1,11 +1,22 @@
 #pragma once
-#include "checksum.h"
-#include "layer_router.h"
-#include "types.h"
-#include "udp_hashtable.h"
-#include "udp_socket.h"
-#include <arpa/inet.h>
-#include <stdlib.h>
+#include "address_types.h"
+#include "pkt_result.h"
+#include <stdint.h>
+
+struct nw_layer;
+struct pkt;
+
+struct udp_context {
+	ipv4_address_t stack_ipv4_addr;
+	struct socket_manager *sock_manager;
+};
+
+struct udp_header {
+	uint16_t src_port;
+	uint16_t dest_port;
+	uint16_t length;
+	uint16_t checksum;
+} __attribute__((packed));
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,7 +24,7 @@ extern "C" {
 
 pkt_result send_udp_down(struct nw_layer *self, struct pkt *packet);
 pkt_result receive_udp_up(struct nw_layer *self, struct pkt *packet);
-uint16_t calc_udp_checksum(struct udp_header *header, struct pkt *packet);
+
 #ifdef __cplusplus
 }
 #endif

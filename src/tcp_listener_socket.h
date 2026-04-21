@@ -1,17 +1,19 @@
 #pragma once
 #include "address_types.h"
-#include "hash.h"
-#include "queue.h"
-#include "socket_manager.h"
-#include "tcp.h"
-#include "tcp_conn_htable.h"
-#include "tcp_conn_socket.h"
-#include "tcp_listener_htable.h"
-#include <stdlib.h>
+#include "pkt_result.h"
+#include <pthread.h>
+#include <stddef.h>
+#include <stdint.h>
 
 extern const struct socket_ops tcp_listener_ops;
 
 typedef enum { TCP_LIS_LISTEN, TCP_LIS_CLOSED } tcp_listener_state;
+
+struct stack;
+struct nw_layer;
+struct pkt;
+struct queue;
+struct tcp_segment;
 
 struct tcp_ipv4_listener {
 	pthread_cond_t accept_cond;
@@ -29,6 +31,10 @@ struct tcp_ipv4_listener {
 	struct nw_layer *tcp_layer;
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack);
 void destroy_tcp_listener(struct tcp_ipv4_listener *listener);
 void retain_tcp_listener(struct tcp_ipv4_listener *listener);
@@ -43,3 +49,7 @@ pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lis,
 					  struct pkt *pkt,
 					  struct tcp_segment *seg);
 struct tcp_ipv4_conn *tcp_lstnr_accept_conn(void *s);
+
+#ifdef __cplusplus
+}
+#endif

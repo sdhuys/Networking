@@ -1,7 +1,5 @@
-#include <inttypes.h>
-#include <stdbool.h>
+#include "random.h"
 #include <sys/random.h>
-#include <stdio.h>
 
 bool chance(uint8_t prob)
 {

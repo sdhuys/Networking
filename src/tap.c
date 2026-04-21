@@ -1,4 +1,13 @@
 #include "tap.h"
+#include "buffer_pool.h"
+#include "nw_interface.h"
+#include "nw_layer.h"
+#include "pkt.h"
+#include "timer.h"
+#include <poll.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 void start_listening(struct nw_layer *interface)
 {

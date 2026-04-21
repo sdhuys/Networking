@@ -1,4 +1,6 @@
 #include "socket_manager.h"
+#include "send_request.h"
+#include "stack.h"
 #include "tcp_conn_socket.h"
 #include "tcp_listener_htable.h"
 #include "tcp_listener_socket.h"
@@ -6,6 +8,7 @@
 #include "udp_socket.h"
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 void notify_socket_readable_snd(struct socket_manager *mgr,
 				void *sock,

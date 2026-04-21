@@ -1,6 +1,18 @@
 #include "udp_socket.h"
+#include "buffer_pool.h"
+#include "ethernet.h"
+#include "ipv4.h"
+#include "nw_layer.h"
+#include "pkt.h"
+#include "pkt_ring_buffer.h"
+#include "send_request.h"
+#include "socket_manager.h"
+#include "stack.h"
+#include "udp.h"
 #include "udp_hashtable.h"
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 const struct socket_ops udp_socket_ops = {.is_snd_queued = udp_is_snd_queued,
 					  .set_snd_queued = udp_set_snd_queued,
@@ -113,7 +125,7 @@ void udp_release(void *s)
 	release_udp_socket((struct udp_ipv4_socket *)s);
 }
 
-ssize_t udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_request req)
+ssize_t udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_request *req)
 {
 	struct udp_ipv4_socket *socket = (struct udp_ipv4_socket *)s;
 
@@ -124,10 +136,10 @@ ssize_t udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_reques
 	}
 	pthread_mutex_unlock(&socket->lock);
 
-	if (!req.data || req.len < 1)
+	if (!req->data || req->len < 1)
 		return -2; // INVALID DATA
 
-	req.len = req.len > UDP_MAX_PAYLOAD ? UDP_MAX_PAYLOAD : req.len;
+	req->len = req->len > UDP_MAX_PAYLOAD ? UDP_MAX_PAYLOAD : req->len;
 
 	struct pkt_ring_buffer *buffer = socket->snd_buffer;
 
@@ -136,14 +148,14 @@ ssize_t udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_reques
 	if (packet == NULL)
 		return -3; // PKT POOL EXHAUSTED
 
-	packet->len = req.len;
+	packet->len = req->len;
 	memcpy(packet->src_ip, socket->local_addr, IPV4_ADDR_LEN);
-	memcpy(packet->dest_ip, req.dest_ip, IPV4_ADDR_LEN);
-	packet->dest_port = req.dest_port;
+	memcpy(packet->dest_ip, req->dest_ip, IPV4_ADDR_LEN);
+	packet->dest_port = req->dest_port;
 	packet->src_port = socket->local_port;
-	packet->offset = PKT_SIZE - req.len;
+	packet->offset = PKT_SIZE - req->len;
 	packet->protocol = P_UDP;
-	memcpy((packet->data + packet->offset), req.data, req.len);
+	memcpy((packet->data + packet->offset), req->data, req->len);
 	packet->len += sizeof(struct udp_header);
 	packet->offset -= sizeof(struct udp_header);
 
@@ -152,7 +164,7 @@ ssize_t udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_reques
 		return -4;
 	}
 	notify_socket_readable_snd(stack->sock_manager, socket, &udp_socket_ops);
-	return req.len;
+	return req->len;
 }
 
 ssize_t udp_read_rcv_buffer(void *s, size_t len, unsigned char *buff)

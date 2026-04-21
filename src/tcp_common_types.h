@@ -34,32 +34,16 @@ struct ooo_seg {
 	uint32_t end_seq;
 };
 
-struct tcp_options {
-	bool mss_present;
-	uint16_t mss;
-
-	bool wscale_present;
-	uint8_t wscale;
-
-	bool sack_permitted;
-
-	int sack_block_count;
-	struct ooo_seg sacks[MAX_SACK_BLOCKS];
-
-	bool ts_present;
-	uint32_t tsval;
-	uint32_t tsecr;
-
-	// set by calling parse_tcp_options() or tcp_options_len()
-	uint8_t length;
-};
-
 struct tcp_conn_id {
 	uint16_t loc_port;
 	ipv4_address_t loc_addr;
 	uint16_t extern_port;
 	ipv4_address_t extern_addr;
 };
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // 32-bit TCP sequence number comparisons
 static inline bool tcp_seq_before(uint32_t a, uint32_t b)
@@ -81,3 +65,7 @@ static inline bool tcp_seq_after_eq(uint32_t a, uint32_t b)
 {
 	return !tcp_seq_before(a, b);
 }
+
+#ifdef __cplusplus
+}
+#endif

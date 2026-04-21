@@ -1,12 +1,16 @@
 #pragma once
-#include "buffer_pool.h"
-#include "nw_interface.h"
-#include "timer.h"
-#include "types.h"
-#include <poll.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include "pkt_result.h"
+#include <stddef.h>
+
+struct pkt;
+struct nw_layer;
+struct nw_interface;
+
+struct interface_context {
+	struct nw_interface *interfaces;
+	size_t if_amount;
+	struct timer_manager *rx_timer_mgr; // rx thread timers (delayed ACKS, ARP timeouts, etc)
+};
 
 #ifdef __cplusplus
 extern "C" {

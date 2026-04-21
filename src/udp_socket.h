@@ -1,15 +1,37 @@
 #pragma once
-#include "buffer_pool.h"
-#include "pkt_ring_buffer.h"
-#include "socket_manager.h"
-#include "types.h"
-#include <stdlib.h>
+#include "address_types.h"
+#include "pkt_result.h"
+#include <pthread.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <sys/types.h>
 
 #define UDP_RING_BUFF_SIZE 256
 #define UDP_MAX_PAYLOAD                                                                            \
 	(PKT_SIZE - sizeof(struct udp_header) - sizeof(struct ipv4_header) -                       \
 	 sizeof(struct ethernet_header))
+
+typedef enum { UDP_LISTEN, UDP_CLOSED } udp_socket_state;
+
 extern const struct socket_ops udp_socket_ops;
+struct stack;
+struct pkt;
+struct send_request;
+
+struct udp_ipv4_socket {
+	uint16_t local_port;
+	ipv4_address_t local_addr;
+	struct pkt_ring_buffer *rcv_buffer; // stack writes, app consumes
+	struct pkt_ring_buffer *snd_buffer; // app writes, stack consumes
+	udp_socket_state state;
+	uint32_t ref_count;
+	bool queued_for_snd;
+	pthread_mutex_t lock;
+};
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 struct udp_ipv4_socket *create_udp_socket(uint16_t port, struct stack *stack);
 void destroy_udp_socket(struct udp_ipv4_socket *socket);
@@ -22,7 +44,7 @@ bool udp_is_snd_queued(void *s);
 void udp_set_snd_queued(void *s, bool v);
 void udp_retain(void *s);
 void udp_release(void *s);
-ssize_t udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_request req);
+ssize_t udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_request *req);
 ssize_t udp_read_rcv_buffer(void *s, size_t len, unsigned char *buff);
 int udp_read_rcv_buffer_from(
     void *s, size_t len, unsigned char *buff, ipv4_address_t addr_out, uint16_t *port_out);
@@ -32,15 +54,6 @@ struct pkt *udp_try_get_pkt(void *s);
 pkt_result udp_send_pkt(struct stack *stack, struct pkt *p);
 void udp_close_sock(struct stack *stack, void *s);
 
-typedef enum { UDP_LISTEN, UDP_CLOSED } udp_socket_state;
-
-struct udp_ipv4_socket {
-	uint16_t local_port;
-	ipv4_address_t local_addr;
-	struct pkt_ring_buffer *rcv_buffer; // stack writes, app consumes
-	struct pkt_ring_buffer *snd_buffer; // app writes, stack consumes
-	udp_socket_state state;
-	uint32_t ref_count;
-	bool queued_for_snd;
-	pthread_mutex_t lock;
-};
+#ifdef __cplusplus
+}
+#endif

@@ -1,7 +1,19 @@
 #pragma once
+#include "address_types.h"
+#include "pkt_result.h"
 #include "socket_types.h"
-#include "types.h"
-#include <stdlib.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <sys/types.h>
+
+struct tcp_ipv4_listener_htable;
+struct tcp_ipv4_conn_htable;
+struct tcp_ipv4_conn_htable;
+struct udp_ipv4_sckt_htable;
+struct socket_h_q;
+struct sockfd_manager;
+struct stack;
+struct send_request;
 
 struct socket_handle {
 	void *sock;
@@ -15,7 +27,7 @@ struct socket_ops {
 	void (*retain)(void *sock);
 	void (*release)(void *sock);
 
-	ssize_t (*write_to_snd_buffer)(struct stack *stack, void *sock, struct send_request req);
+	ssize_t (*write_to_snd_buffer)(struct stack *stack, void *sock, struct send_request *req);
 	ssize_t (*read_rcv_buffer)(void *sock, size_t len, unsigned char *buff);
 	int (*read_rcv_buffer_from)(void *sock,
 				    size_t len,
@@ -56,6 +68,10 @@ struct socket_h_q_node {
 	struct socket_h_q_node *next;
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void notify_socket_readable_snd(struct socket_manager *mgr,
 				void *sock,
 				const struct socket_ops *ops);
@@ -68,3 +84,7 @@ int create_socket_handle(struct stack *stack,
 			 uint16_t local_port,
 			 struct socket_handle *out);
 struct socket_handle create_conn_sock_h(struct tcp_ipv4_conn *conn);
+
+#ifdef __cplusplus
+}
+#endif

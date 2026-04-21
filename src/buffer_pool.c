@@ -1,4 +1,7 @@
 #include "buffer_pool.h"
+#include "pkt.h"
+#include "tcp_options.h"
+#include <stdalign.h>
 #include <stdio.h>
 
 alignas(64) static unsigned char buffer_pool[PKT_BUFF_POOL_SIZE][PKT_SIZE];

@@ -1,5 +1,8 @@
 #pragma once
-#include "types.h"
+#include "pkt_result.h"
+
+struct nw_layer;
+struct pkt;
 
 #ifdef __cplusplus
 extern "C" {

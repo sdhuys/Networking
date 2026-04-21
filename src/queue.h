@@ -1,9 +1,6 @@
 #pragma once
-#include "container_of.h"
-#include "stdlib.h"
 #include <pthread.h>
 #include <stdbool.h>
-#include <stddef.h>
 
 struct queue_node {
 	struct queue_node *nxt;
@@ -18,6 +15,10 @@ struct queue {
 	void (*retain_parent)(struct queue_node *);
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct queue *create_q(void (*release_parent)(struct queue_node *),
 		       void (*retain_parent)(struct queue_node *),
 		       pthread_cond_t *cond,
@@ -27,3 +28,7 @@ void push_q(struct queue *q, struct queue_node *n, bool lock);
 struct queue_node *pop_q(struct queue *q);
 struct queue_node *pop_q_blocking(struct queue *q);
 struct queue_node *peek_q(struct queue *q);
+
+#ifdef __cplusplus
+}
+#endif

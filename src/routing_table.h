@@ -1,13 +1,15 @@
 #pragma once
-#include "nw_interface.h"
-#include "types.h"
-#include <arpa/inet.h>
-#include <stdlib.h>
+#include "address_types.h"
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 typedef enum {
 	ROUTE_ONLINK, // destination is directly reachable
 	ROUTE_VIA     // send via gateway
 } route_type;
+
+struct nw_interface;
 
 struct route {
 	uint32_t prefix;      // network byte order

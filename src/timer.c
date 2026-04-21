@@ -1,6 +1,12 @@
 #include "timer.h"
 #include "container_of.h"
+#include "time_now.h"
+#include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <sys/eventfd.h>
+#include <time.h>
+#include <unistd.h>
 
 void execute_exp_timers(struct timer_manager *mgr)
 {

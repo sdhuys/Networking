@@ -1,18 +1,16 @@
 #pragma once
-#include "buffer_pool.h"
-#include "checksum.h"
-#include "layer_router.h"
-#include "routing_table.h"
-#include "socket_manager.h"
-#include "syn_cookie.h"
-#include "tcp_common_types.h"
-#include "tcp_conn_htable.h"
-#include "tcp_conn_socket.h"
-#include "tcp_listener_htable.h"
-#include "tcp_listener_socket.h"
-#include "tcp_options.h"
-#include "time_now.h"
-#include <arpa/inet.h>
+#include "address_types.h"
+#include "pkt_result.h"
+#include <stdbool.h>
+#include <stdint.h>
+
+struct socket_manager;
+struct timer_manager;
+struct routing_table;
+struct nw_layer;
+struct pkt;
+struct tcp_ipv4_listener;
+struct tcp_segment;
 
 struct tcp_context {
 	struct socket_manager *socket_manager;

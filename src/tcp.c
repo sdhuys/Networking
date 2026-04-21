@@ -1,9 +1,29 @@
 #include "tcp.h"
+#include "buffer_pool.h"
+#include "checksum.h"
+#include "ipv4.h"
+#include "layer_router.h"
+#include "nw_layer.h"
+#include "pkt.h"
 #include "random.h"
+#include "routing_table.h"
+#include "socket_manager.h"
+#include "syn_cookie.h"
+#include "tcp_common_types.h"
+#include "tcp_conn_htable.h"
+#include "tcp_conn_socket.h"
+#include "tcp_listener_htable.h"
+#include "tcp_listener_socket.h"
+#include "tcp_options.h"
+#include "tcp_segment.h"
+#include "time_now.h"
+#include <arpa/inet.h>
+#include <string.h>
+#include <stdio.h>
 
 pkt_result send_tcp_down(struct nw_layer *self, struct pkt *packet)
 {
-	uint8_t packet_loss_chance = 5;
+	uint8_t packet_loss_chance = 2;
 	if (chance(packet_loss_chance)) {
 		printf("\n                                                  PACKET LOSS!!!! \n \n");
 		release_pkt(packet);
@@ -85,10 +105,10 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 	memcpy(id.loc_addr, packet->dest_ip, IPV4_ADDR_LEN);
 
 	// query established connections (including half-opens)
-	struct tcp_ipv4_conn *conn = query_tcp_conn_hashtable(mgr->tcp_ipv4_conn_htable, id);
+	struct tcp_ipv4_conn *conn = query_tcp_conn_hashtable(mgr->tcp_ipv4_conn_htable, &id);
 	// if not established, try time_wait connections
 	if (conn == NULL)
-		conn = query_tcp_conn_hashtable(mgr->tcp_ipv4_conn_time_wait_htable, id);
+		conn = query_tcp_conn_hashtable(mgr->tcp_ipv4_conn_time_wait_htable, &id);
 
 	if (conn != NULL) {
 		pkt_result r = process_tcp_segment(packet, &seg, conn);

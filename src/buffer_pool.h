@@ -1,9 +1,8 @@
 #pragma once
-#include "tcp_common_types.h"
-#include "types.h"
-#include <stdalign.h>
 
 #define PKT_BUFF_POOL_SIZE 1000
+
+struct pkt;
 
 #ifdef __cplusplus
 extern "C" {

@@ -1,4 +1,5 @@
 #include "time_now.h"
+#include <time.h>
 
 uint64_t now_ms()
 {

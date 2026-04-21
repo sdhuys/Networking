@@ -1,11 +1,12 @@
 #include "udp_hashtable.h"
+#include "hash.h"
 #include "udp_socket.h"
-#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 bool add_to_udp_hashtable(struct udp_ipv4_sckt_htable *htable, struct udp_ipv4_socket *socket)
 {
 	uint32_t hash = calc_udp_hash(socket->local_port, socket->local_addr, htable);
-	printf("%d => %d \n", socket->local_port, hash);
 
 	pthread_mutex_lock(&htable->bucket_locks[hash]);
 
@@ -20,8 +21,10 @@ bool add_to_udp_hashtable(struct udp_ipv4_sckt_htable *htable, struct udp_ipv4_s
 	retain_udp_socket(socket);
 	struct udp_ipv4_sckt_htable_node *new_node =
 	    malloc(sizeof(struct udp_ipv4_sckt_htable_node));
-	if (new_node == NULL)
-		return NULL;
+	if (new_node == NULL) {
+		pthread_mutex_unlock(&htable->bucket_locks[hash]);
+		return false;
+	}
 
 	new_node->socket = socket;
 	new_node->next = htable->buckets[hash];

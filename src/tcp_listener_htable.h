@@ -1,8 +1,11 @@
 #pragma once
-#include "hash.h"
-#include "tcp_listener_socket.h"
-#include "types.h"
-#include <stdlib.h>
+#include "address_types.h"
+#include <pthread.h>
+#include <stdbool.h>
+#include <stdint.h>
+
+struct tcp_ipv4_listener;
+struct tcp_ipv4_listener_node;
 
 struct tcp_ipv4_listener_node {
 	struct tcp_ipv4_listener *listener;
@@ -14,6 +17,10 @@ struct tcp_ipv4_listener_htable {
 	uint32_t buckets_amount;
 	pthread_mutex_t *bucket_locks; // lock per bucket
 };
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 bool add_to_tcp_listener_hashtable(struct tcp_ipv4_listener_htable *htable,
 				   struct tcp_ipv4_listener *socket);
@@ -29,3 +36,7 @@ struct tcp_ipv4_listener_htable *create_tcp_ipv4_listener_htable(size_t size);
 bool is_tcp_lstnr_match(struct tcp_ipv4_listener *lstnr,
 			uint16_t loc_port,
 			ipv4_address_t loc_addr);
+
+#ifdef __cplusplus
+}
+#endif

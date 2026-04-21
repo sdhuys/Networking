@@ -1,4 +1,8 @@
 #include "hash.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/random.h>
 
 static uint64_t table_key[2];
 static uint64_t cookie_key[2];

@@ -1,5 +1,12 @@
 #include "icmp.h"
+#include "checksum.h"
+#include "ipv4.h"
+#include "layer_router.h"
+#include "nw_layer.h"
+#include "pkt.h"
+#include <arpa/inet.h>
 #include <stdio.h>
+#include <string.h>
 
 pkt_result send_icmp_down(struct nw_layer *self, struct pkt *packet)
 {

@@ -1,5 +1,25 @@
 #include "tcp_conn_socket.h"
+#include "buffer_pool.h"
+#include "container_of.h"
+#include "ipv4.h"
+#include "nw_layer.h"
+#include "pkt.h"
+#include "routing_table.h"
+#include "send_request.h"
+#include "socket_manager.h"
+#include "stack.h"
 #include "tcp.h"
+#include "tcp_conn_htable.h"
+#include "tcp_listener_socket.h"
+#include "tcp_options.h"
+#include "tcp_segment.h"
+#include "timer.h"
+#include "window_helpers.h"
+#include <arpa/inet.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/random.h>
+#include <stdio.h>
 
 const struct socket_ops tcp_conn_ops = {.is_snd_queued = tcp_is_snd_queued,
 					.set_snd_queued = tcp_set_snd_queued,
@@ -257,7 +277,9 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 			}
 			unlock_snd_buff(sb);
 			pthread_cond_broadcast(&sb->cond);
-			notify_socket_readable_snd(smgr, conn, &tcp_conn_ops); // might be too aggressive adding to send queue for every ack!
+			notify_socket_readable_snd(
+			    smgr, conn, &tcp_conn_ops); // might be too aggressive adding to send
+							// queue for every ack!
 		} else if (tcp_seq_after(seg_ack, snd_next)) {
 			// ACK out of sync, send challenge ACK
 			tcp_fast_reply_pure_ack(p, conn);
@@ -940,13 +962,13 @@ void tcp_close_conn(struct stack *stack, void *sock)
 		tcp_end_snd(stack, sock);
 }
 
-ssize_t tcp_write_to_snd_buff(struct stack *stack, void *sock, struct send_request req)
+ssize_t tcp_write_to_snd_buff(struct stack *stack, void *sock, struct send_request *req)
 {
-	if (!stack || !sock || !req.data || req.len < 1)
+	if (!stack || !sock || !req->data || req->len < 1)
 		return -1;
 
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)sock;
-	ssize_t r = blocking_write_to_snd_buff(&conn->snd_buffer, req.data, req.len, conn);
+	ssize_t r = blocking_write_to_snd_buff(&conn->snd_buffer, req->data, req->len, conn);
 	if (r > 0)
 		notify_socket_readable_snd(stack->sock_manager, sock, &tcp_conn_ops);
 	return r;

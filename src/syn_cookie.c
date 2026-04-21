@@ -1,6 +1,22 @@
 #include "syn_cookie.h"
+#include "hash.h"
+#include "ipv4.h"
+#include "nw_layer.h"
+#include "pkt.h"
+#include "queue.h"
+#include "routing_table.h"
+#include "socket_manager.h"
 #include "tcp.h"
+#include "tcp_common_types.h"
+#include "tcp_conn_htable.h"
+#include "tcp_conn_socket.h"
 #include "tcp_listener_socket.h"
+#include "tcp_options.h"
+#include "tcp_segment.h"
+#include "time_now.h"
+#include <arpa/inet.h>
+#include <stdint.h>
+#include <string.h>
 
 #define COOKIE_MSS_VAL_COUNT 4
 

@@ -1,14 +1,13 @@
 #pragma once
+#include "address_types.h"
 #include "byte_ring_buffers.h"
-#include "pkt_ring_buffer.h"
+#include "pkt_result.h"
 #include "queue.h"
-#include "socket_manager.h"
 #include "tcp_common_types.h"
-#include "tcp_segment.h"
-#include "timer.h"
-#include "window_helpers.h"
-#include <arpa/inet.h>
-#include <sys/random.h>
+#include <pthread.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <sys/types.h>
 
 extern const struct socket_ops tcp_conn_ops;
 
@@ -33,6 +32,12 @@ typedef enum {
 	LAST_ACK,     // Waiting for ACK of our FIN after close
 	TIME_WAIT     // Waiting for 2*MSL (maximum segment lifetime) before releasing
 } tcp_connection_state;
+
+struct timer;
+struct pkt;
+struct tcp_segment;
+struct stack;
+struct send_request;
 
 struct tcp_ipv4_conn {
 	pthread_mutex_t
@@ -100,6 +105,10 @@ struct tcp_ipv4_conn {
 	struct queue_node q_node;
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct nw_layer *tcp);
 void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *seg);
 void client_init_tcp_connection(struct tcp_ipv4_conn *conn);
@@ -144,5 +153,9 @@ static inline bool tcp_conn_alive(struct tcp_ipv4_conn *conn)
 	return state != CLOSED && state != TIME_WAIT;
 }
 
-ssize_t tcp_write_to_snd_buff(struct stack *stack, void *sock, struct send_request req);
+ssize_t tcp_write_to_snd_buff(struct stack *stack, void *sock, struct send_request *req);
 ssize_t tcp_read_from_rcv_buff(void *sock, size_t len, unsigned char *buff);
+
+#ifdef __cplusplus
+}
+#endif

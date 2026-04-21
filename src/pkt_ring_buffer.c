@@ -1,4 +1,7 @@
 #include "pkt_ring_buffer.h"
+#include "pkt.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 bool write_to_pkt_buffer(struct pkt_ring_buffer *buff, struct pkt *packet)
 {

@@ -1,7 +1,42 @@
 #include "stack_constructor.h"
+#include "arp.h"
+#include "common_layer_types.h"
+#include "ethernet.h"
+#include "icmp.h"
+#include "ipv4.h"
+#include "nw_interface.h"
+#include "nw_layer.h"
+#include "routing_table.h"
+#include "socket_manager.h"
+#include "sockfd_manager.h"
+#include "stack.h"
+#include "tap.h"
+#include "tcp.h"
+#include "tcp_conn_htable.h"
+#include "tcp_listener_htable.h"
+#include "timer.h"
+#include "udp.h"
+#include "udp_hashtable.h"
+#include <arpa/inet.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
-struct stack construct_stack(struct nw_interface *interfaces, size_t if_count)
+#define TCP_LISTNR_HTBL_SIZE 1024
+#define UDP_SCKT_HTBL_SIZE 1024
+
+#define TCP_EST_CONN_HTBL_SIZE 4096
+#define TCP_WAIT_CONN_HTBLE_SIZE 2048
+
+struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 {
+	if (if_count < 1)
+		return NULL;
+	
 	struct nw_layer *interface = malloc(sizeof(struct nw_layer));
 	struct nw_layer *eth = malloc(sizeof(struct nw_layer));
 	struct nw_layer *arp = malloc(sizeof(struct nw_layer));
@@ -10,7 +45,7 @@ struct stack construct_stack(struct nw_interface *interfaces, size_t if_count)
 	struct nw_layer *udp = malloc(sizeof(struct nw_layer));
 	struct nw_layer *tcp = malloc(sizeof(struct nw_layer));
 
-	struct timer_manager *rx_timer_mgr = create_timer_manager();
+	struct timer_manager *timer_mgr = create_timer_manager();
 	interface->name = IF_NAME;
 	interface->send_down = &write_to_interface;
 	interface->rcv_up = &send_up_to_ethernet;
@@ -22,7 +57,7 @@ struct stack construct_stack(struct nw_interface *interfaces, size_t if_count)
 	struct interface_context *nw_if_context = malloc(sizeof(struct interface_context));
 	nw_if_context->if_amount = if_count;
 	nw_if_context->interfaces = interfaces;
-	nw_if_context->rx_timer_mgr = rx_timer_mgr;
+	nw_if_context->rx_timer_mgr = timer_mgr;
 	interface->context = nw_if_context;
 
 	// assign stack mac address and ip address on same subnet as interface
@@ -125,17 +160,19 @@ struct stack construct_stack(struct nw_interface *interfaces, size_t if_count)
 	tcp->downs = malloc(tcp->downs_count * sizeof(struct nw_layer *));
 	tcp->downs[0] = ip;
 	struct tcp_context *tcp_context = malloc(sizeof(struct tcp_context));
-	tcp_context->rx_timer_mgr = rx_timer_mgr;
+	tcp_context->rx_timer_mgr = timer_mgr;
 	tcp_context->socket_manager = socket_manager;
 	memcpy(tcp_context->stack_ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
 	tcp_context->routing_tbl = ipv4_context->routing_table;
 	tcp->context = tcp_context;
 
-	struct stack stack = {.if_layer = interface,
-			      .tcp_layer = tcp,
-			      .udp_layer = udp,
-			      .icmp_layer = icmp,
-			      .sock_manager = socket_manager};
-	memcpy(stack.local_address, stack_ipv4_addr, IPV4_ADDR_LEN);
+	struct stack *stack = malloc(sizeof(struct stack));
+	stack->icmp_layer = icmp;
+	stack->if_layer = interface;
+	memcpy(stack->local_address, stack_ipv4_addr, IPV4_ADDR_LEN);
+	stack->sock_manager = socket_manager;
+	stack->tcp_layer = tcp;
+	stack->udp_layer = udp;
+	stack->tx_timer_mgr = timer_mgr;
 	return stack;
 }

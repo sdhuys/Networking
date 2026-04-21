@@ -1,4 +1,5 @@
 #include "sockfd_manager.h"
+#include <stdlib.h>
 
 int sockfd_manager_init(struct sockfd_manager *fd_mgr)
 {

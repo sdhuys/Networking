@@ -1,12 +1,7 @@
 #pragma once
 #include "address_types.h"
-#include "stdbool.h"
-#include "stddef.h"
-#include "stdint.h"
-#include "string.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/random.h>
+#include <stddef.h>
+#include <stdint.h>
 
 void hash_init(void);
 uint32_t hash_table(const void *data, size_t len);

@@ -1,7 +1,11 @@
 #include "byte_ring_buffers.h"
+#include "container_of.h"
 #include "tcp_conn_socket.h"
 #include "tcp_segment.h"
 #include <arpa/inet.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 
 int init_byte_rcv_buffer(struct byte_reassembly_rcv_buffer *b, size_t capacity)
 {
@@ -246,7 +250,9 @@ static size_t write_unwritten_bytes(struct byte_reassembly_rcv_buffer *b,
 // writes a tcp segment into the receive buffer, either contigously or leaves appropriate gap space
 // if segment is out of order keeps track of ooo_segments metadata, merges if possible "first
 // arrival wins", bytes are never overwritten returns the number of bytes written
-size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct tcp_segment *seg, bool *immediate_ack)
+size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b,
+				    struct tcp_segment *seg,
+				    bool *immediate_ack)
 {
 	if (!b || !seg || seg->payload_len == 0)
 		return 0;

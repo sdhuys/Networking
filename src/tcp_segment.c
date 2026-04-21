@@ -1,4 +1,5 @@
 #include "tcp_segment.h"
+#include "tcp_common_types.h"
 
 uint32_t seg_seq_len(struct tcp_segment *seg)
 {

@@ -1,4 +1,13 @@
 #include "arp.h"
+#include "buffer_pool.h"
+#include "constants.h"
+#include "ethernet.h"
+#include "nw_layer.h"
+#include "pkt.h"
+#include <arpa/inet.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet)
 {

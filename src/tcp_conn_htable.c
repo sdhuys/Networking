@@ -1,11 +1,15 @@
 #include "tcp_conn_htable.h"
+#include "hash.h"
+#include "tcp_common_types.h"
+#include <stdlib.h>
+#include <string.h>
 
 bool add_to_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct tcp_ipv4_conn *conn)
 {
 	struct tcp_conn_id id = {.extern_port = conn->extern_port, .loc_port = conn->local_port};
 	memcpy(id.extern_addr, conn->extern_addr, IPV4_ADDR_LEN);
 	memcpy(id.loc_addr, conn->local_addr, IPV4_ADDR_LEN);
-	uint32_t hash = calc_tcp_conn_hash(htable, id);
+	uint32_t hash = calc_tcp_conn_hash(htable, &id);
 
 	pthread_mutex_lock(&htable->bucket_locks[hash]);
 
@@ -16,7 +20,7 @@ bool add_to_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct tcp_i
 					 .loc_port = node_conn->local_port};
 		memcpy(id.extern_addr, node_conn->extern_addr, IPV4_ADDR_LEN);
 		memcpy(id.loc_addr, node_conn->local_addr, IPV4_ADDR_LEN);
-		if (is_tcp_conn_match(conn, id)) {
+		if (is_tcp_conn_match(conn, &id)) {
 			pthread_mutex_unlock(&htable->bucket_locks[hash]);
 			return false;
 		}
@@ -36,7 +40,7 @@ bool add_to_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct tcp_i
 
 // does not check state, caller's job (different hashtables, each different state requirements!)
 struct tcp_ipv4_conn *query_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable,
-					       struct tcp_conn_id id)
+					       struct tcp_conn_id *id)
 {
 	uint32_t hash = calc_tcp_conn_hash(htable, id);
 	pthread_mutex_t *lock = &(htable->bucket_locks[hash]);
@@ -65,7 +69,7 @@ bool remove_from_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct 
 	struct tcp_conn_id id = {.extern_port = conn->extern_port, .loc_port = conn->local_port};
 	memcpy(id.extern_addr, conn->extern_addr, IPV4_ADDR_LEN);
 	memcpy(id.loc_addr, conn->local_addr, IPV4_ADDR_LEN);
-	uint32_t hash = calc_tcp_conn_hash(htable, id);
+	uint32_t hash = calc_tcp_conn_hash(htable, &id);
 
 	pthread_mutex_t *lock = &(htable->bucket_locks[hash]);
 	pthread_mutex_lock(lock);
@@ -91,9 +95,9 @@ bool remove_from_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct 
 	return false;
 }
 
-uint32_t calc_tcp_conn_hash(struct tcp_ipv4_conn_htable *htable, struct tcp_conn_id id)
+uint32_t calc_tcp_conn_hash(struct tcp_ipv4_conn_htable *htable, struct tcp_conn_id *id)
 {
-	return hash_table(&id, sizeof(id)) & (htable->buckets_amount - 1);
+	return hash_table(id, sizeof(id)) & (htable->buckets_amount - 1);
 }
 
 struct tcp_ipv4_conn_htable *create_tcp_ipv4_conn_htable(size_t size)
@@ -130,9 +134,9 @@ struct tcp_ipv4_conn_htable *create_tcp_ipv4_conn_htable(size_t size)
 	return tcp_conn_htable;
 }
 
-bool is_tcp_conn_match(struct tcp_ipv4_conn *conn, struct tcp_conn_id id)
+bool is_tcp_conn_match(struct tcp_ipv4_conn *conn, struct tcp_conn_id *id)
 {
-	return conn->extern_port == id.extern_port && conn->local_port == id.loc_port &&
-	       memcmp(conn->local_addr, id.loc_addr, IPV4_ADDR_LEN) == 0 &&
-	       memcmp(conn->extern_addr, id.extern_addr, IPV4_ADDR_LEN) == 0;
+	return conn->extern_port == id->extern_port && conn->local_port == id->loc_port &&
+	       memcmp(conn->local_addr, id->loc_addr, IPV4_ADDR_LEN) == 0 &&
+	       memcmp(conn->extern_addr, id->extern_addr, IPV4_ADDR_LEN) == 0;
 }

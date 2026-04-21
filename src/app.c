@@ -10,6 +10,7 @@ void client_app(struct stack *stack)
 		printf("CONNECTION ERROR! \n");
 		return;
 	}
+	tcp_end_send(stack, tcp_9000);
 
 	FILE *f = fopen("testing_files/rcv.JPG", "wb");
 	unsigned char buff[100000];
@@ -56,22 +57,21 @@ void server_app(struct stack *stack)
 	int l = open_listener(stack, SOCK_TCP, 9000);
 	int conn = accept_connection(stack, l);
 	unsigned char buff[0x80000];
-
-	FILE *f = fopen("testing_files/snd2.JPG", "rb");
+	FILE *f = fopen("testing_files/snd.JPG", "rb");
 	ssize_t r;
 	while ((r = fread(buff, 1, 0x80000, f)) > 0) {
 		size_t count = 0;
 
 		do {
 			struct send_request req = {.data = buff + count, .len = r - count};
-			int sent_down = send_down(stack, conn, req);
+			int sent_down = send_down(stack, conn, &req);
 			count += sent_down;
 
-		} while (count < (size_t) r);
+		} while (count < (size_t)r);
 	}
 	if (r != 0)
 		printf("read error %lu", r);
-	
+
 	fclose(f);
 	close_socket(stack, conn);
 	return;

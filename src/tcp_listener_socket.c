@@ -1,6 +1,19 @@
 #include "tcp_listener_socket.h"
 #include "container_of.h"
+#include "nw_layer.h"
+#include "pkt.h"
+#include "queue.h"
+#include "socket_manager.h"
+#include "stack.h"
+#include "tcp.h"
+#include "tcp_conn_htable.h"
+#include "tcp_conn_socket.h"
+#include "tcp_listener_htable.h"
+#include "tcp_segment.h"
 #include "time.h"
+#include <arpa/inet.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define TCP_LSTNR_HALF_OPENS_BCKT_COUNT 1024
 #define TCP_LSTNR_HALF_OPENS_LIMIT 256

@@ -1,4 +1,8 @@
 #include "tcp_listener_htable.h"
+#include "hash.h"
+#include "tcp_listener_socket.h"
+#include <stdlib.h>
+#include <string.h>
 
 bool add_to_tcp_listener_hashtable(struct tcp_ipv4_listener_htable *htable,
 				   struct tcp_ipv4_listener *listener)

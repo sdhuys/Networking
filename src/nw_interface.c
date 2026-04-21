@@ -1,4 +1,12 @@
 #include "nw_interface.h"
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/eventfd.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 void set_net_if_struct(int fd, char *if_name, struct nw_interface *n_if)
 {

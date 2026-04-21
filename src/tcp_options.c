@@ -1,6 +1,8 @@
 #include "tcp_options.h"
 #include "tcp_conn_socket.h"
+#include "timer.h"
 #include <arpa/inet.h>
+#include <string.h>
 
 #define TCP_OPT_EOL 0
 #define TCP_OPT_NOP 1

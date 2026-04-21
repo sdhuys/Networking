@@ -1,4 +1,5 @@
 #include "heap.h"
+#include <stdlib.h>
 
 #define PARENT(i) (((i) - 1) / 2)
 #define LEFT(i) (2 * (i) + 1)

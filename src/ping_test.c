@@ -1,7 +1,13 @@
+#include "address_types.h"
 #include "buffer_pool.h"
+#include "checksum.h"
 #include "icmp.h"
-#include "types.h"
+#include "nw_layer.h"
+#include "pkt.h"
+#include "stack.h"
+#include <arpa/inet.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
 void *ping_test(void *st)

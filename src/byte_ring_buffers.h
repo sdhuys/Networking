@@ -1,17 +1,17 @@
 #pragma once
-#include "tcp_segment.h"
+#include "tcp_common_types.h"
 #include <pthread.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <sys/types.h>
 
 #define CTRL_BLOCKS 2
 #define MAX_SACK_TRACKED 32	  // to avoind unneccessary retransmissions
 #define MAX_OOO_RCV_SEG_STORED 64 // to avoid dropping data within window
 
 struct tcp_ipv4_conn;
+struct tcp_segment;
 
 struct ctrl_seg {
 	uint32_t seq;  // sequence number where this lives
@@ -81,6 +81,10 @@ struct byte_snd_buffer {
 	uint8_t ctrl_count;		   // 0..2
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int init_byte_rcv_buffer(struct byte_reassembly_rcv_buffer *b, size_t capacity);
 void destroy_byte_rcv_buffer(struct byte_reassembly_rcv_buffer *b);
 int init_byte_snd_buffer(struct byte_snd_buffer *b, size_t capacity);
@@ -95,7 +99,9 @@ void read_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t
 void insert_ooo_segment(
     struct ooo_seg *segs, size_t *count, size_t capacity, struct ooo_seg seg, size_t idx);
 size_t bin_search_seq_after_eq_indx(uint32_t seq, struct ooo_seg *segs, size_t count);
-size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b, struct tcp_segment *seg, bool *immediate_ack);
+size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b,
+				    struct tcp_segment *seg,
+				    bool *immediate_ack);
 
 ssize_t blocking_read_from_rcv_buff(struct byte_reassembly_rcv_buffer *b,
 				    unsigned char *buffer,
@@ -173,12 +179,16 @@ static inline void update_snd_nxt_head(struct byte_snd_buffer *b,
 // AND end after seg_ack but before_eq snd_next
 // AND space to store OR ealier than last stored
 static inline bool should_store_sack_block(struct byte_snd_buffer *sb,
-				    uint32_t s_start,
-				    uint32_t s_end,
-				    uint32_t seg_ack)
+					   uint32_t s_start,
+					   uint32_t s_end,
+					   uint32_t seg_ack)
 {
 	return tcp_seq_before(s_start, s_end) && tcp_seq_after(s_end, seg_ack) &&
 	       tcp_seq_before_eq(s_end, sb->snd_nxt) &&
 	       (sb->sack_blocks_count < sb->sack_capacity ||
 		tcp_seq_before_eq(s_start, sb->sack_blocks[sb->sack_capacity - 1].start_seq));
 }
+
+#ifdef __cplusplus
+}
+#endif

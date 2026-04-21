@@ -1,9 +1,20 @@
 #include "udp.h"
-#include <assert.h>
-#include <execinfo.h>
+#include "buffer_pool.h"
+#include "checksum.h"
+#include "ipv4.h"
+#include "layer_router.h"
+#include "nw_layer.h"
+#include "pkt.h"
+#include "socket_manager.h"
+#include "udp_hashtable.h"
+#include "udp_socket.h"
+#include <arpa/inet.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+uint16_t calc_udp_checksum(struct udp_header *header, struct pkt *packet);
 
 pkt_result send_udp_down(struct nw_layer *self, struct pkt *packet)
 {
