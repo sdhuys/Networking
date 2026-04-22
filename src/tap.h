@@ -9,7 +9,6 @@ struct nw_interface;
 struct interface_context {
 	struct nw_interface *interfaces;
 	size_t if_amount;
-	struct timer_manager *rx_timer_mgr; // rx thread timers (delayed ACKS, ARP timeouts, etc)
 };
 
 #ifdef __cplusplus

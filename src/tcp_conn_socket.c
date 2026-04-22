@@ -59,7 +59,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 
 	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
 	struct socket_manager *smgr = ctx->socket_manager;
-	struct timer_manager *tmgr = ctx->rx_timer_mgr;
+	struct timer_manager *tmgr = ctx->timer_mgr;
 
 	// window Validation
 	bool in_window = false;
@@ -567,7 +567,7 @@ pkt_result tcp_fast_reply_pure_ack(struct pkt *p, struct tcp_ipv4_conn *conn)
 	p->offset = PKT_SIZE - p->len;
 	conn->ack_pending = false;
 	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
-	struct timer_manager *tmgr = ctx->rx_timer_mgr;
+	struct timer_manager *tmgr = ctx->timer_mgr;
 	cancel_timer(tmgr, conn->del_ack_timer);
 
 	return conn->tcp_layer->send_down(conn->tcp_layer, p);
@@ -636,7 +636,7 @@ void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state st
 	    !conn->data_timers_cancelled) {
 
 		struct timer_manager *tmgr =
-		    ((struct tcp_context *)conn->tcp_layer->context)->rx_timer_mgr;
+		    ((struct tcp_context *)conn->tcp_layer->context)->timer_mgr;
 
 		cancel_timer(tmgr, conn->rto_timer);
 		cancel_timer(tmgr, conn->del_ack_timer);
@@ -651,7 +651,7 @@ void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state st
 		    smgr->tcp_ipv4_conn_time_wait_htable;
 		add_to_tcp_conn_hashtable(time_wait_htable, conn);
 		remove_from_tcp_conn_hashtable(smgr->tcp_ipv4_conn_htable, conn);
-		start_timer(ctx->rx_timer_mgr, conn->time_wait_timer, TCP_TIMEWAIT_LEN);
+		start_timer(ctx->timer_mgr, conn->time_wait_timer, TCP_TIMEWAIT_LEN);
 	}
 
 	// no more read nor write, need separate broadcasts for CLOSED incase of RST (not going
@@ -745,7 +745,7 @@ void destroy_tcp_conn(struct tcp_ipv4_conn *conn)
 {
 	printf("\n\nDESTROYING CONNECTION!! \n\n");
 	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
-	struct timer_manager *tmgr = ctx->rx_timer_mgr;
+	struct timer_manager *tmgr = ctx->timer_mgr;
 
 	pthread_mutex_lock(&conn->lock);
 	destroy_byte_rcv_buffer(&conn->rcv_buffer);
@@ -833,7 +833,7 @@ struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq
 	if (!sb->rcov_mode && conn->rto_timer->node.index == NODE_NOT_IN_HEAP) {
 		struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
 		printf("starting RTO timer \n");
-		start_timer(ctx->rx_timer_mgr, conn->rto_timer, conn->rto);
+		start_timer(ctx->timer_mgr, conn->rto_timer, conn->rto);
 	}
 	///////////////////////////////////////////////////////
 

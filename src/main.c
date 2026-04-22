@@ -6,6 +6,7 @@
 #include "stack_constructor.h"
 #include "stack_tx_worker.h"
 #include "tap.h"
+#include "timer_worker.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -75,12 +76,14 @@ int main()
 
 	struct nw_layer *tap = stack->if_layer;
 	// struct socket_manager *socket_manager = stack.sock_manager;
+	pthread_t timer_thread_id;
 	pthread_t client_app_tid;
 	pthread_t server_app_tid;
 	pthread_t stack_tx_tid;
 	pthread_t ping_testid;
 
 	//pthread_create(&ping_testid, NULL, ping_test, (void *)stack);
+	pthread_create(&timer_thread_id, NULL, start_timers_loop, (void *)stack);
 	pthread_create(&client_app_tid, NULL, start_client_app_wrapper, (void *)stack);
 	pthread_create(&server_app_tid, NULL, start_server_app_wrapper, (void *)stack);
 	pthread_create(&stack_tx_tid, NULL, stack_transmission_loop, (void *)stack);

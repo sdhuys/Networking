@@ -51,6 +51,7 @@ set(LIB_SOURCES
   src/tcp_options.c
   src/tcp_segment.c
   src/timer.c
+  src/timer_worker.c
   src/time_now.c
   src/udp.c
   src/udp_hashtable.c
