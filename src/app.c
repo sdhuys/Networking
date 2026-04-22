@@ -10,7 +10,7 @@ void client_app(struct stack *stack)
 		printf("CONNECTION ERROR! \n");
 		return;
 	}
-	tcp_end_send(stack, tcp_9000);
+	//tcp_end_send(stack, tcp_9000);
 
 	FILE *f = fopen("testing_files/rcv.JPG", "wb");
 	unsigned char buff[100000];
