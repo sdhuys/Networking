@@ -149,8 +149,7 @@ void tcp_close_conn(struct stack *stack, void *sock);
 
 static inline bool tcp_conn_alive(struct tcp_ipv4_conn *conn)
 {
-	tcp_connection_state state = conn->state;
-	return state != CLOSED && state != TIME_WAIT;
+	return conn->state != CLOSED;
 }
 
 ssize_t tcp_write_to_snd_buff(struct stack *stack, void *sock, struct send_request *req);

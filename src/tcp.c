@@ -18,12 +18,12 @@
 #include "tcp_segment.h"
 #include "time_now.h"
 #include <arpa/inet.h>
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
 
 pkt_result send_tcp_down(struct nw_layer *self, struct pkt *packet)
 {
-	uint8_t packet_loss_chance = 2;
+	uint8_t packet_loss_chance = 10;
 	if (chance(packet_loss_chance)) {
 		printf("\n                                                  PACKET LOSS!!!! \n \n");
 		release_pkt(packet);

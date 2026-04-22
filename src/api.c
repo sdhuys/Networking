@@ -5,8 +5,8 @@
 #include "stack.h"
 #include "tcp_common_types.h"
 #include "tcp_conn_htable.h"
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
 
 int open_listener(struct stack *stack, socket_type type, uint16_t local_port)
 {

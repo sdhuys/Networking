@@ -98,6 +98,7 @@ pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
 	bool loopback = ((packet->dest_mac[0] | packet->dest_mac[1] | packet->dest_mac[2] |
 			  packet->dest_mac[3] | packet->dest_mac[4] | packet->dest_mac[5]) == 0);
 	bool release = true;
+	pkt_result loopback_result;
 
 	if (!loopback) {
 		ssize_t nwrite = write(fd, (packet->data + packet->offset), packet->len);
@@ -106,13 +107,20 @@ pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
 			perror("Writing to TAP interface");
 			return WRITE_ERROR;
 		}
-	} else
-		release = send_up_to_ethernet(interface, packet) % 10 != 0;
+	} else {
+		loopback_result = send_up_to_ethernet(interface, packet);
+		release = loopback_result % 10 != 0;
+	}
 
 	if (release) {
 		printf("TAP SENT RELEASING \n");
 		release_pkt(packet);
 	}
+
 	printf("SENT \n");
+	
+	if (loopback)
+		printf("\n\n      loopback result: %i \n\n", loopback_result);
+
 	return SENT;
 }

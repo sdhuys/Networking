@@ -36,7 +36,7 @@ struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 {
 	if (if_count < 1)
 		return NULL;
-	
+
 	struct nw_layer *interface = malloc(sizeof(struct nw_layer));
 	struct nw_layer *eth = malloc(sizeof(struct nw_layer));
 	struct nw_layer *arp = malloc(sizeof(struct nw_layer));

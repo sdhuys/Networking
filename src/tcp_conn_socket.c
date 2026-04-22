@@ -16,10 +16,10 @@
 #include "timer.h"
 #include "window_helpers.h"
 #include <arpa/inet.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/random.h>
-#include <stdio.h>
 
 const struct socket_ops tcp_conn_ops = {.is_snd_queued = tcp_is_snd_queued,
 					.set_snd_queued = tcp_set_snd_queued,
