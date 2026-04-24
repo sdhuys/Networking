@@ -65,15 +65,14 @@ struct byte_snd_buffer {
 	size_t tail; // index where the APP writes new data (end of current data, possibly outside
 		     // of window)
 
-	bool rcov_mode;
-	uint32_t rcov_snd_nxt; // recovery mode sequence number to be sent
-	size_t rcov_snd_nxt_i; // physical index of rcov_snd_next
+	bool retransmit;
 
 	size_t used_bytes; // total bytes currently in buffer (unacked sent + unsent)
 
 	uint16_t snd_wndw;  // peer's advertised window (not scaled)
 	uint8_t snd_wscale; // peer's scale
 
+	congestion_ctrl_state c_state;
 	uint32_t cwnd;
 	uint32_t ssthresh;
 

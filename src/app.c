@@ -1,6 +1,7 @@
 #include "app.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 void client_app(struct stack *stack)
 {
@@ -10,8 +11,7 @@ void client_app(struct stack *stack)
 		printf("CONNECTION ERROR! \n");
 		return;
 	}
-	//tcp_end_send(stack, tcp_9000);
-
+	tcp_end_send(stack, tcp_9000);
 	FILE *f = fopen("testing_files/rcv.JPG", "wb");
 	unsigned char buff[100000];
 	ssize_t r = 0;
@@ -19,6 +19,7 @@ void client_app(struct stack *stack)
 		printf("FILE WRITING %ld BYTES \n", r);
 		if (r > 0)
 			fwrite(buff, 1, r, f);
+		sleep(2); // CAUSE ZERO WINDOWS
 	}
 	if (r < 0)
 		printf("CONN RESET! \n");

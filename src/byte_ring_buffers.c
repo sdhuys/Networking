@@ -72,7 +72,7 @@ int init_byte_snd_buffer(struct byte_snd_buffer *b, size_t capacity)
 		return -1;
 	}
 
-	b->rcov_mode = false;
+	b->retransmit = false;
 	b->sack_blocks_count = 0;
 	b->sack_capacity = MAX_SACK_TRACKED;
 	memset(b->sack_blocks, 0, sizeof(b->sack_blocks));
@@ -134,7 +134,7 @@ void read_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t
 	if (!b || !buffer)
 		return;
 
-	size_t snd_i = b->rcov_mode ? b->rcov_snd_nxt_i : b->snd_nxt_i;
+	size_t snd_i = b->retransmit ? b->head: b->snd_nxt_i;
 	size_t first_part = len;
 	if (snd_i + len > b->capacity) {
 		first_part = b->capacity - snd_i;

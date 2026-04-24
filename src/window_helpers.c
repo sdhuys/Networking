@@ -1,5 +1,6 @@
 #include "window_helpers.h"
 #include "tcp_conn_socket.h"
+#include <stdio.h>
 
 // call when writing to receive buffer, and when app reads from buffer
 // caller must hold lock
@@ -75,24 +76,20 @@ uint8_t tcp_calc_wndw_scale()
 uint32_t usable_window(struct tcp_ipv4_conn *conn)
 {
 	struct byte_snd_buffer *sb = &conn->snd_buffer;
+	// ignore potential zero window for retransmissions
+	if (sb->retransmit)
+		return conn->snd_mss;
 
 	uint32_t total_allowed = ((uint32_t)(sb->snd_wndw << sb->snd_wscale) < sb->cwnd)
 				     ? (uint32_t)(sb->snd_wndw << sb->snd_wscale)
 				     : sb->cwnd;
-
+	printf("USABLE WINDOW: peer window: %u vs cong window: %u \n", (uint32_t)(sb->snd_wndw << sb->snd_wscale), sb->cwnd);
 	uint32_t sent_unacked = sb->snd_nxt - sb->snd_una;
 	uint32_t sacked = sb->sacked_bytes;
 
-	uint32_t effective_in_flight;
-	// if in recovery mode, everything still in flight considered lost
-	// can result in great number of unnecessary retransmissions if SACK is disabled
-	// with SACK enabled, damage should be limited (RX thread updates SACK blocks=> limits what
-	// TX sends)
-	if (sb->rcov_mode)
-		effective_in_flight = 0;
-	else
-		effective_in_flight = (sent_unacked > sacked) ? (sent_unacked - sacked) : 0;
-
+	// pipe
+	uint32_t effective_in_flight = (sent_unacked > sacked) ? (sent_unacked - sacked) : 0;
+	printf("PIPE: %u \n\n", effective_in_flight);
 	if (total_allowed > effective_in_flight)
 		return total_allowed - effective_in_flight;
 

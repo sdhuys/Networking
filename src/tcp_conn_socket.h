@@ -61,7 +61,7 @@ struct tcp_ipv4_conn {
 	uint32_t irs; // initial Receive Sequence
 
 	uint32_t rcv_mss; // local mss
-	uint32_t snd_mss; // peer's advertised mss
+	uint32_t snd_mss; // peer's advertised mss (adjusted to effective MSS by substracting TS option len if enabled)
 
 	// features & options
 	uint32_t ts_recent;   // the last TSval received from peer (to echo back in TSecr)
@@ -116,7 +116,7 @@ void delayed_ack_callback(void *c);
 void zwp_callback(void *c);
 void rto_callback(void *c);
 void time_wait_callback(void *c);
-void fast_retransmit(struct tcp_ipv4_conn *conn);
+void fast_recovery(struct tcp_ipv4_conn *conn);
 
 pkt_result tcp_fast_reply_pure_ack(struct pkt *p, struct tcp_ipv4_conn *conn);
 void destroy_tcp_conn(struct tcp_ipv4_conn *conn);
