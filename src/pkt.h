@@ -1,6 +1,6 @@
 #pragma once
 #include "address_types.h"
-#include "common_layer_types.h"
+#include "common_layer_defs.h"
 #include <pthread.h>
 #include <stddef.h>
 #include <stdint.h>

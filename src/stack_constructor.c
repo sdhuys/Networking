@@ -1,6 +1,6 @@
 #include "stack_constructor.h"
 #include "arp.h"
-#include "common_layer_types.h"
+#include "common_layer_defs.h"
 #include "ethernet.h"
 #include "icmp.h"
 #include "ipv4.h"
