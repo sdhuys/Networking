@@ -82,6 +82,12 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 
 	if (!in_window) {
 		// challenge ack or window probe reply
+		if (s_len > 0 && (flags & TCP_SYN) && !(flags & TCP_ACK) &&
+		    conn->state == SYN_RECEIVED &&
+		    seg_seq == conn->irs) { // duplicate SYN: retrigger SYN-ACK sending
+			start_timer(tmgr, conn->rto_timer, 0);
+			return RCOV_SYN_ACK_TO_SND_BUFFER;
+		}
 		if (s_len > 0) {
 			printf("\nTCP SEG NOT IN WINDOW, Sending challenge ACK/Replying to window "
 			       "probe! \n");
@@ -135,10 +141,6 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 			// else (SYN-ACK) => fallthrough to ACK processing below to finalise
 			// handshake
 
-		} else if (conn->state == SYN_RECEIVED && seg_seq == conn->irs) {
-			// duplicate SYN: retrigger SYN-ACK sending
-			start_timer(tmgr, conn->rto_timer, 0);
-			return RCOV_SYN_ACK_TO_SND_BUFFER;
 		} else if (conn->state >= ESTABLISHED) {
 			// unexpected SYN in established session
 			tcp_fast_reply_rst(conn->tcp_layer, p, seg);
