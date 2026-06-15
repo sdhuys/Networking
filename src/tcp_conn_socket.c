@@ -338,7 +338,6 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		} else if (conn->state == FIN_WAIT_2) {
 			tcp_transition_to_state(conn, TIME_WAIT);
 		}
-		pthread_cond_broadcast(&conn->rcv_buffer.cond);
 	}
 	if (immediate_ack) {
 		tcp_fast_reply_pure_ack(p, conn);
