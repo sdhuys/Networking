@@ -94,7 +94,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 			tcp_fast_reply_pure_ack(p, conn);
 			// our previous ACK lost, restart timer
 			if (conn->state == TIME_WAIT && flags & TCP_FIN)
-				start_timer(tmgr, conn->time_wait_timer, TCP_TIMEWAIT_LEN);
+				start_timer(tmgr, conn->time_wait_timer, TCP_TIMEWAIT_MS);
 			return TCP_SEG_OUT_WNDW_RNG_ACK_SNT;
 		}
 		return TCP_SEG_OUT_OF_WNDW_RANGE;
@@ -156,10 +156,11 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		bool dupe_ack = (seg_ack == snd_una);
 
 		if (valid_new_ack || dupe_ack) {
-
 			struct byte_snd_buffer *sb = &conn->snd_buffer;
 			lock_snd_buff(sb);
+			uint16_t prev_peer_wndw = sb->snd_wndw;
 			sb->snd_wndw = ntohs(seg->header->window);
+			bool window_update = conn->is_wndw_probing && sb->snd_wndw > prev_peer_wndw;
 
 			switch (conn->state) {
 			case SYN_SENT:
@@ -244,8 +245,8 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 						}
 					}
 
-					// pure dupe ack, no data
-				} else if (s_len == 0) {
+				// pure dupe ack, no data, disregard window probe replies
+				} else if (s_len == 0 && !conn->is_wndw_probing) {
 					switch (sb->c_state) {
 					case FAST_RECOVERY:
 						sb->cwnd += conn->snd_mss;
@@ -286,13 +287,15 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 			if (valid_new_ack) {
 				// retransmission timer
 				cancel_timer(tmgr, conn->rto_timer);
-				conn->rto = TCP_INIT_RTO_MS;
+				conn->rto_interval = TCP_INIT_RTO_MS;
 				if (sb->snd_nxt != sb->snd_una) {
-					start_timer(tmgr, conn->rto_timer, conn->rto);
+					start_timer(tmgr, conn->rto_timer, conn->rto_interval);
 				}
 				// notify send buffer we can overwrite acked data
 				pthread_cond_broadcast(&sb->cond);
 				// add socket to tx queue to send out potential new packets
+				notify_socket_readable_snd(smgr, conn, &tcp_conn_ops);
+			} else if (conn->is_wndw_probing && window_update) {
 				notify_socket_readable_snd(smgr, conn, &tcp_conn_ops);
 			}
 
@@ -406,10 +409,10 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 
 	// 0 used as "previous" value to calculate increase for current
 	conn->rcv_buffer.rcv_wnd = 0;
-	conn->rcv_buffer.rcv_wscale = tcp_calc_wndw_scale();
+	conn->rcv_buffer.rcv_wscale = tcp_calc_wndw_scale(TCP_DEFAULT_BUFFER_SIZE);
 
-	conn->snd_zwp = false;
-	conn->rto = TCP_INIT_RTO_MS;
+	conn->is_wndw_probing = false;
+	conn->rto_interval = TCP_INIT_RTO_MS;
 	conn->ack_pending = false;
 	conn->in_order_full_seg_count = 0;
 	conn->tcp_layer = tcp;
@@ -438,6 +441,31 @@ void zwp_callback(void *c)
 		return;
 	}
 	pthread_mutex_unlock(&conn->lock);
+
+	struct byte_snd_buffer *sb = &conn->snd_buffer;
+	lock_snd_buff(sb);
+	if (!conn->is_wndw_probing) {
+		unlock_snd_buff(sb);
+		return;
+	}
+	uint32_t probe_seq = sb->snd_una - 1;
+	unlock_snd_buff(sb);
+
+	struct pkt *p = allocate_pkt();
+	if (p) {
+		write_pkt_tcp_general_metadata(conn, p);
+		p->tcp_flags = TCP_ACK;
+		p->tcp_seq = probe_seq;
+
+		size_t data_offset = PKT_SIZE - 1;
+		p->data[data_offset] = 0; // dummy probe byte
+
+		p->len =
+		    sizeof(struct tcp_header_no_options) + calc_tcp_options_len(p->tcp_options) + 1;
+		p->offset = PKT_SIZE - p->len;
+
+		conn->tcp_layer->send_down(conn->tcp_layer, p);
+	}
 }
 
 void rto_callback(void *c)
@@ -458,9 +486,9 @@ void rto_callback(void *c)
 	sb->c_state = SLOW_START;
 	sb->cwnd = conn->snd_mss;
 	sb->retransmit = true;
-	conn->rto *= 2;
-	if (conn->rto > 60000)
-		conn->rto = 60000;
+	conn->rto_interval *= 2;
+	if (conn->rto_interval > TCP_MAX_RTO_MS)
+		conn->rto_interval = TCP_MAX_RTO_MS;
 	unlock_snd_buff(sb);
 
 	struct socket_manager *mgr =
@@ -608,8 +636,8 @@ void write_pkt_tcp_general_metadata(struct tcp_ipv4_conn *conn, struct pkt *p)
 {
 	tcp_init_packet_addresses(p, conn);
 	tcp_lock_conn(conn);
-	p->tcp_seq = conn->snd_buffer.retransmit ? conn->snd_buffer.snd_una
-						 : conn->snd_buffer.snd_nxt;
+	p->tcp_seq =
+	    conn->snd_buffer.retransmit ? conn->snd_buffer.snd_una : conn->snd_buffer.snd_nxt;
 	p->tcp_ack = conn->rcv_buffer.rcv_nxt;
 	p->rcv_window = conn->rcv_buffer.rcv_wnd;
 	p->route = conn->route;
@@ -669,7 +697,7 @@ void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state st
 		    smgr->tcp_ipv4_conn_time_wait_htable;
 		add_to_tcp_conn_hashtable(time_wait_htable, conn);
 		remove_from_tcp_conn_hashtable(smgr->tcp_ipv4_conn_htable, conn);
-		start_timer(ctx->timer_mgr, conn->time_wait_timer, TCP_TIMEWAIT_LEN);
+		start_timer(ctx->timer_mgr, conn->time_wait_timer, TCP_TIMEWAIT_MS);
 	}
 
 	// no more read nor write, need separate broadcasts for CLOSED incase of RST (not going
@@ -839,7 +867,7 @@ struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq
 	if (conn->rto_timer->node.index == NODE_NOT_IN_HEAP) {
 		struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
 		printf("starting RTO timer \n");
-		start_timer(ctx->timer_mgr, conn->rto_timer, conn->rto);
+		start_timer(ctx->timer_mgr, conn->rto_timer, conn->rto_interval);
 	}
 	///////////////////////////////////////////////////////
 
@@ -864,27 +892,24 @@ struct pkt *tcp_try_get_pkt(void *s)
 
 	lock_snd_buff(buff);
 	uint32_t snd_seq = !buff->retransmit ? buff->snd_nxt : buff->snd_una;
-	uint32_t window = conn->state == SYN_SENT ? 1 : usable_window(conn);
-	printf("WINDOW = %d \n", window);
-	if (window == 0) {
-		unlock_snd_buff(buff);
-		return NULL;
-	}
 
 	uint32_t tail_seq = buff->snd_una + (uint32_t)buff->used_bytes + buff->ctrl_count;
 	uint32_t bytes_ready = tail_seq - snd_seq;
-
-	// printf("snd_una: %u, used_bytes: %d, ctrl_count: %u \n",
-	//        buff->snd_una,
-	//       (uint32_t)buff->used_bytes,
-	//        buff->ctrl_count);
-	// printf("BYTES READY = %u \n", bytes_ready);
-
+	printf("BYTES READY: %d \n", bytes_ready);
 	if (bytes_ready == 0) {
 		unlock_snd_buff(buff);
 		return NULL;
 	}
-	printf("BYTES READY: %d \n", bytes_ready);
+	uint32_t peer_wndw;
+	uint32_t usable_wndw = conn->state == SYN_SENT ? 1 : usable_window(conn, &peer_wndw);
+	printf("WINDOW = %d \n", usable_wndw);
+	if (usable_wndw == 0) {
+		if (peer_wndw == 0)
+			start_wndw_probing_timer(conn);
+		unlock_snd_buff(buff);
+		return NULL;
+	}
+
 	// in general we want to send MSS
 	uint32_t min_bytes_snd = conn->snd_mss;
 
@@ -892,9 +917,11 @@ struct pkt *tcp_try_get_pkt(void *s)
 	// bytes it takes to reach the control seq
 	if (buff->ctrl_count > 0 && tcp_seq_after_eq(buff->ctrl[0].seq, snd_seq)) {
 		uint32_t len_to_reach_ctrl = (buff->ctrl[0].seq - snd_seq) + 1;
-		if (window >= len_to_reach_ctrl && conn->snd_mss > len_to_reach_ctrl) {
+		if (usable_wndw >= len_to_reach_ctrl && conn->snd_mss > len_to_reach_ctrl) {
 			p = create_tcp_packet(conn, snd_seq, len_to_reach_ctrl);
 			unlock_snd_buff(buff);
+			if (conn->is_wndw_probing)
+				stop_wndw_probing(conn);
 			return p;
 		}
 	}
@@ -923,8 +950,14 @@ struct pkt *tcp_try_get_pkt(void *s)
 	}
 	if (bytes_ready < min_bytes_snd)
 		min_bytes_snd = bytes_ready;
-	printf("WINDOW: %u \n", window);
-	if (window < min_bytes_snd || min_bytes_snd < 1) {
+
+	if (usable_wndw < min_bytes_snd || min_bytes_snd < 1) {
+		// if peer's window is smaller than amount of bytes we want to send
+		// start probing ( => DON'T PROBE IF WE DON'T SEND BECAUSE PIPE TOO FULL)
+		if (peer_wndw < min_bytes_snd) {
+			printf("START PROBING DUE TO WINDOW = %d \n\n", peer_wndw);
+			start_wndw_probing_timer(conn);
+		}
 		unlock_snd_buff(buff);
 		return NULL;
 	}
@@ -932,7 +965,33 @@ struct pkt *tcp_try_get_pkt(void *s)
 	printf("CREATING PKT SEQ: %u, LEN: %d \n", snd_seq, min_bytes_snd);
 	p = create_tcp_packet(conn, snd_seq, min_bytes_snd);
 	unlock_snd_buff(buff);
+
+	if (conn->is_wndw_probing)
+		stop_wndw_probing(conn);
 	return p;
+}
+
+void start_wndw_probing_timer(struct tcp_ipv4_conn *conn)
+{
+	struct timer_manager *timer_mgr =
+	    (struct timer_manager *)((struct tcp_context *)conn->tcp_layer->context)->timer_mgr;
+	conn->zwp_interval = conn->is_wndw_probing ? conn->zwp_interval * 2 : conn->rto_interval;
+	if (conn->zwp_interval > TCP_MAX_ZWP_MS)
+		conn->zwp_interval = TCP_MAX_ZWP_MS;
+	printf("ZERO WINDOW TIMER STARTING AT %d MS", conn->zwp_interval);
+	if (!conn->is_wndw_probing)
+		conn->is_wndw_probing = true;
+	cancel_timer(timer_mgr, conn->rto_timer);
+	start_timer(timer_mgr, conn->zwp_timer, conn->zwp_interval);
+}
+
+void stop_wndw_probing(struct tcp_ipv4_conn *conn)
+{
+	printf("STOP WINDOW PROBING!");
+	conn->is_wndw_probing = false;
+	struct timer_manager *timer_mgr =
+	    (struct timer_manager *)((struct tcp_context *)conn->tcp_layer->context)->timer_mgr;
+	cancel_timer(timer_mgr, conn->zwp_timer);
 }
 
 pkt_result tcp_send_packet(struct stack *stack, struct pkt *p)
@@ -982,7 +1041,6 @@ ssize_t tcp_read_from_rcv_buff(void *sock, size_t len, unsigned char *buff)
 {
 	if (!sock || len < 1 || !buff)
 		return -1;
-	printf("START READING FROM RCV_BUFF!!! \n\n");
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)sock;
 	struct byte_reassembly_rcv_buffer *b = &conn->rcv_buffer;
 

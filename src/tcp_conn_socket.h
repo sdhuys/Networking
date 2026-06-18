@@ -18,7 +18,9 @@ extern const struct socket_ops tcp_conn_ops;
 #define TCP_MAX_WND_SCALE 14		// per RFC 7323
 #define TCP_DEFAULT_BUFFER_SIZE 0x80000 // 512KB
 #define TCP_MAX_BUFFER_SIZE 0x80000	// useful when we implement dynamic buffer growth
-#define TCP_TIMEWAIT_LEN 60000		// 1 min time_wait
+#define TCP_TIMEWAIT_MS 60000		// 1 min time_wait
+#define TCP_MAX_RTO_MS 60000
+#define TCP_MAX_ZWP_MS 60000
 
 typedef enum {
 	CLOSED,
@@ -47,7 +49,7 @@ struct tcp_ipv4_conn {
 	struct byte_reassembly_rcv_buffer rcv_buffer;
 	struct byte_snd_buffer snd_buffer;
 	struct timer *rto_timer;
-	uint32_t rto; // Current Retransmission Timeout value
+	uint32_t rto_interval; // Current Retransmission Timeout value
 
 	ipv4_address_t local_addr;
 	ipv4_address_t extern_addr;
@@ -94,8 +96,8 @@ struct tcp_ipv4_conn {
 
 	// Zero window probe (instead of zero we use < MSS window)
 	struct timer *zwp_timer; // start timer as soon as peer advertises window < mss
-	bool snd_zwp;
-
+	bool is_wndw_probing;
+	uint32_t zwp_interval;
 	struct timer *time_wait_timer;
 
 	// doesn't include TIME_WAIT timer!!
@@ -117,6 +119,8 @@ void zwp_callback(void *c);
 void rto_callback(void *c);
 void time_wait_callback(void *c);
 void fast_recovery(struct tcp_ipv4_conn *conn);
+void stop_wndw_probing(struct tcp_ipv4_conn *conn);
+void start_wndw_probing_timer(struct tcp_ipv4_conn *conn);
 
 pkt_result tcp_fast_reply_pure_ack(struct pkt *p, struct tcp_ipv4_conn *conn);
 void destroy_tcp_conn(struct tcp_ipv4_conn *conn);

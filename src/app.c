@@ -58,7 +58,7 @@ void server_app(struct stack *stack)
 	int l = open_listener(stack, SOCK_TCP, 9000);
 	int conn = accept_connection(stack, l);
 	unsigned char buff[0x80000];
-	FILE *f = fopen("testing_files/snd.JPG", "rb");
+	FILE *f = fopen("testing_files/snd2.JPG", "rb");
 	ssize_t r;
 	while ((r = fread(buff, 1, 0x80000, f)) > 0) {
 		size_t count = 0;
