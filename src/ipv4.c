@@ -14,6 +14,9 @@
 
 pkt_result receive_ipv4_up(struct nw_layer *self, struct pkt *packet)
 {
+	if (packet->len < sizeof(struct ipv4_header))
+		return IP_HEADER_MALFORMED;
+
 	struct ipv4_header *header = (struct ipv4_header *)(packet->data + packet->offset);
 
 	if (header->version_ihl >> 4 != IPV4_V)
