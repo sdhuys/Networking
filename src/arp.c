@@ -99,6 +99,10 @@ pkt_result add_pkt_to_q(struct arp_table_node *node, struct pkt *packet)
 {
 	// freed after flushing
 	struct queue_entry *new = malloc(sizeof(struct queue_entry));
+	if (!new)
+		return ARP_TABLE_NODE_PKT_Q_FULL;
+
+	retain_pkt(packet);
 	new->next = NULL;
 	new->packet = packet;
 

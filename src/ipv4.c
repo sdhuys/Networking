@@ -102,8 +102,11 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 
 	if (dest_ip_node == NULL) {
 		dest_ip_node = insert_incomplete_for_ip(arp_tbl, next_hop);
+		if (!dest_ip_node)
+			return ARP_TABLE_FULL; // currently actually means malloc failed, later add ARP table size cap
+
 		struct pkt *arp_request = create_arp_request_for(arp_layer, next_hop);
-		// if null returned, arp entry will stay incomplete until retry
+		// if no arp request pkt returned, arp entry will stay incomplete until retry
 		if (arp_request) {
 			send_arp_down(arp_layer, arp_request);
 			release_pkt(arp_request);
@@ -111,7 +114,6 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 	}
 	if (dest_ip_node->status == ARP_INCOMPLETE) {
 		printf("IPV4 ARP Q RETAINING \n");
-		retain_pkt(packet);
 		return add_pkt_to_q(dest_ip_node, packet);
 	}
 	memcpy(packet->dest_mac, dest_ip_node->mac_addr, MAC_ADDR_LEN);

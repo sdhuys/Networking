@@ -1,6 +1,7 @@
 #include "buffer_pool.h"
 #include "pkt.h"
 #include "tcp_options.h"
+#include <assert.h>
 #include <stdalign.h>
 #include <stdio.h>
 
@@ -51,6 +52,7 @@ struct pkt *allocate_pkt()
 
 void release_pkt(struct pkt *pkt)
 {
+	assert(pkt->ref_count > 0);
 	int should_free = 0;
 	printf("Releasing PACKET %d id, %d ref count \n", pkt->pool_index, pkt->ref_count);
 

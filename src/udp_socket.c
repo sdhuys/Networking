@@ -94,8 +94,11 @@ pkt_result write_up_to_rcv_buffer(struct udp_ipv4_socket *socket, struct pkt *pa
 	}
 	pthread_mutex_unlock(&(socket->lock));
 
-	if (!write_to_pkt_buffer(socket->rcv_buffer, packet))
+	retain_pkt(packet);
+	if (!write_to_pkt_buffer(socket->rcv_buffer, packet)) {
+		release_pkt(packet);
 		return RING_BUFFER_FULL;
+	}
 
 	broadcast_udp_rcv_readable(socket);
 	return UDP_WRITTEN_TO_RCV_BUFF;
@@ -187,10 +190,10 @@ int udp_read_rcv_buffer_from(
 	struct pkt *pkt = read_pkt_buffer_blocking(rcv_buffer);
 	size_t copy_len = pkt->len > len ? len : pkt->len;
 	memcpy(buff, (pkt->data + pkt->offset), copy_len);
-	printf("APP SOCKET RELEASING \n");
-	release_pkt(pkt);
 	memcpy(addr_out, pkt->src_ip, IPV4_ADDR_LEN);
 	memcpy(port_out, &pkt->src_port, sizeof(uint16_t));
+	printf("APP SOCKET RELEASING \n");
+	release_pkt(pkt);
 	return copy_len;
 }
 
