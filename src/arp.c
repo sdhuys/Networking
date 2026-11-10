@@ -71,6 +71,7 @@ void flush_q(struct nw_layer *self, struct arp_table_node *arp_entry)
 		memcpy(current->packet->dest_mac, arp_entry->mac_addr, MAC_ADDR_LEN);
 		// current->packet->ethertype = htons(IPV4);
 		self->downs[0]->send_down(self->downs[0], current->packet);
+		release_pkt(current->packet);
 		free(current);
 		current = next;
 	}

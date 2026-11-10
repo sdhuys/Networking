@@ -245,7 +245,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 						}
 					}
 
-				// pure dupe ack, no data, disregard window probe replies
+					// pure dupe ack, no data, disregard window probe replies
 				} else if (s_len == 0 && !conn->is_wndw_probing) {
 					switch (sb->c_state) {
 					case FAST_RECOVERY:
@@ -452,20 +452,21 @@ void zwp_callback(void *c)
 	unlock_snd_buff(sb);
 
 	struct pkt *p = allocate_pkt();
-	if (p) {
-		write_pkt_tcp_general_metadata(conn, p);
-		p->tcp_flags = TCP_ACK;
-		p->tcp_seq = probe_seq;
+	if (!p)
+		return;
 
-		size_t data_offset = PKT_SIZE - 1;
-		p->data[data_offset] = 0; // dummy probe byte
+	write_pkt_tcp_general_metadata(conn, p);
+	p->tcp_flags = TCP_ACK;
+	p->tcp_seq = probe_seq;
 
-		p->len =
-		    sizeof(struct tcp_header_no_options) + calc_tcp_options_len(p->tcp_options) + 1;
-		p->offset = PKT_SIZE - p->len;
+	size_t data_offset = PKT_SIZE - 1;
+	p->data[data_offset] = 0; // dummy probe byte
 
-		conn->tcp_layer->send_down(conn->tcp_layer, p);
-	}
+	p->len = sizeof(struct tcp_header_no_options) + calc_tcp_options_len(p->tcp_options) + 1;
+	p->offset = PKT_SIZE - p->len;
+
+	conn->tcp_layer->send_down(conn->tcp_layer, p);
+	release_pkt(p);
 }
 
 void rto_callback(void *c)
@@ -587,6 +588,7 @@ void delayed_ack_callback(void *c)
 	if (!p)
 		return;
 	tcp_fast_reply_pure_ack(p, conn);
+	release_pkt(p);
 }
 
 // fast reply bypassing send buffer
@@ -1055,8 +1057,10 @@ ssize_t tcp_read_from_rcv_buff(void *sock, size_t len, unsigned char *buff)
 	if (prev_low_wndw && !curr_low_wnwd) {
 		printf("SEND WINDOW UPDATE!! NEW WINDOW: %u \n", b->rcv_wnd);
 		struct pkt *p = allocate_pkt();
-		if (p)
+		if (p) {
 			tcp_fast_reply_pure_ack(p, conn); // SEND WINDOW UPDATE!
+			release_pkt(p);
+		}
 	}
 	return r;
 }

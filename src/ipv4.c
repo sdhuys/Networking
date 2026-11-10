@@ -103,7 +103,11 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 	if (dest_ip_node == NULL) {
 		dest_ip_node = insert_incomplete_for_ip(arp_tbl, next_hop);
 		struct pkt *arp_request = create_arp_request_for(arp_layer, next_hop);
-		send_arp_down(arp_layer, arp_request);
+		// if null returned, arp entry will stay incomplete until retry
+		if (arp_request) {
+			send_arp_down(arp_layer, arp_request);
+			release_pkt(arp_request);
+		}
 	}
 	if (dest_ip_node->status == ARP_INCOMPLETE) {
 		printf("IPV4 ARP Q RETAINING \n");

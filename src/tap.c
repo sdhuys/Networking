@@ -10,37 +10,34 @@
 
 void start_listening(struct nw_layer *interface)
 {
-    struct interface_context *interface_context =
-        ((struct interface_context *)interface->context);
-    int fd = interface_context->interfaces[0].fd;
+	struct interface_context *interface_context =
+	    ((struct interface_context *)interface->context);
+	int fd = interface_context->interfaces[0].fd;
 
-    for (;;) {
-        struct pkt *packet = allocate_pkt();
-        if (packet == NULL)
-            break;
-        ssize_t nread = read(fd, packet->data, MAX_ETH_FRAME_SIZE);
-        if (nread < 0) {
-            printf("NO READ RELEASING \n");
-            release_pkt(packet);
-            continue;
-        }
-        packet->len = (size_t)nread;
-        packet->offset = 0;
-        FILE *log = fopen("io.txt", "a");
-        if (log) {
-            for (size_t i = 0; i < packet->len; i++)
-                fprintf(log, "%02X", packet->data[i + packet->offset]);
-            fprintf(log, "\n");
-            fclose(log);
-        }
-        pkt_result result = interface->rcv_up(interface, packet);
-		// multiples of 10 are released by write_to_interface!
-        if (result % 10 != 0) {
-            printf("LISTEN LOOP RELEASING \n");
-            release_pkt(packet);
-        }
-        printf("%d \n\n", result);
-    }
+	for (;;) {
+		struct pkt *packet = allocate_pkt();
+		if (packet == NULL)
+			break;
+		ssize_t nread = read(fd, packet->data, MAX_ETH_FRAME_SIZE);
+		if (nread < 0) {
+			printf("NO READ RELEASING \n");
+			release_pkt(packet);
+			continue;
+		}
+		packet->len = (size_t)nread;
+		packet->offset = 0;
+		FILE *log = fopen("io.txt", "a");
+		if (log) {
+			for (size_t i = 0; i < packet->len; i++)
+				fprintf(log, "%02X", packet->data[i + packet->offset]);
+			fprintf(log, "\n");
+			fclose(log);
+		}
+		pkt_result result = interface->rcv_up(interface, packet);
+		printf("LISTEN LOOP RELEASING \n");
+		release_pkt(packet);
+		printf("%d \n\n", result);
+	}
 }
 
 // No demuxing at this layer, no need for "pass_up_to_layer" usage
@@ -79,8 +76,7 @@ pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
 			return WRITE_ERROR;
 		}
 	} else {
-		loopback_result = send_up_to_ethernet(interface, packet);
-		release = loopback_result % 10 != 0;
+		loopback_result = interface->rcv_up(interface, packet);
 	}
 
 	if (release) {
@@ -89,7 +85,7 @@ pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
 	}
 
 	printf("SENT \n");
-	
+
 	if (loopback)
 		printf("\n\n      loopback result: %i \n\n", loopback_result);
 
