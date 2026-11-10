@@ -181,6 +181,7 @@ void print_arp_header(struct arp_data *arp_header)
 	       arp_header->target_ip[3]);
 }
 
+// creates a new pkt ref, caller must release
 struct pkt *create_arp_request_for(struct nw_layer *self, ipv4_address_t target_ip)
 {
 	printf("CREATE ARP REQUEST ALLOCATING \n");

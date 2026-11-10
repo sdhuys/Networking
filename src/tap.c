@@ -65,7 +65,6 @@ pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
 	// mac address all zeros is sentinel value for loopback!
 	bool loopback = ((packet->dest_mac[0] | packet->dest_mac[1] | packet->dest_mac[2] |
 			  packet->dest_mac[3] | packet->dest_mac[4] | packet->dest_mac[5]) == 0);
-	bool release = true;
 	pkt_result loopback_result;
 
 	if (!loopback) {
@@ -77,11 +76,6 @@ pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
 		}
 	} else {
 		loopback_result = interface->rcv_up(interface, packet);
-	}
-
-	if (release) {
-		printf("TAP SENT RELEASING \n");
-		release_pkt(packet);
 	}
 
 	printf("SENT \n");
