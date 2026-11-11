@@ -989,7 +989,7 @@ void start_wndw_probing_timer(struct tcp_ipv4_conn *conn)
 	if (!conn->is_wndw_probing)
 		conn->is_wndw_probing = true;
 	cancel_timer(timer_mgr, conn->rto_timer);
-	start_timer(timer_mgr, conn->zwp_timer, conn->zwp_interval);
+	tcp_arm_data_timer(conn, conn->zwp_timer, conn->zwp_interval);
 }
 
 void stop_wndw_probing(struct tcp_ipv4_conn *conn)
