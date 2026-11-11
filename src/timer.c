@@ -91,7 +91,7 @@ static bool arm_timer(struct timer_manager *mgr,
 		if (!heap_push(h, &timer->node, expiry)) {
 			pthread_mutex_unlock(&mgr->lock);
 			return false;
-		} else {
+		} else if (timer->retain) {
 			timer->retain(timer->args);
 		}
 	} else
@@ -183,7 +183,7 @@ void cancel_timer(struct timer_manager *mgr, struct timer *timer)
 		return;
 	pthread_mutex_lock(&mgr->lock);
 	struct min_heap *h = mgr->timer_heap;
-	if (heap_remove(h, &timer->node))
+	if (heap_remove(h, &timer->node) && timer->release)
 		timer->release(timer->args);
 
 	pthread_mutex_unlock(&mgr->lock);
