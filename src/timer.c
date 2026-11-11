@@ -182,9 +182,14 @@ void cancel_timer(struct timer_manager *mgr, struct timer *timer)
 	if (!timer)
 		return;
 	pthread_mutex_lock(&mgr->lock);
+	bool should_release = false;
+
 	struct min_heap *h = mgr->timer_heap;
 	if (heap_remove(h, &timer->node) && timer->release)
-		timer->release(timer->args);
+		should_release = true;
 
 	pthread_mutex_unlock(&mgr->lock);
+
+	if (should_release)
+		timer->release(timer->args);
 }
