@@ -46,7 +46,9 @@ static bool tcp_arm_data_timer(struct tcp_ipv4_conn *conn, struct timer *t, uint
 }
 
 // never use for TIME_WAIT TIMER
-static bool tcp_arm_data_timer_if_idle(struct tcp_ipv4_conn *conn, struct timer *t, uint64_t delay_ms)
+static bool tcp_arm_data_timer_if_idle(struct tcp_ipv4_conn *conn,
+				       struct timer *t,
+				       uint64_t delay_ms)
 {
 	if (atomic_load(&conn->data_timers_cancelled))
 		return false;
@@ -308,7 +310,8 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 				cancel_timer(tmgr, conn->rto_timer);
 				conn->rto_interval = TCP_INIT_RTO_MS;
 				if (sb->snd_nxt != sb->snd_una) {
-					tcp_arm_data_timer(conn, conn->rto_timer, conn->rto_interval);
+					tcp_arm_data_timer(
+					    conn, conn->rto_timer, conn->rto_interval);
 				}
 				// notify send buffer we can overwrite acked data
 				pthread_cond_broadcast(&sb->cond);
@@ -389,24 +392,20 @@ uint32_t generate_random_iss()
 // create connection for id, init general values
 struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct nw_layer *tcp)
 {
-	struct tcp_ipv4_conn *conn = malloc(sizeof(*conn));
+	// every field zeroed, nothing left uninitialised by accident
+	struct tcp_ipv4_conn *conn = calloc(1, sizeof(*conn));
 	if (!conn)
 		return NULL;
-	if (pthread_mutex_init(&conn->lock, NULL) < 0) {
-		free(conn);
-		return NULL;
-	}
-	if (pthread_cond_init(&conn->estblshd_cond, NULL) < 0) {
-		pthread_mutex_destroy(&conn->lock);
-		free(conn);
-		return NULL;
-	}
 
-	if (init_byte_snd_buffer(&conn->snd_buffer, TCP_DEFAULT_BUFFER_SIZE) < 0 ||
-	    init_byte_rcv_buffer(&conn->rcv_buffer, TCP_DEFAULT_BUFFER_SIZE) < 0) {
-		destroy_tcp_conn(conn);
-		return NULL;
-	}
+	if (pthread_mutex_init(&conn->lock, NULL) != 0)
+		goto err_free_conn;
+	if (pthread_cond_init(&conn->estblshd_cond, NULL) != 0)
+		goto err_destroy_lock;
+
+	if (init_byte_snd_buffer(&conn->snd_buffer, TCP_DEFAULT_BUFFER_SIZE) < 0)
+		goto err_destroy_cond;
+	if (init_byte_rcv_buffer(&conn->rcv_buffer, TCP_DEFAULT_BUFFER_SIZE) < 0)
+		goto err_destroy_snd_buffer;
 
 	conn->del_ack_timer =
 	    create_timer_owned(delayed_ack_callback, conn, tcp_retain_conn, tcp_release_conn);
@@ -414,14 +413,11 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 	conn->zwp_timer = create_timer_owned(zwp_callback, conn, tcp_retain_conn, tcp_release_conn);
 	conn->time_wait_timer =
 	    create_timer_owned(time_wait_callback, conn, tcp_retain_conn, tcp_release_conn);
+	if (!conn->del_ack_timer || !conn->rto_timer || !conn->zwp_timer || !conn->time_wait_timer)
+		goto err_free_timers;
 
-	if (!conn->del_ack_timer || !conn->rto_timer || !conn->zwp_timer ||
-	    !conn->time_wait_timer) {
-		destroy_tcp_conn(conn);
-		return NULL;
-	}
-
-	conn->ref_count = 0;
+	atomic_init(&conn->ref_count, 0);
+	atomic_init(&conn->data_timers_cancelled, false);
 
 	conn->local_port = id->loc_port;
 	conn->extern_port = id->extern_port;
@@ -440,7 +436,6 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 	conn->lstnr = NULL;
 	conn->snd_buffer.snd_wscale = 0;
 	conn->queued_for_snd = false;
-	conn->data_timers_cancelled = false;
 	if (get_route(
 		((struct tcp_context *)tcp->context)->routing_tbl, id->extern_addr, &conn->route)) {
 		conn->rcv_mss = conn->route->mtu - sizeof(struct ipv4_header) -
@@ -450,6 +445,23 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 	}
 
 	return conn;
+
+	// unwind in reverse order of construction; never armed, so plain free is safe
+err_free_timers:
+	free(conn->del_ack_timer); // free(NULL) is a no-op
+	free(conn->rto_timer);
+	free(conn->zwp_timer);
+	free(conn->time_wait_timer);
+	destroy_byte_rcv_buffer(&conn->rcv_buffer);
+err_destroy_snd_buffer:
+	destroy_byte_snd_buffer(&conn->snd_buffer);
+err_destroy_cond:
+	pthread_cond_destroy(&conn->estblshd_cond);
+err_destroy_lock:
+	pthread_mutex_destroy(&conn->lock);
+err_free_conn:
+	free(conn);
+	return NULL;
 }
 
 void zwp_callback(void *c)
@@ -798,18 +810,18 @@ void tcp_set_snd_queued(void *s, bool v)
 	((struct tcp_ipv4_conn *)s)->queued_for_snd = v;
 }
 
+// should only be called for connection that has transitioned to CLOSED state
 void destroy_tcp_conn(struct tcp_ipv4_conn *conn)
 {
-	assert(conn->del_ack_timer->node.index == UINT32_MAX &&
-	       conn->rto_timer->node.index == UINT32_MAX &&
-	       conn->zwp_timer->node.index == UINT32_MAX &&
-	       conn->time_wait_timer->node.index == UINT32_MAX && conn->data_timers_cancelled);
+	assert(conn->del_ack_timer->node.index == NODE_NOT_IN_HEAP &&
+	       conn->rto_timer->node.index == NODE_NOT_IN_HEAP &&
+	       conn->zwp_timer->node.index == NODE_NOT_IN_HEAP &&
+	       conn->time_wait_timer->node.index == NODE_NOT_IN_HEAP &&
+	       conn->data_timers_cancelled);
 
 	printf("\n\nDESTROYING CONNECTION!! \n\n");
 	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
-	struct timer_manager *tmgr = ctx->timer_mgr;
 
-	pthread_mutex_lock(&conn->lock);
 	destroy_byte_rcv_buffer(&conn->rcv_buffer);
 	destroy_byte_snd_buffer(&conn->snd_buffer);
 	free(conn->del_ack_timer);
@@ -876,7 +888,6 @@ struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq
 		sb->snd_nxt_i = (sb->snd_nxt_i + payload_len) & (sb->capacity - 1);
 	}
 
-	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
 	tcp_arm_data_timer_if_idle(conn, conn->rto_timer, conn->rto_interval);
 
 	///////////////////////////////////////////////////////
