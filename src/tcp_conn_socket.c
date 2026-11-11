@@ -715,9 +715,15 @@ void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state st
 	// no more read nor write, need separate broadcasts for CLOSED incase of RST (not going
 	// through standard closing states)
 	if (state == CLOSED) {
+		struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
+		struct socket_manager *smgr = ctx->socket_manager;
+		struct tcp_ipv4_conn_htable *time_wait_htable =
+		    smgr->tcp_ipv4_conn_time_wait_htable;
+
 		pthread_cond_broadcast(&conn->snd_buffer.cond);
 		pthread_cond_broadcast(&conn->rcv_buffer.cond);
 		pthread_cond_broadcast(&conn->estblshd_cond);
+		remove_from_tcp_conn_hashtable(time_wait_htable, conn);
 	}
 	// no more read, can still write
 	if (state == CLOSE_WAIT || state == TIME_WAIT || state == CLOSING)
@@ -820,7 +826,7 @@ void destroy_tcp_conn(struct tcp_ipv4_conn *conn)
 	       conn->data_timers_cancelled);
 
 	printf("\n\nDESTROYING CONNECTION!! \n\n");
-	
+
 	destroy_byte_rcv_buffer(&conn->rcv_buffer);
 	destroy_byte_snd_buffer(&conn->snd_buffer);
 	free(conn->del_ack_timer);
