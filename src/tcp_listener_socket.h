@@ -1,6 +1,7 @@
 #pragma once
 #include "address_types.h"
 #include "pkt_result.h"
+#include <stdatomic.h>
 #include <pthread.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -24,7 +25,7 @@ struct tcp_ipv4_listener {
 	tcp_listener_state state;
 
 	size_t half_open_limit;
-	size_t half_open_count;
+	atomic_uint half_open_count;
 	struct queue *ready_q;
 
 	uint32_t ref_count;

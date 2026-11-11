@@ -50,7 +50,7 @@ pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lstnr,
 	struct tcp_ipv4_conn_htable *htable =
 	    ((struct tcp_context *)lstnr->tcp_layer->context)->socket_manager->tcp_ipv4_conn_htable;
 	add_to_tcp_conn_hashtable(htable, conn);
-	lstnr->half_open_count++;
+	atomic_fetch_add(&lstnr->half_open_count, 1);
 	tcp_transition_to_state(conn, SYN_RECEIVED);
 	tcp_syn_to_snd_buff(conn);
 	return CONN_CREATED_SYN_ACK_TO_SND_BUFFER;

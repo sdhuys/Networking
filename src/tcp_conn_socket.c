@@ -391,8 +391,10 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 
 	conn->del_ack_timer =
 	    create_timer_owned(delayed_ack_callback, conn, tcp_retain_conn, tcp_release_conn);
-	conn->rto_timer = create_timer_owned(rto_callback, conn, tcp_retain_conn, tcp_release_conn);
-	conn->zwp_timer = create_timer_owned(zwp_callback, conn, tcp_retain_conn, tcp_release_conn);
+	conn->rto_timer =
+	    create_timer_owned(rto_callback, conn, tcp_retain_conn, tcp_release_conn);
+	conn->zwp_timer =
+	    create_timer_owned(zwp_callback, conn, tcp_retain_conn, tcp_release_conn);
 	conn->time_wait_timer =
 	    create_timer_owned(time_wait_callback, conn, tcp_retain_conn, tcp_release_conn);
 
@@ -670,39 +672,24 @@ void write_pkt_tcp_general_metadata(struct tcp_ipv4_conn *conn, struct pkt *p)
 void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state state)
 {
 	bool can_accept = false;
+	bool cancel_data_timers = false;
+
 	pthread_mutex_lock(&conn->lock);
 	conn->state = state;
-	pthread_mutex_unlock(&conn->lock);
-
-	struct tcp_ipv4_listener *l = conn->lstnr;
-	if (l && state == ESTABLISHED) {
-		l->half_open_count--;
-		push_q(l->ready_q, &conn->q_node, false);
-	} else if (state == ESTABLISHED)
-		can_accept = true;
 
 	// don't cancel before our FIN got ACKd, might need to retransmit!
 	if ((state == CLOSED || state == FIN_WAIT_2 || state == TIME_WAIT) &&
 	    !conn->data_timers_cancelled) {
-
-		struct timer_manager *tmgr =
-		    ((struct tcp_context *)conn->tcp_layer->context)->timer_mgr;
-
-		cancel_timer(tmgr, conn->rto_timer);
-		cancel_timer(tmgr, conn->del_ack_timer);
-		cancel_timer(tmgr, conn->zwp_timer);
-		conn->data_timers_cancelled = true;
+		conn->data_timers_cancelled = true; // set BEFORE cancelling
+		cancel_data_timers = true;
 	}
 
-	if (state == TIME_WAIT) {
-		struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
-		struct socket_manager *smgr = ctx->socket_manager;
-		struct tcp_ipv4_conn_htable *time_wait_htable =
-		    smgr->tcp_ipv4_conn_time_wait_htable;
-		add_to_tcp_conn_hashtable(time_wait_htable, conn);
-		remove_from_tcp_conn_hashtable(smgr->tcp_ipv4_conn_htable, conn);
-		start_timer(ctx->timer_mgr, conn->time_wait_timer, TCP_TIMEWAIT_MS);
-	}
+	struct tcp_ipv4_listener *l = conn->lstnr;
+	if (l && state == ESTABLISHED) {
+		atomic_fetch_sub(&l->half_open_count, 1);
+		push_q(l->ready_q, &conn->q_node, true);
+	} else if (state == ESTABLISHED)
+		can_accept = true;
 
 	// no more read nor write, need separate broadcasts for CLOSED incase of RST (not going
 	// through standard closing states)
@@ -720,6 +707,27 @@ void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state st
 
 	if (can_accept)
 		pthread_cond_broadcast(&conn->estblshd_cond);
+
+	pthread_mutex_unlock(&conn->lock);
+
+	if (cancel_data_timers) {
+		struct timer_manager *tmgr =
+		    ((struct tcp_context *)conn->tcp_layer->context)->timer_mgr;
+
+		cancel_timer(tmgr, conn->rto_timer);
+		cancel_timer(tmgr, conn->del_ack_timer);
+		cancel_timer(tmgr, conn->zwp_timer);
+	}
+
+	if (state == TIME_WAIT) {
+		struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
+		struct socket_manager *smgr = ctx->socket_manager;
+		struct tcp_ipv4_conn_htable *time_wait_htable =
+		    smgr->tcp_ipv4_conn_time_wait_htable;
+		add_to_tcp_conn_hashtable(time_wait_htable, conn);
+		remove_from_tcp_conn_hashtable(smgr->tcp_ipv4_conn_htable, conn);
+		start_timer(ctx->timer_mgr, conn->time_wait_timer, TCP_TIMEWAIT_MS);
+	}
 }
 
 void tcp_retain_conn(void *s)
