@@ -121,8 +121,8 @@ bool start_timer_if_idle(struct timer_manager *mgr, struct timer *t, uint64_t de
 
 static struct timer *create_timer_internal(void (*callback)(void *),
 					   void *args,
-					   void *(retain)(void *),
-					   void *(release)(void *))
+					   void (*retain)(void *),
+					   void (*release)(void *))
 {
 	struct timer *timer = malloc(sizeof(struct timer));
 	if (timer == NULL)
