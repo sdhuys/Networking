@@ -76,15 +76,16 @@ static bool arm_timer(struct timer_manager *mgr,
 	}
 
 	struct min_heap *h = mgr->timer_heap;
-	uint64_t curr_timeout = get_timeout(mgr);
-	printf("\nCURRENT timeout: %lu \n", curr_timeout);
-	printf("Adding new timer: timeout: %lu \n", delay_ms);
 	if (h == NULL) {
 		pthread_mutex_unlock(&mgr->lock);
 		return false;
 	}
 
 	uint64_t expiry = now_ms() + delay_ms;
+
+	struct heap_node *min = heap_peek(h);
+	bool wake = (min == NULL) || (expiry < min->priority);
+
 	if (timer->node.index == NODE_NOT_IN_HEAP) {
 		if (!heap_push(h, &timer->node, expiry)) {
 			pthread_mutex_unlock(&mgr->lock);
@@ -94,7 +95,7 @@ static bool arm_timer(struct timer_manager *mgr,
 		heap_update(h, &timer->node, expiry);
 
 	// newly added timer is first of the heap to time out => trigger polling return to update
-	if (curr_timeout > expiry) {
+	if (wake) {
 		uint64_t x = 1;
 		printf("writing to evend fd \n");
 		write(mgr->event_fd, &x, sizeof(x));
@@ -127,7 +128,7 @@ struct timer *create_timer(void (*callback)(void *), void *args)
 }
 
 // caller must hold lock
-int get_timeout(struct timer_manager *mgr)
+static int get_timeout_locked(struct timer_manager *mgr)
 {
 	struct min_heap *h = mgr->timer_heap;
 	struct heap_node *n = heap_peek(h);
@@ -147,10 +148,10 @@ int get_timeout(struct timer_manager *mgr)
 	return (int)delta;
 }
 
-int get_timeout_unlocked(struct timer_manager *mgr)
+int get_timeout(struct timer_manager *mgr)
 {
 	pthread_mutex_lock(&mgr->lock);
-	int r = get_timeout(mgr);
+	int r = get_timeout_locked(mgr);
 	pthread_mutex_unlock(&mgr->lock);
 	return r;
 }

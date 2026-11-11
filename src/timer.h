@@ -27,7 +27,6 @@ bool start_timer(struct timer_manager *mgr, struct timer *timer, uint64_t delay_
 bool start_timer_if_idle(struct timer_manager *mgr, struct timer *timer, uint64_t delay_ms);
 void cancel_timer(struct timer_manager *mgr, struct timer *timer);
 int get_timeout(struct timer_manager *mgr);
-int get_timeout_unlocked(struct timer_manager *mgr);
 
 #ifdef __cplusplus
 }
