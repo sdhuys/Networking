@@ -1,5 +1,6 @@
 #pragma once
 #include "heap.h"
+#include <pthread.h>
 #include <stdbool.h>
 
 struct timer {
@@ -11,6 +12,7 @@ struct timer {
 struct timer_manager {
 	struct min_heap *timer_heap;
 	int event_fd; // written to when new timer added, wake and check min timer again
+	pthread_mutex_t lock;
 };
 
 #ifdef __cplusplus

@@ -41,6 +41,7 @@ struct arp_context {
 	ipv4_address_t ipv4_addr;
 	mac_address_t mac_addr;
 	struct arp_table *arp_table;
+	struct timer_manager *timer_mgr;
 };
 
 struct arp_data {

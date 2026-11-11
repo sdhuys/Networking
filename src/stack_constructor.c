@@ -91,6 +91,7 @@ struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 	struct arp_table *arp_table = malloc(sizeof(struct arp_table));
 	arp_table->head = NULL;
 	arp_ctx->arp_table = arp_table;
+	arp_ctx->timer_mgr = timer_mgr;
 
 	memcpy(arp_ctx->ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
 	memcpy(arp_ctx->mac_addr, stack_mac_addr, MAC_ADDR_LEN);

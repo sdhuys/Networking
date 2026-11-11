@@ -10,6 +10,7 @@
 
 void execute_exp_timers(struct timer_manager *mgr)
 {
+	pthread_mutex_lock(&mgr->lock);
 	struct min_heap *heap = mgr->timer_heap;
 	if (heap == NULL)
 		return;
@@ -25,6 +26,7 @@ void execute_exp_timers(struct timer_manager *mgr)
 		t->callback(t->args);
 		now = now_ms();
 	}
+	pthread_mutex_unlock(&mgr->lock);
 }
 
 struct timer_manager *create_timer_manager()
@@ -33,14 +35,21 @@ struct timer_manager *create_timer_manager()
 	if (!mgr)
 		return NULL;
 
+	if (pthread_mutex_init(&mgr->lock, NULL) != 0) {
+		free(mgr);
+		return NULL;
+	}
+
 	mgr->timer_heap = heap_create(HEAP_SIZE_DEFAULT);
 	if (!mgr->timer_heap) {
+		pthread_mutex_destroy(&mgr->lock);
 		free(mgr);
 		return NULL;
 	}
 
 	int fd = eventfd(0, EFD_NONBLOCK);
 	if (fd < 0) {
+		pthread_mutex_destroy(&mgr->lock);
 		heap_destroy(mgr->timer_heap);
 		free(mgr);
 		return NULL;
@@ -53,17 +62,23 @@ struct timer_manager *create_timer_manager()
 // (re)start
 bool start_timer(struct timer_manager *mgr, struct timer *timer, uint64_t delay_ms)
 {
+	pthread_mutex_lock(&mgr->lock);
+
 	struct min_heap *h = mgr->timer_heap;
 	uint64_t curr_timeout = get_timeout(mgr);
 	printf("\nCURRENT timeout: %lu \n", curr_timeout);
 	printf("Adding new timer: timeout: %lu \n", delay_ms);
-	if (h == NULL)
+	if (h == NULL) {
+		pthread_mutex_unlock(&mgr->lock);
 		return false;
+	}
 
 	uint64_t expiry = now_ms() + delay_ms;
 	if (timer->node.index == NODE_NOT_IN_HEAP) {
-		if (!heap_push(h, &timer->node, expiry))
+		if (!heap_push(h, &timer->node, expiry)) {
+			pthread_mutex_unlock(&mgr->lock);
 			return false;
+		}
 	} else
 		heap_update(h, &timer->node, expiry);
 
@@ -73,6 +88,8 @@ bool start_timer(struct timer_manager *mgr, struct timer *timer, uint64_t delay_
 		printf("writing to evend fd \n");
 		write(mgr->event_fd, &x, sizeof(x));
 	}
+
+	pthread_mutex_unlock(&mgr->lock);
 	return true;
 }
 
@@ -88,6 +105,7 @@ struct timer *create_timer(void (*callback)(void *), void *args)
 	return timer;
 }
 
+// caller must hold lock
 int get_timeout(struct timer_manager *mgr)
 {
 	struct min_heap *h = mgr->timer_heap;
@@ -112,6 +130,8 @@ void cancel_timer(struct timer_manager *mgr, struct timer *timer)
 {
 	if (!timer)
 		return;
+	pthread_mutex_lock(&mgr->lock);
 	struct min_heap *h = mgr->timer_heap;
 	heap_remove(h, &timer->node);
+	pthread_mutex_unlock(&mgr->lock);
 }
