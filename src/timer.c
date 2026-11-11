@@ -27,7 +27,8 @@ void execute_exp_timers(struct timer_manager *mgr)
 		struct timer *t = CONTAINER_OF(heap_pop(heap), struct timer, node);
 		pthread_mutex_unlock(&mgr->lock);
 		t->callback(t->args);
-		t->release(t->args);
+		if (t->release)
+			t->release(t->args);
 		pthread_mutex_lock(&mgr->lock);
 		now = now_ms();
 	}
