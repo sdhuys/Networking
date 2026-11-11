@@ -12,7 +12,7 @@ pkt_result receive_frame_up(struct nw_layer *self, struct pkt *packet)
 {
 	if (packet->len < sizeof(struct ethernet_header))
 		return ETH_HEADER_MALFORMED;
-		
+
 	struct ethernet_header *header = (struct ethernet_header *)(packet->data + packet->offset);
 	// print_incoming(header);
 

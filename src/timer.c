@@ -118,17 +118,10 @@ bool start_timer_if_idle(struct timer_manager *mgr, struct timer *t, uint64_t de
 	return arm_timer(mgr, t, delay_ms, false);
 }
 
-struct timer *create_timer_tcp_conn(void (*callback)(void *), struct tcp_ipv4_conn *conn, void (*retain)(void *), void (*release)(void *))
-{
-	return create_timer_internal(callback, conn, retain, release);
-}
-
-struct timer *create_timer(void (*callback)(void *), void *args)
-{
-	return create_timer_internal(callback, args, NULL, NULL);
-}
-
-static struct timer *create_timer_internal(void (*callback)(void *), void *args, void *retain, void *release)
+static struct timer *create_timer_internal(void (*callback)(void *),
+					   void *args,
+					   void *retain,
+					   void *release)
 {
 	struct timer *timer = malloc(sizeof(struct timer));
 	if (timer == NULL)
@@ -138,6 +131,19 @@ static struct timer *create_timer_internal(void (*callback)(void *), void *args,
 	timer->args = args;
 	timer->node.index = NODE_NOT_IN_HEAP;
 	return timer;
+}
+
+struct timer *create_timer_owned(void (*callback)(void *),
+				 void *args,
+				 void (*retain)(void *),
+				 void (*release)(void *))
+{
+	return create_timer_internal(callback, args, retain, release);
+}
+
+struct timer *create_timer(void (*callback)(void *), void *args)
+{
+	return create_timer_internal(callback, args, NULL, NULL);
 }
 
 // caller must hold lock

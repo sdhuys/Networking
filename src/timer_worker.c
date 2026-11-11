@@ -22,5 +22,5 @@ void *start_timers_loop(void *arg)
 		}
 		execute_exp_timers(timer_mgr);
 	}
-    return NULL;
+	return NULL;
 }

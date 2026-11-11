@@ -13,7 +13,7 @@ pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet)
 {
 	if (packet->len < sizeof(struct arp_data))
 		return ARP_MALFORMED;
-		
+
 	struct arp_data *arp_data = (struct arp_data *)(packet->data + packet->offset);
 	uint16_t hw_type = ntohs(arp_data->hw_type);
 

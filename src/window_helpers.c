@@ -96,7 +96,10 @@ uint32_t usable_window(struct tcp_ipv4_conn *conn, uint32_t *peer_wnd_out)
 	       sb->cwnd);
 	uint32_t sent_unacked = sb->snd_nxt - sb->snd_una;
 	uint32_t sacked = sb->sacked_bytes;
-	printf("SENT UNA: %d, SND NXT: %d, AMOUNT UNACKED:: %d \n",sb->snd_nxt, sb->snd_una, sb->snd_nxt - sb->snd_una);
+	printf("SENT UNA: %d, SND NXT: %d, AMOUNT UNACKED:: %d \n",
+	       sb->snd_nxt,
+	       sb->snd_una,
+	       sb->snd_nxt - sb->snd_una);
 	// pipe
 	uint32_t effective_in_flight = (sent_unacked > sacked) ? (sent_unacked - sacked) : 0;
 	printf("PIPE: %u \n\n", effective_in_flight);

@@ -17,11 +17,7 @@
 #define TCP_ECE 0x40 // 0100 0000
 #define TCP_CWR 0x80 // 1000 0000
 
-typedef enum {
-	SLOW_START,
-	CONG_AVOIDANCE,
-	FAST_RECOVERY
-} congestion_ctrl_state;
+typedef enum { SLOW_START, CONG_AVOIDANCE, FAST_RECOVERY } congestion_ctrl_state;
 
 struct tcp_header_no_options {
 	uint16_t src_port;

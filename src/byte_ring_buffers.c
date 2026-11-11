@@ -134,7 +134,7 @@ void read_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t
 	if (!b || !buffer)
 		return;
 
-	size_t snd_i = b->retransmit ? b->head: b->snd_nxt_i;
+	size_t snd_i = b->retransmit ? b->head : b->snd_nxt_i;
 	size_t first_part = len;
 	if (snd_i + len > b->capacity) {
 		first_part = b->capacity - snd_i;

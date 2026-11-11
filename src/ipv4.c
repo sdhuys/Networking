@@ -103,7 +103,8 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 	if (dest_ip_node == NULL) {
 		dest_ip_node = insert_incomplete_for_ip(arp_tbl, next_hop);
 		if (!dest_ip_node)
-			return ARP_TABLE_FULL; // currently actually means malloc failed, later add ARP table size cap
+			return ARP_TABLE_FULL; // currently actually means malloc failed, later add
+					       // ARP table size cap
 
 		struct pkt *arp_request = create_arp_request_for(arp_layer, next_hop);
 		// if no arp request pkt returned, arp entry will stay incomplete until retry

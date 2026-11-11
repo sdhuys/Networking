@@ -19,7 +19,7 @@ pkt_result receive_icmp_up(struct nw_layer *self, struct pkt *packet)
 {
 	if (packet->len < sizeof(struct icmp_header))
 		return ICMP_HEADER_MALFORMED;
-		
+
 	struct icmp_header *header = (struct icmp_header *)(packet->data + packet->offset);
 	struct checksum_chunk chunk = {.data = header, .len = packet->len};
 

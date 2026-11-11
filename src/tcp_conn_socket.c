@@ -389,10 +389,12 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 		return NULL;
 	}
 
-	conn->del_ack_timer = create_timer_tcp_conn(delayed_ack_callback, conn, tcp_retain_conn, tcp_release_conn);
-	conn->rto_timer = create_timer_tcp_conn(rto_callback, conn, tcp_retain_conn, tcp_release_conn);
-	conn->zwp_timer = create_timer_tcp_conn(zwp_callback, conn, tcp_retain_conn, tcp_release_conn);
-	conn->time_wait_timer = create_timer_tcp_conn(time_wait_callback, conn, tcp_retain_conn, tcp_release_conn);
+	conn->del_ack_timer =
+	    create_timer_owned(delayed_ack_callback, conn, tcp_retain_conn, tcp_release_conn);
+	conn->rto_timer = create_timer_owned(rto_callback, conn, tcp_retain_conn, tcp_release_conn);
+	conn->zwp_timer = create_timer_owned(zwp_callback, conn, tcp_retain_conn, tcp_release_conn);
+	conn->time_wait_timer =
+	    create_timer_owned(time_wait_callback, conn, tcp_retain_conn, tcp_release_conn);
 
 	if (!conn->del_ack_timer || !conn->rto_timer || !conn->zwp_timer ||
 	    !conn->time_wait_timer) {
