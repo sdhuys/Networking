@@ -11,10 +11,12 @@
 void execute_exp_timers(struct timer_manager *mgr)
 {
 	pthread_mutex_lock(&mgr->lock);
-	struct min_heap *heap = mgr->timer_heap;
-	if (heap == NULL)
-		return;
 
+	struct min_heap *heap = mgr->timer_heap;
+	if (heap == NULL) {
+		pthread_mutex_unlock(&mgr->lock);
+		return;
+	}
 	uint64_t now = now_ms();
 
 	while (heap->count > 0) {
@@ -23,7 +25,9 @@ void execute_exp_timers(struct timer_manager *mgr)
 			break;
 
 		struct timer *t = CONTAINER_OF(heap_pop(heap), struct timer, node);
+		pthread_mutex_unlock(&mgr->lock);
 		t->callback(t->args);
+		pthread_mutex_lock(&mgr->lock);
 		now = now_ms();
 	}
 	pthread_mutex_unlock(&mgr->lock);
@@ -59,10 +63,17 @@ struct timer_manager *create_timer_manager()
 	return mgr;
 }
 
-// (re)start
-bool start_timer(struct timer_manager *mgr, struct timer *timer, uint64_t delay_ms)
+// switch to enum return type if caller should care about already running vs failures
+static bool arm_timer(struct timer_manager *mgr,
+		      struct timer *timer,
+		      uint64_t delay_ms,
+		      bool restart_allowed)
 {
 	pthread_mutex_lock(&mgr->lock);
+	if (!restart_allowed && timer->node.index != NODE_NOT_IN_HEAP) {
+		pthread_mutex_unlock(&mgr->lock);
+		return false;
+	}
 
 	struct min_heap *h = mgr->timer_heap;
 	uint64_t curr_timeout = get_timeout(mgr);
@@ -91,6 +102,16 @@ bool start_timer(struct timer_manager *mgr, struct timer *timer, uint64_t delay_
 
 	pthread_mutex_unlock(&mgr->lock);
 	return true;
+}
+
+bool start_timer(struct timer_manager *mgr, struct timer *t, uint64_t delay_ms)
+{
+	return arm_timer(mgr, t, delay_ms, true);
+}
+
+bool start_timer_if_idle(struct timer_manager *mgr, struct timer *t, uint64_t delay_ms)
+{
+	return arm_timer(mgr, t, delay_ms, false);
 }
 
 struct timer *create_timer(void (*callback)(void *), void *args)
@@ -124,6 +145,14 @@ int get_timeout(struct timer_manager *mgr)
 		return INT_MAX;
 
 	return (int)delta;
+}
+
+int get_timeout_unlocked(struct timer_manager *mgr)
+{
+	pthread_mutex_lock(&mgr->lock);
+	int r = get_timeout(mgr);
+	pthread_mutex_unlock(&mgr->lock);
+	return r;
 }
 
 void cancel_timer(struct timer_manager *mgr, struct timer *timer)

@@ -23,9 +23,11 @@ struct timer *create_timer(void (*callback)(void *), void *args);
 
 void execute_exp_timers(struct timer_manager *mgr);
 struct timer_manager *create_timer_manager();
-bool start_timer(struct timer_manager *mgr, struct timer *timer, uint64_t duration_ms);
+bool start_timer(struct timer_manager *mgr, struct timer *timer, uint64_t delay_ms);
+bool start_timer_if_idle(struct timer_manager *mgr, struct timer *timer, uint64_t delay_ms);
 void cancel_timer(struct timer_manager *mgr, struct timer *timer);
 int get_timeout(struct timer_manager *mgr);
+int get_timeout_unlocked(struct timer_manager *mgr);
 
 #ifdef __cplusplus
 }

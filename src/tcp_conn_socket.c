@@ -865,16 +865,11 @@ struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq
 		sb->snd_nxt += seq_len;
 		sb->snd_nxt_i = (sb->snd_nxt_i + payload_len) & (sb->capacity - 1);
 	}
-	// start timer if not running yet
-	if (conn->rto_timer->node.index == NODE_NOT_IN_HEAP) {
-		struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
-		printf("starting RTO timer \n");
-		start_timer(ctx->timer_mgr, conn->rto_timer, conn->rto_interval);
-	}
+
+	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
+	start_timer_if_idle(ctx->timer_mgr, conn->rto_timer, conn->rto_interval);
+
 	///////////////////////////////////////////////////////
-
-	// printf("\nRETURNING PACKET\n");
-
 	return p;
 }
 
