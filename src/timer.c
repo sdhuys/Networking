@@ -128,6 +128,8 @@ static struct timer *create_timer_internal(void (*callback)(void *),
 		return NULL;
 
 	timer->callback = callback;
+	timer->retain = retain;
+	timer->release = release;
 	timer->args = args;
 	timer->node.index = NODE_NOT_IN_HEAP;
 	return timer;
