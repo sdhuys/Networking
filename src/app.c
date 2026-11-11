@@ -13,6 +13,11 @@ void client_app(struct stack *stack)
 	}
 	tcp_end_send(stack, tcp_9000);
 	FILE *f = fopen("testing_files/rcv.JPG", "wb");
+	if (!f) {
+		perror("Receiving file failed to open");
+		return;
+	}
+	
 	unsigned char buff[100000];
 	ssize_t r = 0;
 	while ((r = receive(stack, tcp_9000, buff, 100000)) > 0) {
@@ -59,6 +64,11 @@ void server_app(struct stack *stack)
 	int conn = accept_connection(stack, l);
 	unsigned char buff[0x80000];
 	FILE *f = fopen("testing_files/snd2.JPG", "rb");
+	if (!f) {
+		perror("Failed to find file to send");
+		return;
+	}
+
 	ssize_t r;
 	while ((r = fread(buff, 1, 0x80000, f)) > 0) {
 		size_t count = 0;
