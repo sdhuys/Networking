@@ -27,6 +27,7 @@ void execute_exp_timers(struct timer_manager *mgr)
 		struct timer *t = CONTAINER_OF(heap_pop(heap), struct timer, node);
 		pthread_mutex_unlock(&mgr->lock);
 		t->callback(t->args);
+		t->release(t->args);
 		pthread_mutex_lock(&mgr->lock);
 		now = now_ms();
 	}
@@ -90,6 +91,8 @@ static bool arm_timer(struct timer_manager *mgr,
 		if (!heap_push(h, &timer->node, expiry)) {
 			pthread_mutex_unlock(&mgr->lock);
 			return false;
+		} else {
+			timer->retain(timer->args);
 		}
 	} else
 		heap_update(h, &timer->node, expiry);
@@ -115,7 +118,17 @@ bool start_timer_if_idle(struct timer_manager *mgr, struct timer *t, uint64_t de
 	return arm_timer(mgr, t, delay_ms, false);
 }
 
+struct timer *create_timer_tcp_conn(void (*callback)(void *), struct tcp_ipv4_conn *conn, void (*retain)(void *), void (*release)(void *))
+{
+	return create_timer_internal(callback, conn, retain, release);
+}
+
 struct timer *create_timer(void (*callback)(void *), void *args)
+{
+	return create_timer_internal(callback, args, NULL, NULL);
+}
+
+static struct timer *create_timer_internal(void (*callback)(void *), void *args, void *retain, void *release)
 {
 	struct timer *timer = malloc(sizeof(struct timer));
 	if (timer == NULL)
@@ -162,6 +175,8 @@ void cancel_timer(struct timer_manager *mgr, struct timer *timer)
 		return;
 	pthread_mutex_lock(&mgr->lock);
 	struct min_heap *h = mgr->timer_heap;
-	heap_remove(h, &timer->node);
+	if (heap_remove(h, &timer->node))
+		timer->release(timer->args);
+
 	pthread_mutex_unlock(&mgr->lock);
 }

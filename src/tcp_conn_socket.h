@@ -5,6 +5,7 @@
 #include "queue.h"
 #include "tcp_common_types.h"
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <sys/types.h>
@@ -56,14 +57,15 @@ struct tcp_ipv4_conn {
 	uint16_t local_port;
 	uint16_t extern_port;
 
-	uint32_t ref_count;
+	atomic_uint ref_count;
 	tcp_connection_state state;
 
 	uint32_t iss; // initial Send Sequence
 	uint32_t irs; // initial Receive Sequence
 
 	uint32_t rcv_mss; // local mss
-	uint32_t snd_mss; // peer's advertised mss (adjusted to effective MSS by substracting TS option len if enabled)
+	uint32_t snd_mss; // peer's advertised mss (adjusted to effective MSS by substracting TS
+			  // option len if enabled)
 
 	// features & options
 	uint32_t ts_recent;   // the last TSval received from peer (to echo back in TSecr)

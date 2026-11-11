@@ -3,8 +3,12 @@
 #include <pthread.h>
 #include <stdbool.h>
 
+struct tcp_ipv4_conn;
+
 struct timer {
 	void (*callback)(void *);
+	void (*retain)(void *); // to retain conn when timer needs a ref to it, can be null (for ARP sweep timer for instance)
+	void (*release)(void *); // to release conn when timer is done with ref, can be null (for ARP sweep timer for instance)
 	void *args;
 	struct heap_node node; // expiry time is stored in node priority
 };
@@ -20,6 +24,7 @@ extern "C" {
 #endif
 
 struct timer *create_timer(void (*callback)(void *), void *args);
+struct timer *create_timer_tcp_conn(void (*callback)(void *), struct tcp_ipv4_conn *conn, void (*retain)(void *), void (*release)(void *));
 
 void execute_exp_timers(struct timer_manager *mgr);
 struct timer_manager *create_timer_manager();

@@ -389,10 +389,10 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 		return NULL;
 	}
 
-	conn->del_ack_timer = create_timer(delayed_ack_callback, conn);
-	conn->rto_timer = create_timer(rto_callback, conn);
-	conn->zwp_timer = create_timer(zwp_callback, conn);
-	conn->time_wait_timer = create_timer(time_wait_callback, conn);
+	conn->del_ack_timer = create_timer_tcp_conn(delayed_ack_callback, conn, tcp_retain_conn, tcp_release_conn);
+	conn->rto_timer = create_timer_tcp_conn(rto_callback, conn, tcp_retain_conn, tcp_release_conn);
+	conn->zwp_timer = create_timer_tcp_conn(zwp_callback, conn, tcp_retain_conn, tcp_release_conn);
+	conn->time_wait_timer = create_timer_tcp_conn(time_wait_callback, conn, tcp_retain_conn, tcp_release_conn);
 
 	if (!conn->del_ack_timer || !conn->rto_timer || !conn->zwp_timer ||
 	    !conn->time_wait_timer) {
@@ -728,9 +728,7 @@ void tcp_retain_conn(void *s)
 
 void retain_tcp_conn(struct tcp_ipv4_conn *conn)
 {
-	pthread_mutex_lock(&(conn->lock));
-	conn->ref_count++;
-	pthread_mutex_unlock(&(conn->lock));
+	atomic_fetch_add(&conn->ref_count, 1);
 }
 
 void tcp_release_conn(void *s)
@@ -741,15 +739,7 @@ void tcp_release_conn(void *s)
 
 void release_tcp_conn(struct tcp_ipv4_conn *conn)
 {
-	bool should_destroy = false;
-	pthread_mutex_lock(&(conn->lock));
-
-	conn->ref_count--;
-	if (conn->ref_count == 0)
-		should_destroy = true;
-
-	pthread_mutex_unlock(&(conn->lock));
-	if (should_destroy)
+	if (atomic_fetch_sub(&conn->ref_count, 1) == 1)
 		destroy_tcp_conn(conn);
 }
 
@@ -757,7 +747,7 @@ void release_tcp_conn(struct tcp_ipv4_conn *conn)
 void q_retain_tcp_conn(struct queue_node *n)
 {
 	struct tcp_ipv4_conn *conn = CONTAINER_OF(n, struct tcp_ipv4_conn, q_node);
-	conn->ref_count++;
+	retain_tcp_conn(conn);
 }
 
 void q_release_tcp_conn(struct queue_node *n)

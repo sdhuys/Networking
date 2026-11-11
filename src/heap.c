@@ -70,17 +70,17 @@ void heapify_down(struct min_heap *heap, uint32_t i)
 	n->index = i;
 }
 
-void heap_remove(struct min_heap *h, struct heap_node *node)
+bool heap_remove(struct min_heap *h, struct heap_node *node)
 {
 	uint32_t i = node->index;
 	if (i >= h->count)
-		return;
+		return false;
 
 	uint32_t last = --h->count;
 	node->index = NODE_NOT_IN_HEAP;
 
 	if (i == last)
-		return; // removed last item, heap still instact
+		return true; // removed last item, heap still instact
 
 	h->nodes[i] = h->nodes[last];
 	h->nodes[i]->index = i;
@@ -88,6 +88,8 @@ void heap_remove(struct min_heap *h, struct heap_node *node)
 		heapify_up(h, i);
 	else
 		heapify_down(h, i);
+
+	return true;
 }
 
 void heap_update(struct min_heap *h, struct heap_node *node, uint64_t new_priority)
