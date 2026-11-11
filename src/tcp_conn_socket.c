@@ -113,7 +113,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 			tcp_fast_reply_pure_ack(p, conn);
 			// our previous ACK lost, restart timer
 			if (conn->state == TIME_WAIT && flags & TCP_FIN)
-				tcp_arm_data_timer(conn, conn->time_wait_timer, TCP_TIMEWAIT_MS);
+				start_timer(tmgr, conn->time_wait_timer, TCP_TIMEWAIT_MS);
 			return TCP_SEG_OUT_WNDW_RNG_ACK_SNT;
 		}
 		return TCP_SEG_OUT_OF_WNDW_RANGE;
