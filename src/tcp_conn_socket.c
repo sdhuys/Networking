@@ -820,8 +820,7 @@ void destroy_tcp_conn(struct tcp_ipv4_conn *conn)
 	       conn->data_timers_cancelled);
 
 	printf("\n\nDESTROYING CONNECTION!! \n\n");
-	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
-
+	
 	destroy_byte_rcv_buffer(&conn->rcv_buffer);
 	destroy_byte_snd_buffer(&conn->snd_buffer);
 	free(conn->del_ack_timer);
@@ -829,7 +828,6 @@ void destroy_tcp_conn(struct tcp_ipv4_conn *conn)
 	free(conn->zwp_timer);
 	free(conn->time_wait_timer);
 	pthread_cond_destroy(&conn->estblshd_cond);
-	pthread_mutex_unlock(&conn->lock);
 	pthread_mutex_destroy(&conn->lock);
 	free(conn);
 }

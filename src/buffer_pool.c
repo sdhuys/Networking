@@ -51,10 +51,10 @@ struct pkt *allocate_pkt()
 
 void release_pkt(struct pkt *pkt)
 {
-	uint16_t old = atomic_fetch_sub(&pkt->ref_count, 1);
+	unsigned int old = atomic_fetch_sub(&pkt->ref_count, 1);
 	assert(old > 0);
 
-	printf("Releasing PACKET %d id, %d ref count \n", pkt->pool_index, pkt->ref_count);
+	printf("Released PACKET %d id, %d ref count \n", pkt->pool_index, old - 1);
 
 	if (old == 1) {
 		printf("=> RETURN TO POOL");
@@ -67,6 +67,6 @@ void release_pkt(struct pkt *pkt)
 
 void retain_pkt(struct pkt *pkt)
 {
-	printf("Retaining PACKET %d id, %d ref count \n", pkt->pool_index, pkt->ref_count);
-	atomic_fetch_add(&pkt->ref_count, 1);
+	unsigned int old = atomic_fetch_add(&pkt->ref_count, 1);
+	printf("Retained PACKET %d id, %d ref count \n", pkt->pool_index, old + 1);
 }
