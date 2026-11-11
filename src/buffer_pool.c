@@ -20,7 +20,6 @@ void init_buffer_pool()
 		pkt_pool[i].data = buffer_pool[i];
 		pkt_pool[i].tcp_options = &tcp_opts[i];
 		pkt_pool[i].ref_count = 0;
-		pthread_mutex_init(&pkt_pool[i].lock, NULL);
 		free_pkt_stack[i] = &pkt_pool[i];
 		pkt_pool[i].pool_index = i;
 	}
@@ -52,16 +51,12 @@ struct pkt *allocate_pkt()
 
 void release_pkt(struct pkt *pkt)
 {
-	assert(pkt->ref_count > 0);
-	int should_free = 0;
+	uint16_t old = atomic_fetch_sub(&pkt->ref_count, 1);
+	assert(old > 0);
+
 	printf("Releasing PACKET %d id, %d ref count \n", pkt->pool_index, pkt->ref_count);
 
-	pthread_mutex_lock(&pkt->lock);
-	if (--pkt->ref_count == 0)
-		should_free = 1;
-	pthread_mutex_unlock(&pkt->lock);
-
-	if (should_free) {
+	if (old == 1) {
 		printf("=> RETURN TO POOL");
 		pthread_mutex_lock(&pool_mutex);
 		free_pkt_stack[++top_free_index] = pkt;
@@ -73,7 +68,5 @@ void release_pkt(struct pkt *pkt)
 void retain_pkt(struct pkt *pkt)
 {
 	printf("Retaining PACKET %d id, %d ref count \n", pkt->pool_index, pkt->ref_count);
-	pthread_mutex_lock(&pkt->lock);
-	pkt->ref_count++;
-	pthread_mutex_unlock(&pkt->lock);
+	atomic_fetch_add(&pkt->ref_count, 1);
 }

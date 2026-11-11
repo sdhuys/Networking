@@ -1,6 +1,7 @@
 #pragma once
 #include "address_types.h"
 #include "common_layer_defs.h"
+#include <stdatomic.h>
 #include <pthread.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -12,9 +13,8 @@ struct pkt {
 	size_t offset; // Offset to the start of the current layer's header
 	size_t len;    // Packet length from current offset (current layer's length)
 
-	pthread_mutex_t lock;
 	uint16_t pool_index; // for debugging
-	uint8_t ref_count;
+	atomic_uint ref_count;
 
 	int if_index;
 	uint16_t ethertype;
