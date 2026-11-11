@@ -17,7 +17,7 @@ void client_app(struct stack *stack)
 		perror("Receiving file failed to open");
 		return;
 	}
-	
+
 	unsigned char buff[100000];
 	ssize_t r = 0;
 	while ((r = receive(stack, tcp_9000, buff, 100000)) > 0) {

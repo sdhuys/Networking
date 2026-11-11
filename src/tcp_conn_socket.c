@@ -16,6 +16,7 @@
 #include "timer.h"
 #include "window_helpers.h"
 #include <arpa/inet.h>
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,6 +35,24 @@ const struct socket_ops tcp_conn_ops = {.is_snd_queued = tcp_is_snd_queued,
 					.close = tcp_close_conn,
 					.accept = NULL,
 					.end_snd = tcp_end_snd};
+
+// never use for TIME_WAIT TIMER
+static bool tcp_arm_data_timer(struct tcp_ipv4_conn *conn, struct timer *t, uint64_t delay_ms)
+{
+	if (atomic_load(&conn->data_timers_cancelled))
+		return false;
+	struct timer_manager *t_mgr = ((struct tcp_context *)conn->tcp_layer->context)->timer_mgr;
+	return start_timer(t_mgr, t, delay_ms);
+}
+
+// never use for TIME_WAIT TIMER
+static bool tcp_arm_data_timer_if_idle(struct tcp_ipv4_conn *conn, struct timer *t, uint64_t delay_ms)
+{
+	if (atomic_load(&conn->data_timers_cancelled))
+		return false;
+	struct timer_manager *t_mgr = ((struct tcp_context *)conn->tcp_layer->context)->timer_mgr;
+	return start_timer_if_idle(t_mgr, t, delay_ms);
+}
 
 static void rst_connection(struct tcp_ipv4_conn *conn)
 {
@@ -85,7 +104,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		if (s_len > 0 && (flags & TCP_SYN) && !(flags & TCP_ACK) &&
 		    conn->state == SYN_RECEIVED &&
 		    seg_seq == conn->irs) { // duplicate SYN: retrigger SYN-ACK sending
-			start_timer(tmgr, conn->rto_timer, 0);
+			tcp_arm_data_timer(conn, conn->rto_timer, 0);
 			return RCOV_SYN_ACK_TO_SND_BUFFER;
 		}
 		if (s_len > 0) {
@@ -94,7 +113,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 			tcp_fast_reply_pure_ack(p, conn);
 			// our previous ACK lost, restart timer
 			if (conn->state == TIME_WAIT && flags & TCP_FIN)
-				start_timer(tmgr, conn->time_wait_timer, TCP_TIMEWAIT_MS);
+				tcp_arm_data_timer(conn, conn->time_wait_timer, TCP_TIMEWAIT_MS);
 			return TCP_SEG_OUT_WNDW_RNG_ACK_SNT;
 		}
 		return TCP_SEG_OUT_OF_WNDW_RANGE;
@@ -135,7 +154,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 				// trigger SYN-retransmission, SYN_RECEIVED state will
 				// append ACK
 				tcp_transition_to_state(conn, SYN_RECEIVED);
-				start_timer(tmgr, conn->rto_timer, 0);
+				tcp_arm_data_timer(conn, conn->rto_timer, 0);
 				return TCP_SIMULTANEOUS_OPEN;
 			}
 			// else (SYN-ACK) => fallthrough to ACK processing below to finalise
@@ -289,7 +308,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 				cancel_timer(tmgr, conn->rto_timer);
 				conn->rto_interval = TCP_INIT_RTO_MS;
 				if (sb->snd_nxt != sb->snd_una) {
-					start_timer(tmgr, conn->rto_timer, conn->rto_interval);
+					tcp_arm_data_timer(conn, conn->rto_timer, conn->rto_interval);
 				}
 				// notify send buffer we can overwrite acked data
 				pthread_cond_broadcast(&sb->cond);
@@ -314,7 +333,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		// ACK
 		if (!immediate_ack && !conn->ack_pending) {
 			conn->ack_pending = true;
-			start_timer(tmgr, conn->del_ack_timer, TCP_DEL_ACK_MS);
+			tcp_arm_data_timer(conn, conn->del_ack_timer, TCP_DEL_ACK_MS);
 		} else {
 			immediate_ack = true;
 		}
@@ -391,10 +410,8 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 
 	conn->del_ack_timer =
 	    create_timer_owned(delayed_ack_callback, conn, tcp_retain_conn, tcp_release_conn);
-	conn->rto_timer =
-	    create_timer_owned(rto_callback, conn, tcp_retain_conn, tcp_release_conn);
-	conn->zwp_timer =
-	    create_timer_owned(zwp_callback, conn, tcp_retain_conn, tcp_release_conn);
+	conn->rto_timer = create_timer_owned(rto_callback, conn, tcp_retain_conn, tcp_release_conn);
+	conn->zwp_timer = create_timer_owned(zwp_callback, conn, tcp_retain_conn, tcp_release_conn);
 	conn->time_wait_timer =
 	    create_timer_owned(time_wait_callback, conn, tcp_retain_conn, tcp_release_conn);
 
@@ -438,17 +455,10 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 void zwp_callback(void *c)
 {
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)c;
-
-	pthread_mutex_lock(&conn->lock);
-	if (conn->data_timers_cancelled) {
-		pthread_mutex_unlock(&conn->lock);
-		return;
-	}
-	pthread_mutex_unlock(&conn->lock);
-
 	struct byte_snd_buffer *sb = &conn->snd_buffer;
+
 	lock_snd_buff(sb);
-	if (!conn->is_wndw_probing) {
+	if (atomic_load(&conn->data_timers_cancelled) || !conn->is_wndw_probing) {
 		unlock_snd_buff(sb);
 		return;
 	}
@@ -479,15 +489,17 @@ void rto_callback(void *c)
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)c;
 
 	pthread_mutex_lock(&conn->lock);
-	if (conn->data_timers_cancelled) {
-		pthread_mutex_unlock(&conn->lock);
-		return;
-	}
+
 	conn->dup_ack_cnt = 0;
 	pthread_mutex_unlock(&conn->lock);
 
 	struct byte_snd_buffer *sb = &conn->snd_buffer;
 	lock_snd_buff(sb);
+	if (atomic_load(&conn->data_timers_cancelled)) {
+		unlock_snd_buff(sb);
+		return;
+	}
+
 	sb->c_state = SLOW_START;
 	sb->cwnd = conn->snd_mss;
 	sb->retransmit = true;
@@ -581,12 +593,9 @@ void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *
 void delayed_ack_callback(void *c)
 {
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)c;
-	pthread_mutex_lock(&conn->lock);
-	if (conn->data_timers_cancelled) {
-		pthread_mutex_unlock(&conn->lock);
+
+	if (atomic_load(&conn->data_timers_cancelled))
 		return;
-	}
-	pthread_mutex_unlock(&conn->lock);
 
 	struct pkt *p = allocate_pkt();
 	if (!p)
@@ -679,8 +688,8 @@ void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state st
 
 	// don't cancel before our FIN got ACKd, might need to retransmit!
 	if ((state == CLOSED || state == FIN_WAIT_2 || state == TIME_WAIT) &&
-	    !conn->data_timers_cancelled) {
-		conn->data_timers_cancelled = true; // set BEFORE cancelling
+	    !atomic_load(&conn->data_timers_cancelled)) {
+		atomic_store(&conn->data_timers_cancelled, true);
 		cancel_data_timers = true;
 	}
 
@@ -791,6 +800,11 @@ void tcp_set_snd_queued(void *s, bool v)
 
 void destroy_tcp_conn(struct tcp_ipv4_conn *conn)
 {
+	assert(conn->del_ack_timer->node.index == UINT32_MAX &&
+	       conn->rto_timer->node.index == UINT32_MAX &&
+	       conn->zwp_timer->node.index == UINT32_MAX &&
+	       conn->time_wait_timer->node.index == UINT32_MAX && conn->data_timers_cancelled);
+
 	printf("\n\nDESTROYING CONNECTION!! \n\n");
 	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
 	struct timer_manager *tmgr = ctx->timer_mgr;
@@ -798,10 +812,6 @@ void destroy_tcp_conn(struct tcp_ipv4_conn *conn)
 	pthread_mutex_lock(&conn->lock);
 	destroy_byte_rcv_buffer(&conn->rcv_buffer);
 	destroy_byte_snd_buffer(&conn->snd_buffer);
-	cancel_timer(tmgr, conn->del_ack_timer);
-	cancel_timer(tmgr, conn->rto_timer);
-	cancel_timer(tmgr, conn->zwp_timer);
-	cancel_timer(tmgr, conn->time_wait_timer);
 	free(conn->del_ack_timer);
 	free(conn->rto_timer);
 	free(conn->zwp_timer);
@@ -867,7 +877,7 @@ struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq
 	}
 
 	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
-	start_timer_if_idle(ctx->timer_mgr, conn->rto_timer, conn->rto_interval);
+	tcp_arm_data_timer_if_idle(conn, conn->rto_timer, conn->rto_interval);
 
 	///////////////////////////////////////////////////////
 	return p;

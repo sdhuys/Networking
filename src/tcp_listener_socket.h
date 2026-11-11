@@ -1,8 +1,8 @@
 #pragma once
 #include "address_types.h"
 #include "pkt_result.h"
-#include <stdatomic.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
 

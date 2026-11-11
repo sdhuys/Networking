@@ -103,7 +103,7 @@ struct tcp_ipv4_conn {
 	struct timer *time_wait_timer;
 
 	// doesn't include TIME_WAIT timer!!
-	bool data_timers_cancelled;
+	atomic_bool data_timers_cancelled;
 
 	// Intrusive data structures
 	struct queue_node q_node;
