@@ -17,7 +17,7 @@ void start_listening(struct nw_layer *interface)
 	for (;;) {
 		struct pkt *packet = allocate_pkt();
 		if (packet == NULL)
-			break;
+			continue;
 		ssize_t nread = read(fd, packet->data, MAX_ETH_FRAME_SIZE);
 		if (nread < 0) {
 			printf("NO READ RELEASING \n");
