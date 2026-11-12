@@ -418,7 +418,7 @@ void insert_ooo_segment(
 }
 
 // blocking write - waits until space is available or connection closes
-// returns number of bytes written, or -1 if connection not ESTABLISHED or CLOSE_WAIT (no FIN sent!)
+// returns number of bytes written, or -1 if shutdown or aborted
 ssize_t blocking_write_to_snd_buff(struct byte_snd_buffer *b,
 				   unsigned char *data,
 				   size_t len,
@@ -443,6 +443,7 @@ ssize_t blocking_write_to_snd_buff(struct byte_snd_buffer *b,
 		tcp_lock_conn(conn);
 		if (tcp_conn_is_aborted(conn) || b->shutdown) {
 			tcp_unlock_conn(conn);
+			unlock_snd_buff(b);
 			return -1;
 		}
 		tcp_unlock_conn(conn);
@@ -515,7 +516,7 @@ ssize_t blocking_read_from_rcv_buff(struct byte_reassembly_rcv_buffer *b,
 	while (b->contiguous_bytes == 0 && (!b->fin_received || b->consumed_seq < b->fin_seq - 1)) {
 		pthread_cond_wait(&b->cond, &b->lock);
 
-		if (tcp_conn_is_aborted(conn)) 
+		if (tcp_conn_is_aborted(conn))
 			return -1;
 	}
 

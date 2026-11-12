@@ -234,8 +234,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 								else
 									// LAST_ACK: peer's FIN came
 									// first, we're done
-									close_and_unhash_conn(
-									    conn);
+									close_and_unhash_conn(conn);
 								data_ackd--;
 								sb->ctrl_count--;
 								break;
@@ -439,6 +438,7 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 
 	atomic_init(&conn->ref_count, 0);
 	atomic_init(&conn->data_timers_cancelled, false);
+	atomic_init(&conn->aborted, false);
 
 	conn->local_port = id->loc_port;
 	conn->extern_port = id->extern_port;
