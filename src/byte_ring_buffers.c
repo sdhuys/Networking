@@ -155,7 +155,7 @@ static size_t write_to_rcv_buff(struct byte_reassembly_rcv_buffer *b,
 				const unsigned char *data,
 				size_t len)
 {
-	if (!b || !data || len == 0)
+	if (!b || !data || len == 0 || len > b->capacity)
 		return 0;
 
 	size_t first_part = len;
@@ -200,48 +200,48 @@ static size_t write_unwritten_bytes(struct byte_reassembly_rcv_buffer *b,
 	size_t written = 0;
 
 	uint32_t current_start = seq_start;
-	uint32_t current_end = seq_end;
 
 	size_t data_offset;
 	size_t data_len;
 
 	size_t i = bin_search_seq_after_eq_indx(seq_start, b->ooo_segs, b->ooo_count);
+
+	// if ooo_segment
 	if (ooo_i)
 		*ooo_i = i;
 
-	// potential overlapping ooo seg found
-	if (i != b->ooo_count) {
-		// check previous one, might overlap as well due to length
-		if (i != 0) {
-			uint32_t ooo_end = b->ooo_segs[i - 1].end_seq;
-			if (tcp_seq_before_eq(current_end, ooo_end))
-				return written;
-			// trim left
-			if (tcp_seq_before_eq(current_start, ooo_end))
-				current_start = ooo_end;
-		}
-
-		// go through all ooo segs up until seq_end
-		for (; i < b->ooo_count && tcp_seq_before(b->ooo_segs[i].start_seq, seq_end); i++) {
-			// trim right
-			current_end = b->ooo_segs[i].start_seq;
-			data_offset = current_start - seq_start;
-			data_len = current_end - current_start;
-			if (data_len > 0) {
-				size_t physical_idx = seq_to_index(b, current_start);
-				written += write_to_rcv_buff(
-				    b, physical_idx, data + data_offset, data_len);
-			}
-			// new writing start after current ooo block
-			current_start = b->ooo_segs[i].end_seq;
-			// new writing start overshoots new data's end, all done
-			if (tcp_seq_after_eq(current_start, seq_end))
-				return written;
-		}
+	// check for overlap with previous ooo_seg
+	if (i != 0) {
+		uint32_t ooo_end = b->ooo_segs[i - 1].end_seq;
+		if (tcp_seq_before_eq(seq_end, ooo_end))
+			return written;
+		// trim left
+		if (tcp_seq_before_eq(current_start, ooo_end))
+			current_start = ooo_end;
 	}
+
+	// check for overlap with next ooo_segs
+	// both for new ooo_seg as well as for in order data
+	// go through all ooo segs up until seq_end
+	for (; i < b->ooo_count && tcp_seq_before(b->ooo_segs[i].start_seq, seq_end); i++) {
+		// trim right
+		uint32_t current_end = b->ooo_segs[i].start_seq;
+		data_offset = current_start - seq_start;
+		data_len = current_end - current_start;
+		if (data_len > 0) {
+			size_t physical_idx = seq_to_index(b, current_start);
+			written += write_to_rcv_buff(b, physical_idx, data + data_offset, data_len);
+		}
+		// new writing start after current ooo block
+		current_start = b->ooo_segs[i].end_seq;
+		// new writing start overshoots new data's end, all done
+		if (tcp_seq_after_eq(current_start, seq_end))
+			return written;
+	}
+
 	// write all remaining new bytes
 	data_offset = current_start - seq_start;
-	data_len = current_end - current_start;
+	data_len = seq_end - current_start;
 	size_t physical_idx = seq_to_index(b, current_start);
 	written += write_to_rcv_buff(b, physical_idx, data + data_offset, data_len);
 	return written;
