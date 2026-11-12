@@ -56,6 +56,8 @@ static bool tcp_arm_data_timer_if_idle(struct tcp_ipv4_conn *conn,
 	return start_timer_if_idle(t_mgr, t, delay_ms);
 }
 
+// called when RST received or passive close
+// removes conn from conn_htable
 static void rst_connection(struct tcp_ipv4_conn *conn)
 {
 	tcp_transition_to_state(conn, CLOSED);
@@ -205,16 +207,29 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 				if (valid_new_ack) {
 					uint32_t old_una = sb->snd_una;
 					uint32_t data_ackd = seg_ack - old_una;
+					tcp_connection_state st = conn->state;
 
-					// substract ghost byte if FIN acked
-					if (conn->state == FIN_WAIT_1 || conn->state == CLOSING ||
-					    conn->state == LAST_ACK) {
+					if (st == FIN_WAIT_1 || st == CLOSING || st == LAST_ACK) {
+						// we sent FIN
 						for (uint8_t i = 0; i < sb->ctrl_count; i++) {
 							if (sb->ctrl[i].flags == TCP_FIN &&
 							    tcp_seq_after(seg_ack,
 									  sb->ctrl[i].seq)) {
-								tcp_transition_to_state(conn,
-											FIN_WAIT_2);
+								// our FIN is acked
+								if (st == FIN_WAIT_1)
+									// waiting for peer's FIN
+									tcp_transition_to_state(
+									    conn, FIN_WAIT_2);
+								else if (st == CLOSING)
+									// both FINs sent and acked
+									tcp_transition_to_state(
+									    conn, TIME_WAIT);
+								else
+									// LAST_ACK: peer's FIN came
+									// first, we're done
+									rst_connection(
+									    conn); // CLOSED + out
+										   // of conn table
 								data_ackd--;
 								sb->ctrl_count--;
 								break;
@@ -715,15 +730,9 @@ void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state st
 	// no more read nor write, need separate broadcasts for CLOSED incase of RST (not going
 	// through standard closing states)
 	if (state == CLOSED) {
-		struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
-		struct socket_manager *smgr = ctx->socket_manager;
-		struct tcp_ipv4_conn_htable *time_wait_htable =
-		    smgr->tcp_ipv4_conn_time_wait_htable;
-
 		pthread_cond_broadcast(&conn->snd_buffer.cond);
 		pthread_cond_broadcast(&conn->rcv_buffer.cond);
 		pthread_cond_broadcast(&conn->estblshd_cond);
-		remove_from_tcp_conn_hashtable(time_wait_htable, conn);
 	}
 	// no more read, can still write
 	if (state == CLOSE_WAIT || state == TIME_WAIT || state == CLOSING)
@@ -754,6 +763,14 @@ void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state st
 		add_to_tcp_conn_hashtable(time_wait_htable, conn);
 		remove_from_tcp_conn_hashtable(smgr->tcp_ipv4_conn_htable, conn);
 		start_timer(ctx->timer_mgr, conn->time_wait_timer, TCP_TIMEWAIT_MS);
+	}
+
+	if (state == CLOSED) {
+		struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
+		struct socket_manager *smgr = ctx->socket_manager;
+		struct tcp_ipv4_conn_htable *time_wait_htable =
+		    smgr->tcp_ipv4_conn_time_wait_htable;
+		remove_from_tcp_conn_hashtable(time_wait_htable, conn);
 	}
 }
 

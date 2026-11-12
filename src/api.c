@@ -95,8 +95,7 @@ int accept_connection(struct stack *stack, int sockfd)
 	if (!lis_h.ops->accept)
 		return -2; // INVALID SOCKET TYPE
 
-	struct tcp_ipv4_conn *conn = lis_h.ops->accept(lis_h.sock);
-	retain_tcp_conn(conn);
+	struct tcp_ipv4_conn *conn = lis_h.ops->accept(lis_h.sock); // app takes over con ref from q, no need for extra retain
 
 	struct socket_handle conn_h = create_conn_sock_h(conn);
 	int fd = get_sockfd(sockfd_mgr);
