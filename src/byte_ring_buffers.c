@@ -72,6 +72,7 @@ int init_byte_snd_buffer(struct byte_snd_buffer *b, size_t capacity)
 		return -1;
 	}
 
+	b->shutdown = false;
 	b->retransmit = false;
 	b->sack_blocks_count = 0;
 	b->sack_capacity = MAX_SACK_TRACKED;
@@ -427,6 +428,10 @@ ssize_t blocking_write_to_snd_buff(struct byte_snd_buffer *b,
 		return 0;
 
 	lock_snd_buff(b);
+	if (b->shutdown) {
+		unlock_snd_buff(b);
+		return -1; // FIN already queued or sent
+	}
 
 	size_t available = sndbuff_available_space(b);
 	size_t to_write = len;
@@ -436,7 +441,7 @@ ssize_t blocking_write_to_snd_buff(struct byte_snd_buffer *b,
 		pthread_cond_wait(&b->cond, &b->lock);
 
 		tcp_lock_conn(conn);
-		if (!tcp_conn_alive(conn)) {
+		if (tcp_conn_is_aborted(conn) || b->shutdown) {
 			tcp_unlock_conn(conn);
 			return -1;
 		}
@@ -460,13 +465,6 @@ ssize_t blocking_write_all_to_snd_buff(struct byte_snd_buffer *b, unsigned char 
 		return 0;
 
 	struct tcp_ipv4_conn *conn = CONTAINER_OF(b, struct tcp_ipv4_conn, snd_buffer);
-	tcp_lock_conn(conn);
-	if (!tcp_conn_alive(conn)) {
-		tcp_unlock_conn(conn);
-		return -1;
-	}
-	tcp_unlock_conn(conn);
-
 	size_t total_written = 0;
 	unsigned char *current = data;
 
@@ -493,9 +491,7 @@ ssize_t blocking_read_from_rcv_buff(struct byte_reassembly_rcv_buffer *b,
 	printf("       START BLOCKING READ \n");
 	struct tcp_ipv4_conn *conn = CONTAINER_OF(b, struct tcp_ipv4_conn, rcv_buffer);
 
-	tcp_lock_conn(conn);
-	int readable = tcp_conn_alive(conn);
-	tcp_unlock_conn(conn);
+	int readable = !tcp_conn_is_aborted(conn);
 
 	if (!readable)
 		return -1;
@@ -519,13 +515,10 @@ ssize_t blocking_read_from_rcv_buff(struct byte_reassembly_rcv_buffer *b,
 	while (b->contiguous_bytes == 0 && (!b->fin_received || b->consumed_seq < b->fin_seq - 1)) {
 		pthread_cond_wait(&b->cond, &b->lock);
 
-		tcp_lock_conn(conn);
-		if (!tcp_conn_alive(conn)) {
-			tcp_unlock_conn(conn);
+		if (tcp_conn_is_aborted(conn)) 
 			return -1;
-		}
-		tcp_unlock_conn(conn);
 	}
+
 	printf("FIN SEQ: %u \n", b->fin_seq);
 	// FIN received AND we've read everything up to the FIN
 	if (b->contiguous_bytes == 0 && b->fin_received && b->consumed_seq >= b->fin_seq - 1) {

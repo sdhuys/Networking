@@ -50,6 +50,8 @@ struct byte_snd_buffer {
 	pthread_mutex_t lock;
 	pthread_cond_t cond;
 
+	bool shutdown; // FIN has been queued => no more writes, protected by lock
+
 	// SACK blocks received from peer
 	struct ooo_seg sack_blocks[MAX_SACK_TRACKED];
 	size_t sack_blocks_count;

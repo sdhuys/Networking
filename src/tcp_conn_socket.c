@@ -36,6 +36,11 @@ const struct socket_ops tcp_conn_ops = {.is_snd_queued = tcp_is_snd_queued,
 					.accept = NULL,
 					.end_snd = tcp_end_snd};
 
+static inline void tcp_flag_conn_aborted(struct tcp_ipv4_conn *conn)
+{
+	atomic_store(&conn->aborted, true);
+}
+
 // never use for TIME_WAIT TIMER
 static bool tcp_arm_data_timer(struct tcp_ipv4_conn *conn, struct timer *t, uint64_t delay_ms)
 {
@@ -125,6 +130,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 	// RST processing
 	if (flags & TCP_RST) {
 		if (seg_seq == rcv_next) {
+			tcp_flag_conn_aborted(conn);
 			close_and_unhash_conn(conn);
 			return INC_RST_CONN_DEAD;
 		}
@@ -166,6 +172,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 
 		} else if (conn->state >= ESTABLISHED) {
 			// unexpected SYN in established session
+			tcp_flag_conn_aborted(conn);
 			tcp_fast_reply_rst(conn->tcp_layer, p, seg);
 			close_and_unhash_conn(conn);
 			return RST_UNEXPECTED_SYN;
@@ -1045,6 +1052,11 @@ void tcp_end_snd(struct stack *stack, void *sock)
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)sock;
 	struct byte_snd_buffer *buff = &conn->snd_buffer;
 	lock_snd_buff(buff);
+	if (buff->shutdown) {
+		unlock_snd_buff(buff);
+		return;
+	}
+	buff->shutdown = true;
 	sndbuf_insert_ghost_byte(buff, TCP_FIN);
 	unlock_snd_buff(buff);
 	notify_socket_readable_snd(stack->sock_manager, sock, &tcp_conn_ops);
