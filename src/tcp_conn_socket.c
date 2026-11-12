@@ -57,8 +57,8 @@ static bool tcp_arm_data_timer_if_idle(struct tcp_ipv4_conn *conn,
 }
 
 // called when RST received or passive close
-// removes conn from conn_htable
-static void rst_connection(struct tcp_ipv4_conn *conn)
+// closes and removes conn from main conn htable
+static void close_and_unhash_conn(struct tcp_ipv4_conn *conn)
 {
 	tcp_transition_to_state(conn, CLOSED);
 
@@ -125,7 +125,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 	// RST processing
 	if (flags & TCP_RST) {
 		if (seg_seq == rcv_next) {
-			rst_connection(conn);
+			close_and_unhash_conn(conn);
 			return INC_RST_CONN_DEAD;
 		}
 		// per RFC 5961
@@ -167,7 +167,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		} else if (conn->state >= ESTABLISHED) {
 			// unexpected SYN in established session
 			tcp_fast_reply_rst(conn->tcp_layer, p, seg);
-			rst_connection(conn);
+			close_and_unhash_conn(conn);
 			return RST_UNEXPECTED_SYN;
 		}
 	}
@@ -227,9 +227,8 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 								else
 									// LAST_ACK: peer's FIN came
 									// first, we're done
-									rst_connection(
-									    conn); // CLOSED + out
-										   // of conn table
+									close_and_unhash_conn(
+									    conn);
 								data_ackd--;
 								sb->ctrl_count--;
 								break;
