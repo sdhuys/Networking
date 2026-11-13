@@ -296,7 +296,10 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 					}
 
 					// pure dupe ack, no data, disregard window probe replies
-				} else if (s_len == 0 && !conn->is_wndw_probing) {
+				} else if (s_len == 0 && !conn->is_wndw_probing &&
+					   sb->snd_una != sb->snd_nxt && // data outstanding
+					   sb->snd_wndw ==
+					       prev_peer_wndw) { // window unchanged (RFC 5681, 2)
 					switch (sb->c_state) {
 					case FAST_RECOVERY:
 						sb->cwnd += conn->snd_mss;
@@ -552,14 +555,21 @@ void rto_callback(void *c)
 {
 	printf("\n        RTO callback! \n \n");
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)c;
+	struct byte_snd_buffer *sb = &conn->snd_buffer;
+
+	lock_snd_buff(sb);
+
+	// cancel_timer can't stop a callback that was already popped + an ACK may have
+	// acknowledged everything between the pop and now => no data outstanding = stale RTO.
+	if (atomic_load(&conn->data_timers_cancelled) || sb->snd_una == sb->snd_nxt) {
+		unlock_snd_buff(sb);
+		return;
+	}
 
 	pthread_mutex_lock(&conn->lock);
-
 	conn->dup_ack_cnt = 0;
 	pthread_mutex_unlock(&conn->lock);
 
-	struct byte_snd_buffer *sb = &conn->snd_buffer;
-	lock_snd_buff(sb);
 	if (atomic_load(&conn->data_timers_cancelled)) {
 		unlock_snd_buff(sb);
 		return;
@@ -967,6 +977,11 @@ struct pkt *tcp_try_get_pkt(void *s)
 	struct pkt *p;
 
 	lock_snd_buff(buff);
+	// safety net: retransmit request but no outstanding data
+	// => continue to send new data instead
+	if (buff->retransmit && buff->snd_una == buff->snd_nxt)
+		buff->retransmit = false;
+
 	uint32_t snd_seq = !buff->retransmit ? buff->snd_nxt : buff->snd_una;
 
 	uint32_t tail_seq = buff->snd_una + (uint32_t)buff->used_bytes + buff->ctrl_count;
