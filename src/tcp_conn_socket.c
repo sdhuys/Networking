@@ -998,7 +998,7 @@ struct pkt *tcp_try_get_pkt(void *s)
 	printf("WINDOW = %d \n", usable_wndw);
 	if (usable_wndw == 0) {
 		if (peer_wndw == 0)
-			start_wndw_probing_timer(conn);
+			start_wndw_probing(conn);
 		unlock_snd_buff(buff);
 		return NULL;
 	}
@@ -1049,7 +1049,7 @@ struct pkt *tcp_try_get_pkt(void *s)
 		// start probing ( => DON'T PROBE IF WE DON'T SEND BECAUSE PIPE TOO FULL)
 		if (peer_wndw < min_bytes_snd) {
 			printf("START PROBING DUE TO WINDOW = %d \n\n", peer_wndw);
-			start_wndw_probing_timer(conn);
+			start_wndw_probing(conn);
 		}
 		unlock_snd_buff(buff);
 		return NULL;
@@ -1065,7 +1065,7 @@ struct pkt *tcp_try_get_pkt(void *s)
 	return p;
 }
 
-void start_wndw_probing_timer(struct tcp_ipv4_conn *conn)
+void start_wndw_probing(struct tcp_ipv4_conn *conn)
 {
 	if (conn->is_wndw_probing)
 		return;

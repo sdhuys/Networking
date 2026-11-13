@@ -123,7 +123,7 @@ void rto_callback(void *c);
 void time_wait_callback(void *c);
 void fast_recovery(struct tcp_ipv4_conn *conn);
 void stop_wndw_probing(struct tcp_ipv4_conn *conn);
-void start_wndw_probing_timer(struct tcp_ipv4_conn *conn);
+void start_wndw_probing(struct tcp_ipv4_conn *conn);
 
 pkt_result tcp_fast_reply_pure_ack(struct pkt *p, struct tcp_ipv4_conn *conn);
 void destroy_tcp_conn(struct tcp_ipv4_conn *conn);
