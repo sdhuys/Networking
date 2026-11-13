@@ -433,6 +433,17 @@ uint32_t tcp_effective_snd_mss(bool peer_mss_present,
 	return ts_enabled ? mss - TCP_OP_TS_LEN : mss;
 }
 
+// MSS we advertise and can receive: what the route's MTU allows, capped to what fits in one
+// packet buffer. route may be NULL (no route known), which gives the 536 default.
+uint32_t tcp_calc_rcv_mss(const struct route *route)
+{
+	const uint32_t hdrs = sizeof(struct ipv4_header) + sizeof(struct tcp_header_no_options);
+	uint32_t mss = TCP_MSS_DEFAULT_FALLBACK;
+	if (route && route->mtu > hdrs + TCP_MIN_SND_MSS)
+		mss = route->mtu - hdrs;
+	return mss > TCP_MSS_MAX ? TCP_MSS_MAX : mss;
+}
+
 // create connection for id, init general values
 struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct nw_layer *tcp)
 {
@@ -483,15 +494,8 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 	conn->queued_for_snd = false;
 
 	struct tcp_context *ctx = (struct tcp_context *)tcp->context;
-	const uint32_t hdrs = sizeof(struct ipv4_header) + sizeof(struct tcp_header_no_options);
-	conn->rcv_mss = TCP_MSS_DEFAULT_FALLBACK;
-	if (get_route(ctx->routing_tbl, id->extern_addr, &conn->route) &&
-	    conn->route->mtu > hdrs + TCP_MIN_SND_MSS)
-		conn->rcv_mss = conn->route->mtu - hdrs;
-	// never advertise or send more than fits in one packet buffer, whatever the interface MTU
-	if (conn->rcv_mss > TCP_MSS_MAX)
-		conn->rcv_mss = TCP_MSS_MAX;
-
+	get_route(ctx->routing_tbl, id->extern_addr, &conn->route); // conn->route == NULL on failure
+	conn->rcv_mss = tcp_calc_rcv_mss(conn->route);
 	return conn;
 
 	// unwind in reverse order of construction; never armed, so plain free is safe
@@ -722,10 +726,11 @@ void write_pkt_tcp_general_metadata(struct tcp_ipv4_conn *conn, struct pkt *p)
 		p->tcp_options->tsecr = conn->ts_recent;
 	}
 
+	p->tcp_options->mss_present = true;
+	
 	// general settings, can be overwritten in handshake or pure acks
 	// no negotiations
 	p->tcp_options->sack_permitted = false;
-	p->tcp_options->mss_present = false;
 	p->tcp_options->wscale_present = false;
 	// no sack blocks
 	p->tcp_options->sack_block_count = 0;
@@ -912,7 +917,6 @@ struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq
 			p->tcp_options->wscale = conn->rcv_buffer.rcv_wscale;
 		}
 		p->tcp_options->mss = conn->rcv_mss;
-		p->tcp_options->mss_present = true;
 		if (conn->sack_enabled)
 			p->tcp_options->sack_permitted = true;
 	}

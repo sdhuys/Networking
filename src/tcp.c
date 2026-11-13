@@ -170,24 +170,20 @@ pkt_result tcp_fast_reply_syn_cookie(struct tcp_ipv4_listener *listener,
 	packet->tcp_ack = incoming_seq + seg_seq_len(seg);
 	packet->rcv_window = 0xFFFF;
 
-	// options: MSS and SACK encoded in cookie, can safely negotiate
-	packet->tcp_options->mss_present = seg->options->mss_present;
-	if (seg->options->mss_present) {
-		struct routing_table *table = ((struct tcp_context *)(tcp->context))->routing_tbl;
+	// options: MSS and SACK encoded in cookie, can be used
+	packet->tcp_options->mss_present = true;
+	struct routing_table *table = ((struct tcp_context *)(tcp->context))->routing_tbl;
+	if (!get_route(table, packet->dest_ip, &packet->route))
+		return SYN_COOKIE_UNROUTABLE;
+	packet->tcp_options->mss = tcp_calc_rcv_mss(packet->route);
 
-		if (!get_route(table, packet->dest_ip, &packet->route))
-			return SYN_COOKIE_UNROUTABLE;
-
-		packet->tcp_options->mss = packet->route->mtu - sizeof(struct ipv4_header) -
-					   sizeof(struct tcp_header_no_options);
-	}
 	packet->tcp_options->sack_permitted = seg->options->sack_permitted;
 
 	// wscale and timestamps lost
 	packet->tcp_options->wscale_present = false;
 	packet->tcp_options->ts_present = false;
 
-	packet->len = sizeof(*seg->header);
+	packet->len = sizeof(*seg->header) + calc_tcp_options_len(packet->tcp_options);
 	packet->offset = PKT_SIZE - packet->len;
 	printf("SENDING SYN COOKIE DOWN \n");
 	return tcp->send_down(tcp, packet);

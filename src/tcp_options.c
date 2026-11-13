@@ -114,6 +114,7 @@ bool parse_tcp_options(const unsigned char *opts, int opt_len, struct tcp_option
 	return true;
 }
 
+// sets the length in tcp_options struct and returns the value
 size_t calc_tcp_options_len(struct tcp_options *opt)
 {
 	size_t len = 0;
