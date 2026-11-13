@@ -158,6 +158,9 @@ pkt_result tcp_fast_reply_syn_cookie(struct tcp_ipv4_listener *listener,
 				     struct pkt *packet,
 				     struct tcp_segment *seg)
 {
+	if (seg->options->mss_present && !syn_cookie_can_encode_mss(seg->options->mss))
+		return COOKIE_CANNOT_ENCODE_MSS;
+
 	struct nw_layer *tcp = listener->tcp_layer;
 	packet->tcp_seq = generate_syn_cookie_iss(listener, seg, packet);
 	uint32_t incoming_seq = ntohl(seg->header->seq_num);

@@ -128,6 +128,10 @@ void start_wndw_probing_timer(struct tcp_ipv4_conn *conn);
 pkt_result tcp_fast_reply_pure_ack(struct pkt *p, struct tcp_ipv4_conn *conn);
 void destroy_tcp_conn(struct tcp_ipv4_conn *conn);
 uint32_t generate_random_iss();
+uint32_t tcp_effective_snd_mss(bool peer_mss_present,
+			       uint16_t peer_mss,
+			       uint32_t rcv_mss,
+			       bool ts_enabled);
 pkt_result process_tcp_segment(struct pkt *p,
 			       struct tcp_segment *seg,
 			       struct tcp_ipv4_conn *connection);

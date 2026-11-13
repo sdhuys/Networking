@@ -45,6 +45,11 @@ uint32_t generate_syn_cookie_iss(struct tcp_ipv4_listener *listener,
 	return iss;
 }
 
+bool syn_cookie_can_encode_mss(uint16_t mss)
+{
+	return mss >= mss_enc_table[0];
+}
+
 uint8_t mss_encode(uint16_t mss)
 {
 	for (int i = COOKIE_MSS_VAL_COUNT - 1; i >= 0; i--) {
@@ -113,7 +118,6 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 
 	// negotiated options
 	conn->sack_enabled = sack_permitted;
-	conn->snd_mss = mss;
 
 	// lost options/features
 	conn->ece_enabled = 0;
@@ -122,15 +126,10 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	conn->snd_buffer.snd_wscale = 0;
 
 	struct tcp_context *cntx = (struct tcp_context *)(listener->tcp_layer->context);
-	struct routing_table *table = cntx->routing_tbl;
 
-	if (get_route(table, conn->extern_addr, &conn->route)) {
-		conn->rcv_mss = conn->route->mtu - sizeof(struct ipv4_header) -
-				sizeof(struct tcp_header_no_options);
-	} else {
-		conn->rcv_mss = TCP_MSS_DEFAULT_FALLBACK;
-	}
-
+	// rcv_mss and route already set by create_init_tcp_connection
+	// cookie MSS is always >= 536, and cookie connections never use timestamps
+	conn->snd_mss = tcp_effective_snd_mss(true, mss, conn->rcv_mss, false);
 	conn->snd_buffer.cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
 
 	conn->iss = cookie;

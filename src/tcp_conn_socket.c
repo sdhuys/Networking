@@ -1,6 +1,7 @@
 #include "tcp_conn_socket.h"
 #include "buffer_pool.h"
 #include "container_of.h"
+#include "ethernet.h"
 #include "ipv4.h"
 #include "nw_layer.h"
 #include "pkt.h"
@@ -21,6 +22,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/random.h>
+
+// one full-sized segment plus the IPv4 and Ethernet headers added below TCP must fit in a pkt
+// buffer
+_Static_assert(TCP_MSS_MAX + sizeof(struct tcp_header_no_options) + sizeof(struct ipv4_header) +
+		       sizeof(struct ethernet_header) <=
+		   PKT_SIZE,
+	       "TCP_MSS_MAX does not fit in a packet buffer");
+_Static_assert(TCP_MIN_SND_MSS > TCP_OP_TS_LEN, "TCP_MIN_SND_MSS must leave room for payload");
 
 const struct socket_ops tcp_conn_ops = {.is_snd_queued = tcp_is_snd_queued,
 					.set_snd_queued = tcp_set_snd_queued,
@@ -153,11 +162,11 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 			conn->rcv_buffer.consumed_seq = seg_seq;
 			conn->ts_enabled = seg->options->ts_present;
 			conn->sack_enabled = seg->options->sack_permitted;
-			if (seg->options->mss_present) {
-				conn->snd_mss =
-				    seg->options->mss - (conn->ts_enabled ? TCP_OP_TS_LEN : 0);
-				conn->snd_buffer.cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
-			}
+			conn->snd_mss = tcp_effective_snd_mss(seg->options->mss_present,
+							      seg->options->mss,
+							      conn->rcv_mss,
+							      conn->ts_enabled);
+			conn->snd_buffer.cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
 
 			if (!(flags & TCP_ACK)) {
 				// simultaneous open: received SYN while expecting SYN-ACK
@@ -409,6 +418,21 @@ uint32_t generate_random_iss()
 	return x;
 }
 
+// effective send MSS: the peer's MSS (536 if it sent none), never above our own rcv_mss,
+// never below TCP_MIN_SND_MSS, minus the timestamp option that every segment then carries
+uint32_t tcp_effective_snd_mss(bool peer_mss_present,
+			       uint16_t peer_mss,
+			       uint32_t rcv_mss,
+			       bool ts_enabled)
+{
+	uint32_t mss = peer_mss_present ? peer_mss : TCP_MSS_DEFAULT_FALLBACK;
+	if (mss > rcv_mss)
+		mss = rcv_mss;
+	if (mss < TCP_MIN_SND_MSS)
+		mss = TCP_MIN_SND_MSS;
+	return ts_enabled ? mss - TCP_OP_TS_LEN : mss;
+}
+
 // create connection for id, init general values
 struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct nw_layer *tcp)
 {
@@ -457,13 +481,16 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 	conn->lstnr = NULL;
 	conn->snd_buffer.snd_wscale = 0;
 	conn->queued_for_snd = false;
-	if (get_route(
-		((struct tcp_context *)tcp->context)->routing_tbl, id->extern_addr, &conn->route)) {
-		conn->rcv_mss = conn->route->mtu - sizeof(struct ipv4_header) -
-				sizeof(struct tcp_header_no_options);
-	} else {
-		conn->rcv_mss = TCP_MSS_DEFAULT_FALLBACK;
-	}
+
+	struct tcp_context *ctx = (struct tcp_context *)tcp->context;
+	const uint32_t hdrs = sizeof(struct ipv4_header) + sizeof(struct tcp_header_no_options);
+	conn->rcv_mss = TCP_MSS_DEFAULT_FALLBACK;
+	if (get_route(ctx->routing_tbl, id->extern_addr, &conn->route) &&
+	    conn->route->mtu > hdrs + TCP_MIN_SND_MSS)
+		conn->rcv_mss = conn->route->mtu - hdrs;
+	// never advertise or send more than fits in one packet buffer, whatever the interface MTU
+	if (conn->rcv_mss > TCP_MSS_MAX)
+		conn->rcv_mss = TCP_MSS_MAX;
 
 	return conn;
 
@@ -605,13 +632,8 @@ void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *
 	conn->sack_enabled = opt->sack_permitted;
 	conn->ts_enabled = opt->ts_present;
 	conn->wscale_enabled = opt->wscale_present;
-	if (opt->mss_present) {
-		uint16_t mss = opt->mss;
-		conn->snd_mss = mss < TCP_MSS_DEFAULT_FALLBACK ? TCP_MSS_DEFAULT_FALLBACK : mss;
-		conn->snd_mss -= (conn->ts_enabled ? TCP_OP_TS_LEN : 0);
-	} else {
-		conn->snd_mss = TCP_MSS_DEFAULT_FALLBACK;
-	}
+	conn->snd_mss =
+	    tcp_effective_snd_mss(opt->mss_present, opt->mss, conn->rcv_mss, conn->ts_enabled);
 	conn->snd_buffer.cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
 
 	if (opt->wscale_present)
@@ -902,6 +924,13 @@ struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq
 	// write data to packet buffer
 	p->len = payload_len + sizeof(struct tcp_header_no_options) +
 		 calc_tcp_options_len(p->tcp_options);
+
+	if (p->len + sizeof(struct ipv4_header) + sizeof(struct ethernet_header) > PKT_SIZE) {
+		assert(!"TCP segment larger than packet buffer");
+		release_pkt(p);
+		return NULL;
+	}
+
 	p->offset = PKT_SIZE - p->len;
 	size_t data_offset = PKT_SIZE - payload_len;
 	read_from_snd_buff(&conn->snd_buffer, p->data + data_offset, payload_len);

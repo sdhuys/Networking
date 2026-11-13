@@ -4,9 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define TCP_MIN_SND_MSS 48
 #define TCP_MSS_MAX 1460
 #define TCP_MSS_DEFAULT_FALLBACK 536
-#define MAX_SACK_BLOCKS 4
 
 #define TCP_FIN 0x01 // 0000 0001
 #define TCP_SYN 0x02 // 0000 0010

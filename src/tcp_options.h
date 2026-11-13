@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #define TCP_OP_TS_LEN 12
-#define TCP_HEADER_MAX_SACK 4
+#define TCP_HEADER_MAX_SACK 4 // upper limit when no TIMESTAMPS, with TIMESTAMPS max is 3
 
 struct tcp_options {
 	bool mss_present;
@@ -17,7 +17,7 @@ struct tcp_options {
 	bool sack_permitted;
 
 	int sack_block_count;
-	struct ooo_seg sacks[MAX_SACK_BLOCKS];
+	struct ooo_seg sacks[TCP_HEADER_MAX_SACK];
 
 	bool ts_present;
 	uint32_t tsval;

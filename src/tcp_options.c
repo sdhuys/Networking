@@ -15,6 +15,7 @@
 #define TCP_MAX_WSCALE 14
 #define TCP_MAX_OPT_LEN 40
 
+// converts values to host byte order
 bool parse_tcp_options(const unsigned char *opts, int opt_len, struct tcp_options *out)
 {
 	int i = 0;
@@ -78,8 +79,8 @@ bool parse_tcp_options(const unsigned char *opts, int opt_len, struct tcp_option
 			// Length is 2 + (8 * num_blocks)
 			if (len >= 10 && ((len - 2) % 8 == 0)) {
 				int blocks_in_pkt = (len - 2) / 8;
-				out->sack_block_count = (blocks_in_pkt > MAX_SACK_BLOCKS)
-							    ? MAX_SACK_BLOCKS
+				out->sack_block_count = (blocks_in_pkt > TCP_HEADER_MAX_SACK)
+							    ? TCP_HEADER_MAX_SACK
 							    : blocks_in_pkt;
 
 				for (int b = 0; b < out->sack_block_count; b++) {
@@ -135,8 +136,8 @@ size_t calc_tcp_options_len(struct tcp_options *opt)
 	if (opt->sack_block_count > 0) {
 		while (len & 3)
 			len++; // account for NOPs
-		int n = (opt->sack_block_count > MAX_SACK_BLOCKS) ? MAX_SACK_BLOCKS
-								  : opt->sack_block_count;
+		int n = (opt->sack_block_count > TCP_HEADER_MAX_SACK) ? TCP_HEADER_MAX_SACK
+								      : opt->sack_block_count;
 		len += 2 + (8 * n);
 	}
 
@@ -196,8 +197,8 @@ size_t tcp_serialize_options(unsigned char *buf, const struct tcp_options *opt)
 		while (((p - buf) & 3) && enough_space(p, end, 1))
 			*p++ = TCP_OPT_NOP;
 
-		int n = (opt->sack_block_count > MAX_SACK_BLOCKS) ? MAX_SACK_BLOCKS
-								  : opt->sack_block_count;
+		int n = (opt->sack_block_count > TCP_HEADER_MAX_SACK) ? TCP_HEADER_MAX_SACK
+								      : opt->sack_block_count;
 		size_t sack_len = 2 + (8 * n);
 
 		if (enough_space(p, end, sack_len)) {
