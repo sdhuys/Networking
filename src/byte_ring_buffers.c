@@ -307,7 +307,7 @@ static bool sack_already_chosen(const struct ooo_seg *out, size_t count, const s
 }
 
 // chooses the SACK blocks to report and writes them to out[] per (RFC 2018, 4):
-// most recently reported SACK blocks first
+// most recently arrived SACK blocks first
 // then if slots remain, the highest stored blocks not already chosen
 // Returns the number of blocks written, at most max
 // caller must hold rcv_buffer lock
