@@ -2,6 +2,7 @@
 #include "tcp_conn_socket.h"
 #include "timer.h"
 #include <arpa/inet.h>
+#include <assert.h>
 #include <string.h>
 
 #define TCP_OPT_EOL 0
@@ -134,11 +135,11 @@ size_t calc_tcp_options_len(struct tcp_options *opt)
 		len += 10;
 	}
 
+	uint8_t max_sacks = opt->ts_present ? TCP_HEADER_MAX_SACK_WITH_TS : TCP_HEADER_MAX_SACK;
 	if (opt->sack_block_count > 0) {
 		while (len & 3)
 			len++; // account for NOPs
-		int n = (opt->sack_block_count > TCP_HEADER_MAX_SACK) ? TCP_HEADER_MAX_SACK
-								      : opt->sack_block_count;
+		int n = (opt->sack_block_count > max_sacks) ? max_sacks : opt->sack_block_count;
 		len += 2 + (8 * n);
 	}
 
@@ -154,6 +155,8 @@ static inline int enough_space(uint8_t *p, uint8_t *end, size_t n)
 
 size_t tcp_serialize_options(unsigned char *buf, const struct tcp_options *opt)
 {
+	assert(opt->length <= 40);
+
 	unsigned char *p = buf;
 	unsigned char *end = buf + opt->length;
 

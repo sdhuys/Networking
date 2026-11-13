@@ -494,7 +494,8 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 	conn->queued_for_snd = false;
 
 	struct tcp_context *ctx = (struct tcp_context *)tcp->context;
-	get_route(ctx->routing_tbl, id->extern_addr, &conn->route); // conn->route == NULL on failure
+	get_route(
+	    ctx->routing_tbl, id->extern_addr, &conn->route); // conn->route == NULL on failure
 	conn->rcv_mss = tcp_calc_rcv_mss(conn->route);
 	return conn;
 

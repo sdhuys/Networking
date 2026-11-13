@@ -1,7 +1,7 @@
 #pragma once
 #include "pkt_result.h"
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 struct tcp_ipv4_listener;
 struct tcp_segment;

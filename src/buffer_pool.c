@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <stdalign.h>
 #include <stdio.h>
+#include <string.h>
 
 alignas(64) static unsigned char buffer_pool[PKT_BUFF_POOL_SIZE][PKT_SIZE];
 static struct pkt pkt_pool[PKT_BUFF_POOL_SIZE];
@@ -28,6 +29,7 @@ void init_buffer_pool()
 	pthread_mutex_unlock(&pool_mutex);
 }
 
+// sets ref_count to 1 (implicit retain)
 struct pkt *allocate_pkt()
 {
 	pthread_mutex_lock(&pool_mutex);
@@ -44,6 +46,7 @@ struct pkt *allocate_pkt()
 	       top_free_index + 1);
 	p->ref_count = 1;
 	p->route = NULL;
+	memset(p->tcp_options, 0, sizeof(*p->tcp_options));
 
 	pthread_mutex_unlock(&pool_mutex);
 	return p;
