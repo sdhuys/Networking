@@ -556,7 +556,6 @@ void zwp_callback(void *c)
 
 	conn->tcp_layer->send_down(conn->tcp_layer, p);
 	release_pkt(p);
-	start_wndw_probing_timer(conn);
 }
 
 void rto_callback(void *c)
@@ -1068,11 +1067,10 @@ struct pkt *tcp_try_get_pkt(void *s)
 
 void start_wndw_probing_timer(struct tcp_ipv4_conn *conn)
 {
-	if (!conn->is_wndw_probing)
-		conn->is_wndw_probing = true;
-	else
+	if (conn->is_wndw_probing)
 		return;
 
+	conn->is_wndw_probing = true;
 	conn->zwp_interval = conn->rto_interval;
 	if (conn->zwp_interval > TCP_MAX_ZWP_MS)
 		conn->zwp_interval = TCP_MAX_ZWP_MS;
