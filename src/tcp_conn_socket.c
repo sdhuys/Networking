@@ -349,7 +349,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 				pthread_cond_broadcast(&sb->cond);
 				// add socket to tx queue to send out potential new packets
 				notify_socket_readable_snd(smgr, conn, &tcp_conn_ops);
-			} else if (conn->is_wndw_probing && window_update) {
+			} else if (conn->is_wndw_probing && window_update) { // don't stop window probing yet, sender might suffer from silly-window syndrome
 				notify_socket_readable_snd(smgr, conn, &tcp_conn_ops);
 			}
 
@@ -531,6 +531,13 @@ void zwp_callback(void *c)
 		return;
 	}
 	uint32_t probe_seq = sb->snd_una - 1;
+
+	// keep probing until windows opens (stop_wndw_probing will get called)
+	conn->zwp_interval *= 2;
+	if (conn->zwp_interval > TCP_MAX_ZWP_MS)
+		conn->zwp_interval = TCP_MAX_ZWP_MS;
+	tcp_arm_data_timer(conn, conn->zwp_timer, conn->zwp_interval);
+
 	unlock_snd_buff(sb);
 
 	struct pkt *p = allocate_pkt();
@@ -549,6 +556,7 @@ void zwp_callback(void *c)
 
 	conn->tcp_layer->send_down(conn->tcp_layer, p);
 	release_pkt(p);
+	start_wndw_probing_timer(conn);
 }
 
 void rto_callback(void *c)
@@ -1005,9 +1013,9 @@ struct pkt *tcp_try_get_pkt(void *s)
 		uint32_t len_to_reach_ctrl = (buff->ctrl[0].seq - snd_seq) + 1;
 		if (usable_wndw >= len_to_reach_ctrl && conn->snd_mss > len_to_reach_ctrl) {
 			p = create_tcp_packet(conn, snd_seq, len_to_reach_ctrl);
-			unlock_snd_buff(buff);
 			if (conn->is_wndw_probing)
 				stop_wndw_probing(conn);
+			unlock_snd_buff(buff);
 			return p;
 		}
 	}
@@ -1050,24 +1058,26 @@ struct pkt *tcp_try_get_pkt(void *s)
 
 	printf("CREATING PKT SEQ: %u, LEN: %d \n", snd_seq, min_bytes_snd);
 	p = create_tcp_packet(conn, snd_seq, min_bytes_snd);
-	unlock_snd_buff(buff);
 
 	if (conn->is_wndw_probing)
 		stop_wndw_probing(conn);
+	unlock_snd_buff(buff);
+
 	return p;
 }
 
 void start_wndw_probing_timer(struct tcp_ipv4_conn *conn)
 {
-	struct timer_manager *timer_mgr =
-	    (struct timer_manager *)((struct tcp_context *)conn->tcp_layer->context)->timer_mgr;
-	conn->zwp_interval = conn->is_wndw_probing ? conn->zwp_interval * 2 : conn->rto_interval;
+	if (!conn->is_wndw_probing)
+		conn->is_wndw_probing = true;
+	else
+		return;
+
+	conn->zwp_interval = conn->rto_interval;
 	if (conn->zwp_interval > TCP_MAX_ZWP_MS)
 		conn->zwp_interval = TCP_MAX_ZWP_MS;
 	printf("ZERO WINDOW TIMER STARTING AT %d MS", conn->zwp_interval);
-	if (!conn->is_wndw_probing)
-		conn->is_wndw_probing = true;
-	cancel_timer(timer_mgr, conn->rto_timer);
+
 	tcp_arm_data_timer(conn, conn->zwp_timer, conn->zwp_interval);
 }
 
