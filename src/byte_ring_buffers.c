@@ -247,6 +247,94 @@ static size_t write_unwritten_bytes(struct byte_reassembly_rcv_buffer *b,
 	return written;
 }
 
+// finds the stored out-of-order block that contains seq
+// returns false if seq isn't inside any block
+// caller must hold rcv_buffer lock
+static bool find_ooo_block(struct byte_reassembly_rcv_buffer *b, uint32_t seq, size_t *idx)
+{
+	size_t i = bin_search_seq_after_eq_indx(seq + 1, b->ooo_segs, b->ooo_count);
+	if (i == 0)
+		return false; // every block starts after seq
+	i--;
+	if (!tcp_seq_before(seq, b->ooo_segs[i].end_seq))
+		return false; // seq lies in gap between two blocks
+	*idx = i;
+	return true;
+}
+
+// records new ooo arrival in the SACK recency list
+// called after ooo_seg is inserted and possibly merged with earlier ooo segs
+// caller must hold rcv_buffer lock
+static void note_ooo_arrival(struct byte_reassembly_rcv_buffer *b, uint32_t seq)
+{
+	size_t blk;
+	if (!find_ooo_block(b, seq, &blk))
+		return; // segment wasn't stored (block array full?)
+
+	uint32_t s = b->ooo_segs[blk].start_seq;
+	uint32_t e = b->ooo_segs[blk].end_seq;
+
+	uint32_t out[TCP_HEADER_MAX_SACK];
+	size_t n = 0;
+	out[n++] = seq; // newest first
+	for (size_t i = 0; i < b->sack_recent_count && n < TCP_HEADER_MAX_SACK; i++) {
+		uint32_t r = b->sack_recent[i];
+		if (!(tcp_seq_before_eq(s, r) &&
+		      tcp_seq_before(r, e))) // not in the new block, not merged earlier
+			out[n++] = r;	     // keep in array, after earlier ones
+	}
+	memcpy(b->sack_recent, out, n * sizeof(out[0]));
+	b->sack_recent_count = n;
+}
+
+// drops recency entries whose blocks became contiguous data when rcv_nxt advanced
+// caller must hold rcv_buffer lock
+static void purge_sack_recent(struct byte_reassembly_rcv_buffer *b)
+{
+	size_t keep = 0;
+	for (size_t i = 0; i < b->sack_recent_count; i++)
+		if (tcp_seq_after_eq(b->sack_recent[i], b->rcv_nxt))
+			b->sack_recent[keep++] = b->sack_recent[i];
+	b->sack_recent_count = keep;
+}
+
+static bool sack_already_chosen(const struct ooo_seg *out, size_t count, const struct ooo_seg *blk)
+{
+	for (size_t j = 0; j < count; j++)
+		if (out[j].start_seq == blk->start_seq)
+			return true;
+	return false;
+}
+
+// chooses the SACK blocks to report and writes them to out[] per (RFC 2018, 4):
+// most recently reported SACK blocks first
+// then if slots remain, the highest stored blocks not already chosen
+// Returns the number of blocks written, at most max
+// caller must hold rcv_buffer lock
+size_t rcv_buff_choose_sack_blocks(struct byte_reassembly_rcv_buffer *b,
+				   struct ooo_seg *out,
+				   size_t max)
+{
+	size_t count = 0;
+
+	// most recently arrived blocks first
+	for (size_t i = 0; i < b->sack_recent_count && count < max; i++) {
+		size_t blk;
+		if (!find_ooo_block(b, b->sack_recent[i], &blk))
+			continue; // block no longer exists (overtaken by rcv_nxt, or evicted)
+		if (!sack_already_chosen(out, count, &b->ooo_segs[blk]))
+			out[count++] = b->ooo_segs[blk];
+	}
+
+	// fill remaining slots from the highest blocks down
+	for (size_t i = b->ooo_count; i > 0 && count < max; i--) {
+		const struct ooo_seg *blk = &b->ooo_segs[i - 1];
+		if (!sack_already_chosen(out, count, blk))
+			out[count++] = *blk;
+	}
+	return count;
+}
+
 // only called when segment is (partly) within receive buffer
 // writes a tcp segment into the receive buffer, either contigously or leaves appropriate gap space
 // if segment is out of order keeps track of ooo_segments metadata, merges if possible "first
@@ -312,6 +400,7 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b,
 				(b->ooo_count - 1) * sizeof(b->ooo_segs[0]));
 			b->ooo_count--;
 		}
+		purge_sack_recent(b);
 		unlock_rcv_buff(b);
 		pthread_cond_broadcast(&b->cond);
 	} else {
@@ -329,6 +418,7 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b,
 			struct ooo_seg seg = {.start_seq = data_seq,
 					      .end_seq = data_seq + data_len};
 			insert_ooo_segment(b->ooo_segs, &b->ooo_count, b->ooo_capacity, seg, ooo_i);
+			note_ooo_arrival(b, seg.start_seq);
 		}
 		unlock_rcv_buff(b);
 	}

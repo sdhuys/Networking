@@ -1,5 +1,6 @@
 #pragma once
 #include "tcp_common_types.h"
+#include "tcp_options.h"
 #include <pthread.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -28,6 +29,10 @@ struct byte_reassembly_rcv_buffer {
 	struct ooo_seg ooo_segs[MAX_OOO_RCV_SEG_STORED]; // ordered by seq, binary search + shifting
 	size_t ooo_count;
 	size_t ooo_capacity;
+
+	uint32_t sack_recent[TCP_HEADER_MAX_SACK]; // holds one sequence number per SACK block we
+						   // want to report, newest first. (RFC 2018)
+	uint8_t sack_recent_count; // max 4
 
 	uint16_t rcv_wnd;   // our last advertised rcv_window
 	uint8_t rcv_wscale; // our scale
@@ -99,6 +104,11 @@ ssize_t blocking_write_all_to_snd_buff(struct byte_snd_buffer *b, unsigned char 
 void read_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t len);
 void insert_ooo_segment(
     struct ooo_seg *segs, size_t *count, size_t capacity, struct ooo_seg seg, size_t idx);
+static void note_ooo_arrival(struct byte_reassembly_rcv_buffer *b, uint32_t seq);
+size_t rcv_buff_choose_sack_blocks(struct byte_reassembly_rcv_buffer *b,
+				   struct ooo_seg *out,
+				   size_t max);
+
 size_t bin_search_seq_after_eq_indx(uint32_t seq, struct ooo_seg *segs, size_t count);
 size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b,
 				    struct tcp_segment *seg,

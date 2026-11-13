@@ -196,7 +196,6 @@ pkt_result tcp_fast_reply_rst(struct nw_layer *tcp, struct pkt *packet, struct t
 	uint32_t incoming_ack = ntohl(seg->header->ack_num);
 
 	init_reply_packet_from_incoming(packet, seg);
-	memset(packet->tcp_options, 0, sizeof(*packet->tcp_options));
 
 	packet->len = sizeof(*seg->header);
 	packet->offset = PKT_SIZE - sizeof(*seg->header);

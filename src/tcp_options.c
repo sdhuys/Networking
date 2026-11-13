@@ -135,11 +135,11 @@ size_t calc_tcp_options_len(struct tcp_options *opt)
 		len += 10;
 	}
 
-	uint8_t max_sacks = opt->ts_present ? TCP_HEADER_MAX_SACK_WITH_TS : TCP_HEADER_MAX_SACK;
-	if (opt->sack_block_count > 0) {
+	int n = opt->sack_block_count;
+	if (n > 0) {
 		while (len & 3)
 			len++; // account for NOPs
-		int n = (opt->sack_block_count > max_sacks) ? max_sacks : opt->sack_block_count;
+
 		len += 2 + (8 * n);
 	}
 
@@ -196,13 +196,12 @@ size_t tcp_serialize_options(unsigned char *buf, const struct tcp_options *opt)
 		}
 	}
 
-	if (opt->sack_block_count > 0) {
+	int n = opt->sack_block_count;
+	if (n > 0) {
 		// internal alignment
 		while (((p - buf) & 3) && enough_space(p, end, 1))
 			*p++ = TCP_OPT_NOP;
 
-		int n = (opt->sack_block_count > TCP_HEADER_MAX_SACK) ? TCP_HEADER_MAX_SACK
-								      : opt->sack_block_count;
 		size_t sack_len = 2 + (8 * n);
 
 		if (enough_space(p, end, sack_len)) {

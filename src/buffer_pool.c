@@ -44,11 +44,12 @@ struct pkt *allocate_pkt()
 	       p->pool_index,
 	       p->ref_count,
 	       top_free_index + 1);
+
+	pthread_mutex_unlock(&pool_mutex);
 	p->ref_count = 1;
 	p->route = NULL;
 	memset(p->tcp_options, 0, sizeof(*p->tcp_options));
 
-	pthread_mutex_unlock(&pool_mutex);
 	return p;
 }
 

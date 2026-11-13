@@ -674,13 +674,10 @@ pkt_result tcp_fast_reply_pure_ack(struct pkt *p, struct tcp_ipv4_conn *conn)
 	// set SACK
 	if (conn->sack_enabled) {
 		struct byte_reassembly_rcv_buffer *buff = &conn->rcv_buffer;
+		size_t max = conn->ts_enabled ? TCP_HEADER_MAX_SACK_WITH_TS : TCP_HEADER_MAX_SACK;
 		lock_rcv_buff(buff);
-		size_t count =
-		    buff->ooo_count > TCP_HEADER_MAX_SACK ? TCP_HEADER_MAX_SACK : buff->ooo_count;
-		p->tcp_options->sack_block_count = count;
-		for (size_t i = 0; i < count; i++) {
-			p->tcp_options->sacks[i] = buff->ooo_segs[i];
-		}
+		p->tcp_options->sack_block_count =
+		    rcv_buff_choose_sack_blocks(buff, p->tcp_options->sacks, max);
 		unlock_rcv_buff(buff);
 	}
 
