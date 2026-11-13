@@ -726,10 +726,9 @@ void write_pkt_tcp_general_metadata(struct tcp_ipv4_conn *conn, struct pkt *p)
 		p->tcp_options->tsecr = conn->ts_recent;
 	}
 
-	p->tcp_options->mss_present = true;
-	
 	// general settings, can be overwritten in handshake or pure acks
 	// no negotiations
+	p->tcp_options->mss_present = false;
 	p->tcp_options->sack_permitted = false;
 	p->tcp_options->wscale_present = false;
 	// no sack blocks
@@ -916,6 +915,7 @@ struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq
 			p->tcp_options->wscale_present = true;
 			p->tcp_options->wscale = conn->rcv_buffer.rcv_wscale;
 		}
+		p->tcp_options->mss_present = true;
 		p->tcp_options->mss = conn->rcv_mss;
 		if (conn->sack_enabled)
 			p->tcp_options->sack_permitted = true;
