@@ -570,11 +570,6 @@ void rto_callback(void *c)
 	conn->dup_ack_cnt = 0;
 	pthread_mutex_unlock(&conn->lock);
 
-	if (atomic_load(&conn->data_timers_cancelled)) {
-		unlock_snd_buff(sb);
-		return;
-	}
-
 	sb->c_state = SLOW_START;
 	sb->cwnd = conn->snd_mss;
 	sb->retransmit = true;
