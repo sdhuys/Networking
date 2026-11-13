@@ -104,7 +104,6 @@ ssize_t blocking_write_all_to_snd_buff(struct byte_snd_buffer *b, unsigned char 
 void read_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t len);
 void insert_ooo_segment(
     struct ooo_seg *segs, size_t *count, size_t capacity, struct ooo_seg seg, size_t idx);
-static void note_ooo_arrival(struct byte_reassembly_rcv_buffer *b, uint32_t seq);
 size_t rcv_buff_choose_sack_blocks(struct byte_reassembly_rcv_buffer *b,
 				   struct ooo_seg *out,
 				   size_t max);
