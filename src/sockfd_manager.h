@@ -20,6 +20,7 @@ int sockfd_manager_init(struct sockfd_manager *mgr);
 int get_sockfd(struct sockfd_manager *mgr);
 void sockfd_free(struct sockfd_manager *fd_mgr, int fd);
 void assign_sock_h(struct sockfd_manager *fd_mgr, int fd, struct socket_handle h);
+int unassign_sock_h(struct sockfd_manager *fd_mgr, int fd, struct socket_handle *out);
 int get_socket_handle(struct sockfd_manager *fd_mgr, int fd, struct socket_handle *out);
 
 #ifdef __cplusplus

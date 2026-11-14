@@ -36,6 +36,7 @@ int get_sockfd(struct sockfd_manager *fd_mgr)
 	return fd;
 }
 
+// called on error paths
 void sockfd_free(struct sockfd_manager *fd_mgr, int fd)
 {
 	pthread_mutex_lock(&fd_mgr->fds_lock);
@@ -52,6 +53,29 @@ void assign_sock_h(struct sockfd_manager *fd_mgr, int fd, struct socket_handle h
 	pthread_mutex_lock(&fd_mgr->fds_lock);
 	fd_mgr->fd_sockets[fd] = h;
 	pthread_mutex_unlock(&fd_mgr->fds_lock);
+}
+
+// removes fd's handle from the table and frees the fd
+// protects against multiple concurrent closes, only first one will succeed
+// caller gets tables' ref of the socket and must release it
+int unassign_sock_h(struct sockfd_manager *fd_mgr, int fd, struct socket_handle *out)
+{
+	if (fd < 0 || fd >= MAX_SOCKETS)
+		return -1;
+
+	pthread_mutex_lock(&fd_mgr->fds_lock);
+	struct socket_handle h = fd_mgr->fd_sockets[fd];
+	if (!h.sock || !h.ops) {
+		pthread_mutex_unlock(&fd_mgr->fds_lock);
+		return -1;
+	}
+	fd_mgr->fd_sockets[fd].sock = NULL;
+	fd_mgr->fd_sockets[fd].ops = NULL;
+	fd_mgr->free_stack[++fd_mgr->top_free_index] = fd;
+	pthread_mutex_unlock(&fd_mgr->fds_lock);
+
+	*out = h;
+	return 0;
 }
 
 // retains the socket, caller should release

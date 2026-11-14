@@ -30,12 +30,15 @@ int open_listener(struct stack *stack, socket_type type, uint16_t local_port)
 int receive(struct stack *stack, int sockfd, unsigned char *buff, size_t len)
 {
 	struct socket_handle h;
-	int r = get_socket_handle(stack->sock_manager->sockfd_manager, sockfd, &h);
+	struct sockfd_manager *sockfd_mgr = stack->sock_manager->sockfd_manager;
+	int r = get_socket_handle(sockfd_mgr, sockfd, &h);
 	if (r < 0)
 		return -1; // INVALID FD
 
-	if (!h.ops->read_rcv_buffer)
+	if (!h.ops->read_rcv_buffer) {
+		h.ops->release(h.sock);
 		return -2; // INVALID SOCKET TYPE
+	}
 
 	ssize_t bytes_read = h.ops->read_rcv_buffer(h.sock, len, buff);
 	h.ops->release(h.sock);
@@ -50,12 +53,15 @@ int receive_from(struct stack *stack,
 		 uint16_t *port_out)
 {
 	struct socket_handle h;
-	int r = get_socket_handle(stack->sock_manager->sockfd_manager, sockfd, &h);
+	struct sockfd_manager *sockfd_mgr = stack->sock_manager->sockfd_manager;
+	int r = get_socket_handle(sockfd_mgr, sockfd, &h);
 	if (r < 0)
 		return -1; // INVALID FD
 
-	if (!h.ops->read_rcv_buffer_from)
+	if (!h.ops->read_rcv_buffer_from) {
+		h.ops->release(h.sock);
 		return -2; // INVALID SOCKET TYPE
+	}
 
 	ssize_t bytes_read = h.ops->read_rcv_buffer_from(h.sock, len, buff, addr_out, port_out);
 	h.ops->release(h.sock);
@@ -65,12 +71,15 @@ int receive_from(struct stack *stack,
 int send_down(struct stack *stack, int sockfd, struct send_request *req)
 {
 	struct socket_handle h;
-	int r = get_socket_handle(stack->sock_manager->sockfd_manager, sockfd, &h);
+	struct sockfd_manager *sockfd_mgr = stack->sock_manager->sockfd_manager;
+	int r = get_socket_handle(sockfd_mgr, sockfd, &h);
 	if (r < 0)
 		return r;
 
-	if (!h.ops->write_to_snd_buffer)
+	if (!h.ops->write_to_snd_buffer) {
+		h.ops->release(h.sock);
 		return -2; // INVALID SOCK TYPE!
+	}
 
 	ssize_t written_bytes = h.ops->write_to_snd_buffer(stack, h.sock, req);
 	h.ops->release(h.sock);
@@ -80,14 +89,11 @@ int send_down(struct stack *stack, int sockfd, struct send_request *req)
 int close_socket(struct stack *stack, int sockfd)
 {
 	struct socket_handle h;
-	int r = get_socket_handle(stack->sock_manager->sockfd_manager, sockfd, &h);
+	int r = take_socket_handle(stack->sock_manager->sockfd_manager, sockfd, &h);
 	if (r < 0)
 		return r;
 
 	h.ops->close(stack, h.sock);
-	h.ops->release(h.sock);
-
-	sockfd_free(stack->sock_manager->sockfd_manager, sockfd);
 	h.ops->release(h.sock);
 	return 0;
 }
@@ -101,11 +107,16 @@ int accept_connection(struct stack *stack, int sockfd)
 
 	struct socket_handle lis_h;
 	int r = get_socket_handle(sockfd_mgr, sockfd, &lis_h);
-	if (r < 0)
+	if (r < 0) {
+		sockfd_free(sockfd_mgr, fd);
 		return r;
+	}
 
-	if (!lis_h.ops->accept)
+	if (!lis_h.ops->accept) {
+		lis_h.ops->release(lis_h.sock);
+		sockfd_free(sockfd_mgr, fd);
 		return -2; // INVALID SOCKET TYPE
+	}
 
 	struct tcp_ipv4_conn *conn = lis_h.ops->accept(
 	    lis_h.sock); // app takes over con ref from q, no need for extra retain
@@ -133,12 +144,15 @@ int tcp_connect(struct stack *stack,
 	memcpy(id.extern_addr, extern_addr, IPV4_ADDR_LEN);
 	memcpy(id.loc_addr, stack->local_address, IPV4_ADDR_LEN);
 
-	struct tcp_ipv4_conn *c;
-	if ((c = query_tcp_conn_hashtable(htable, &id)) == 1 ||
-	    (c = query_tcp_conn_hashtable(tw_htable, &id)) == 1)
+	struct tcp_ipv4_conn *conn;
+	if ((conn = query_tcp_conn_hashtable(htable, &id)) ||
+	    (conn = query_tcp_conn_hashtable(tw_htable, &id))) {
+		release_tcp_conn(conn);
+		sockfd_free(sockfd_mgr, fd);
 		return -1; // CONNECTION ALREADY IN USE
+	}
 
-	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, stack->tcp_layer);
+	conn = create_init_tcp_connection(&id, stack->tcp_layer);
 	if (!conn)
 		return -4; // FAILED TO CREATE CONNECTION
 
@@ -147,6 +161,7 @@ int tcp_connect(struct stack *stack,
 	if (!add_to_tcp_conn_hashtable(htable, conn)) {
 		tcp_transition_to_state(conn, CLOSED);
 		release_tcp_conn(conn);
+		sockfd_free(sockfd_mgr, fd);
 		return -3; // FAILED TO ADD CONN TO HTABLE
 	}
 
@@ -158,6 +173,7 @@ int tcp_connect(struct stack *stack,
 		if (conn->state == CLOSED) {
 			tcp_unlock_conn(conn);
 			release_tcp_conn(conn);
+			sockfd_free(sockfd_mgr, fd);
 			return -2; // CONNECTION FAILED
 		}
 
@@ -176,8 +192,10 @@ int tcp_end_send(struct stack *stack, int sockfd)
 	if (r < 0)
 		return r;
 
-	if (!h.ops->end_snd)
+	if (!h.ops->end_snd) {
+		h.ops->release(h.sock);
 		return -2; // INVALID SOCKET TYPE
+	}
 	h.ops->end_snd(stack, h.sock);
 	h.ops->release(h.sock);
 	return 0;
