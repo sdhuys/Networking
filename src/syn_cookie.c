@@ -114,9 +114,9 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	memcpy(id.loc_addr, listener->local_addr, IPV4_ADDR_LEN);
 
 	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, listener->tcp_layer);
-	tcp_retain_conn(conn);
 	if (!conn)
 		return SYN_COOKIE_OUT_OF_MEMORY;
+	tcp_retain_conn(conn);
 
 	// negotiated options
 	conn->sack_enabled = sack_permitted;
@@ -134,10 +134,9 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	conn->snd_mss = tcp_effective_snd_mss(true, mss, conn->rcv_mss, false);
 	conn->snd_buffer.cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
 
-	uint32_t seg_len = seg_seq_len(seg);
 	conn->iss = cookie;
 	conn->irs = ntohl(seg->header->seq_num) - 1; // -1 to account for original SYN
-	conn->rcv_buffer.rcv_nxt = conn->irs + seg_len + 1; // account for original SYN
+	conn->rcv_buffer.rcv_nxt = conn->irs + 1; // account for original SYN, if seg carries data process_tcp_segment will move rcv_nxt along
 	conn->rcv_buffer.rcv_wnd = calc_rcv_wnd_sws(conn);
 	conn->snd_buffer.snd_nxt = cookie + 1;
 	conn->snd_buffer.snd_una = cookie + 1;
@@ -149,11 +148,11 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 		tcp_release_conn(conn);
 		return TCP_CONN_HTABLE_ADD_FAILED;
 	}
-	tcp_release_conn(conn);
 	push_q(listener->ready_q, &conn->q_node, true);
 
-	if (seg_len > 0)
+	if (seg_seq_len(seg) > 0)
 		process_tcp_segment(p, seg, conn);
-		
+
+	tcp_release_conn(conn);
 	return SYN_COOKIE_CONN_CREATED;
 }
