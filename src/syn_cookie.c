@@ -14,6 +14,7 @@
 #include "tcp_options.h"
 #include "tcp_segment.h"
 #include "time_now.h"
+#include "window_helpers.h"
 #include <arpa/inet.h>
 #include <stdint.h>
 #include <string.h>
@@ -108,11 +109,12 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	bool sack_permitted = received_mss_idx_sack & 1;
 
 	struct tcp_conn_id id = {.loc_port = listener->local_port,
-				 .extern_port = seg->header->src_port};
+				 .extern_port = ntohs(seg->header->src_port)};
 	memcpy(id.extern_addr, p->src_ip, IPV4_ADDR_LEN);
 	memcpy(id.loc_addr, listener->local_addr, IPV4_ADDR_LEN);
 
 	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, listener->tcp_layer);
+	tcp_retain_conn(conn);
 	if (!conn)
 		return SYN_COOKIE_OUT_OF_MEMORY;
 
@@ -132,15 +134,26 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	conn->snd_mss = tcp_effective_snd_mss(true, mss, conn->rcv_mss, false);
 	conn->snd_buffer.cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
 
+	uint32_t seg_len = seg_seq_len(seg);
 	conn->iss = cookie;
 	conn->irs = ntohl(seg->header->seq_num) - 1; // -1 to account for original SYN
-	conn->rcv_buffer.rcv_nxt = conn->irs + seg_seq_len(seg);
+	conn->rcv_buffer.rcv_nxt = conn->irs + seg_len + 1; // account for original SYN
+	conn->rcv_buffer.rcv_wnd = calc_rcv_wnd_sws(conn);
 	conn->snd_buffer.snd_nxt = cookie + 1;
 	conn->snd_buffer.snd_una = cookie + 1;
-
+	conn->snd_buffer.snd_wndw = ntohs(seg->header->window);
 	conn->state = ESTABLISHED;
 
-	add_to_tcp_conn_hashtable(cntx->socket_manager->tcp_ipv4_conn_htable, conn);
+	if (!add_to_tcp_conn_hashtable(cntx->socket_manager->tcp_ipv4_conn_htable, conn)) {
+		tcp_transition_to_state(conn, CLOSED);
+		tcp_release_conn(conn);
+		return TCP_CONN_HTABLE_ADD_FAILED;
+	}
+	tcp_release_conn(conn);
 	push_q(listener->ready_q, &conn->q_node, true);
+
+	if (seg_len > 0)
+		process_tcp_segment(p, seg, conn);
+		
 	return SYN_COOKIE_CONN_CREATED;
 }
