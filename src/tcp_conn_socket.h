@@ -110,6 +110,15 @@ struct tcp_ipv4_conn {
 	struct queue_node q_node;
 };
 
+// work that must be done after state transition, after releasing lock
+struct tcp_transition_effects {
+	bool cancel_snd_timers; // RTO + zero-window probe
+	bool cancel_del_ack;
+	bool enter_time_wait; // move to the TIME_WAIT table, start the TIME_WAIT timer
+	bool leave_time_wait; // remove from the TIME_WAIT table, stop its timer
+	bool unhash;	      // remove from main conn_htable
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -143,6 +152,11 @@ void write_pkt_tcp_general_metadata(struct tcp_ipv4_conn *conn, struct pkt *p);
 void tcp_init_packet_addresses(struct pkt *pkt, struct tcp_ipv4_conn *conn);
 
 void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state state);
+void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
+			  tcp_connection_state state,
+			  struct tcp_transition_effects *fx);
+void tcp_apply_transition_effects(struct tcp_ipv4_conn *conn,
+				  const struct tcp_transition_effects *fx);
 
 void retain_tcp_conn(struct tcp_ipv4_conn *conn);
 void release_tcp_conn(struct tcp_ipv4_conn *conn);

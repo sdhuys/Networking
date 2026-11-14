@@ -44,15 +44,21 @@ pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lstnr,
 	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, lstnr->tcp_layer);
 	if (conn == NULL)
 		return TCP_CONN_CREATION_ERROR;
+	retain_tcp_conn(conn);
 	conn->lstnr = lstnr;
 	server_init_tcp_connection(conn, seg);
 
 	struct tcp_ipv4_conn_htable *htable =
 	    ((struct tcp_context *)lstnr->tcp_layer->context)->socket_manager->tcp_ipv4_conn_htable;
-	add_to_tcp_conn_hashtable(htable, conn);
+	if (!add_to_tcp_conn_hashtable(htable, conn)) {
+		tcp_transition_to_state(conn, CLOSED);
+		release_tcp_conn(conn); // last reference: destroys the connection
+		return TCP_CONN_HTABLE_ADD_FAILED;
+	}
 	atomic_fetch_add(&lstnr->half_open_count, 1);
 	tcp_transition_to_state(conn, SYN_RECEIVED);
 	tcp_syn_to_snd_buff(conn);
+	release_tcp_conn(conn);
 	return CONN_CREATED_SYN_ACK_TO_SND_BUFFER;
 }
 

@@ -125,7 +125,7 @@ int tcp_connect(struct stack *stack,
 	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, stack->tcp_layer);
 	if (!conn)
 		return -4; // FAILED TO CREATE CONNECTION
-		
+
 	retain_tcp_conn(conn);
 	client_init_tcp_connection(conn);
 	if (!add_to_tcp_conn_hashtable(htable, conn)) {

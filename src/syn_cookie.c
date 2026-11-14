@@ -136,7 +136,8 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 
 	conn->iss = cookie;
 	conn->irs = ntohl(seg->header->seq_num) - 1; // -1 to account for original SYN
-	conn->rcv_buffer.rcv_nxt = conn->irs + 1; // account for original SYN, if seg carries data process_tcp_segment will move rcv_nxt along
+	conn->rcv_buffer.rcv_nxt = conn->irs + 1; // account for original SYN, if seg carries data
+						  // process_tcp_segment will move rcv_nxt along
 	conn->rcv_buffer.rcv_wnd = calc_rcv_wnd_sws(conn);
 	conn->snd_buffer.snd_nxt = cookie + 1;
 	conn->snd_buffer.snd_una = cookie + 1;

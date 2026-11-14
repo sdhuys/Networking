@@ -24,7 +24,7 @@ void client_app(struct stack *stack)
 		printf("FILE WRITING %ld BYTES \n", r);
 		if (r > 0)
 			fwrite(buff, 1, r, f);
-		//sleep(2); // CAUSE ZERO WINDOWS
+		// sleep(2); // CAUSE ZERO WINDOWS
 	}
 	if (r < 0)
 		printf("CONN RESET! \n");

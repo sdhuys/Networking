@@ -227,35 +227,51 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 				if (valid_new_ack) {
 					uint32_t old_una = sb->snd_una;
 					uint32_t data_ackd = seg_ack - old_una;
-					tcp_connection_state st = conn->state;
 
-					if (st == FIN_WAIT_1 || st == CLOSING || st == LAST_ACK) {
-						// we sent FIN
-						for (uint8_t i = 0; i < sb->ctrl_count; i++) {
-							if (sb->ctrl[i].flags == TCP_FIN &&
-							    tcp_seq_after(seg_ack,
-									  sb->ctrl[i].seq)) {
-								// our FIN is acked
-								if (st == FIN_WAIT_1)
-									// waiting for peer's FIN
-									tcp_transition_to_state(
-									    conn, FIN_WAIT_2);
-								else if (st == CLOSING)
-									// both FINs sent and acked
-									tcp_transition_to_state(
-									    conn, TIME_WAIT);
-								else
-									// LAST_ACK: peer's FIN came
-									// first, we're done
-									close_and_unhash_conn(conn);
-								data_ackd--;
-								sb->ctrl_count--;
-								break;
-							}
+					// is our FIN acked? Decided from the FIN entry itself,
+					// never from the state, so the byte accounting is right in
+					// any state
+					bool fin_acked = false;
+					for (uint8_t i = 0; i < sb->ctrl_count; i++) {
+						if (sb->ctrl[i].flags == TCP_FIN &&
+						    tcp_seq_after(seg_ack, sb->ctrl[i].seq)) {
+							fin_acked = true;
+							data_ackd--;
+							if (i + 1 < sb->ctrl_count)
+								memmove(
+								    &sb->ctrl[i],
+								    &sb->ctrl[i + 1],
+								    (sb->ctrl_count - i - 1) *
+									sizeof(
+									    sb->ctrl
+										[0])); // len is
+										       // zero when
+										       // fin at
+										       // index 1,
+										       // no move
+							sb->ctrl_count--;
+							break;
 						}
 					}
 					// update snd_una and head
 					update_snd_nxt_head(sb, seg_ack, data_ackd);
+
+					if (fin_acked) {
+						switch (conn->state) {
+						case FIN_WAIT_1: // waiting for the peer's FIN
+							tcp_transition_to_state(conn, FIN_WAIT_2);
+							break;
+						case CLOSING: // both FINs sent and acked
+							tcp_transition_to_state(conn, TIME_WAIT);
+							break;
+						case LAST_ACK: // peer's FIN came first, we're done
+							close_and_unhash_conn(conn);
+							break;
+						default: // unreachable: tcp_end_snd changes state
+							 // before sending out FIN
+							break;
+						}
+					}
 
 					// cwnd growth
 					uint32_t mss = conn->snd_mss;
@@ -757,35 +773,40 @@ void write_pkt_tcp_general_metadata(struct tcp_ipv4_conn *conn, struct pkt *p)
 	tcp_unlock_conn(conn);
 }
 
-void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state state)
+// sets new state and wake waiters, hand a passively opened connection to its listener.
+// other work that takes lock itself or may drop references is recorded in fx
+// several transitions in one critical section accumulate their effects in the same fx.
+// caller must hold conn->lock
+void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
+			  tcp_connection_state state,
+			  struct tcp_transition_effects *fx)
 {
-	bool can_accept = false;
-	bool cancel_data_timers = false;
-	bool cancel_snd_timers = false;
-
-	pthread_mutex_lock(&conn->lock);
 	conn->state = state;
 
 	// our FIN is acked, nothing left to retransmit or probe, but the peer
 	// may still send data that we must ACK => keep the delayed-ACK timer
 	if (state == FIN_WAIT_2)
-		cancel_snd_timers = true;
+		fx->cancel_snd_timers = true;
 
 	// TIME_WAIT / CLOSED: no more data either way
 	if ((state == CLOSED || state == TIME_WAIT) && !atomic_load(&conn->data_timers_cancelled)) {
 		atomic_store(&conn->data_timers_cancelled, true);
-		cancel_data_timers = true;
+		fx->cancel_snd_timers = true;
+		fx->cancel_del_ack = true;
 	}
 
-	struct tcp_ipv4_listener *l = conn->lstnr;
-	if (l && state == ESTABLISHED) {
-		atomic_fetch_sub(&l->half_open_count, 1);
-		push_q(l->ready_q, &conn->q_node, true);
-	} else if (state == ESTABLISHED)
-		can_accept = true;
+	if (state == ESTABLISHED) {
+		struct tcp_ipv4_listener *l = conn->lstnr;
+		if (l) {
+			atomic_fetch_sub(&l->half_open_count, 1);
+			push_q(l->ready_q, &conn->q_node, true);
+		} else {
+			pthread_cond_broadcast(&conn->estblshd_cond); // wake tcp_connect()
+		}
+	}
 
-	// no more read nor write, need separate broadcasts for CLOSED incase of RST (not going
-	// through standard closing states)
+	// no more read nor write: separate broadcasts for CLOSED in case of RST (not going
+	// through the standard closing states)
 	if (state == CLOSED) {
 		pthread_cond_broadcast(&conn->snd_buffer.cond);
 		pthread_cond_broadcast(&conn->rcv_buffer.cond);
@@ -798,36 +819,48 @@ void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state st
 	if (state == FIN_WAIT_1)
 		pthread_cond_broadcast(&conn->snd_buffer.cond);
 
-	if (can_accept)
-		pthread_cond_broadcast(&conn->estblshd_cond);
+	if (state == TIME_WAIT)
+		fx->enter_time_wait = true;
+	if (state == CLOSED)
+		fx->leave_time_wait = true;
+}
 
-	pthread_mutex_unlock(&conn->lock);
+// does the work necessary after state transitions
+// caller CANNOT hold conn->lock
+// caller MUST hold own conn reference
+void tcp_apply_transition_effects(struct tcp_ipv4_conn *conn,
+				  const struct tcp_transition_effects *fx)
+{
+	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
+	struct timer_manager *tmgr = ctx->timer_mgr;
+	struct socket_manager *smgr = ctx->socket_manager;
 
-	struct timer_manager *tmgr = ((struct tcp_context *)conn->tcp_layer->context)->timer_mgr;
-	if (cancel_snd_timers || cancel_data_timers) {
+	if (fx->cancel_snd_timers) {
 		cancel_timer(tmgr, conn->rto_timer);
 		cancel_timer(tmgr, conn->zwp_timer);
 	}
-	if (cancel_data_timers)
+	if (fx->cancel_del_ack)
 		cancel_timer(tmgr, conn->del_ack_timer);
 
-	if (state == TIME_WAIT) {
-		struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
-		struct socket_manager *smgr = ctx->socket_manager;
-		struct tcp_ipv4_conn_htable *time_wait_htable =
-		    smgr->tcp_ipv4_conn_time_wait_htable;
-		add_to_tcp_conn_hashtable(time_wait_htable, conn);
+	if (fx->enter_time_wait) {
+		add_to_tcp_conn_hashtable(smgr->tcp_ipv4_conn_time_wait_htable, conn);
 		remove_from_tcp_conn_hashtable(smgr->tcp_ipv4_conn_htable, conn);
-		start_timer(ctx->timer_mgr, conn->time_wait_timer, TCP_TIMEWAIT_MS);
+		start_timer(tmgr, conn->time_wait_timer, TCP_TIMEWAIT_MS);
 	}
 
-	if (state == CLOSED) {
-		struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
-		struct socket_manager *smgr = ctx->socket_manager;
-		struct tcp_ipv4_conn_htable *time_wait_htable =
-		    smgr->tcp_ipv4_conn_time_wait_htable;
-		remove_from_tcp_conn_hashtable(time_wait_htable, conn);
+	if (fx->leave_time_wait) {
+		remove_from_tcp_conn_hashtable(smgr->tcp_ipv4_conn_time_wait_htable, conn);
+		cancel_timer(tmgr, conn->time_wait_timer);
 	}
+}
+
+void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state state)
+{
+	struct tcp_transition_effects fx = {0};
+	pthread_mutex_lock(&conn->lock);
+	tcp_set_state_locked(conn, state, &fx);
+	pthread_mutex_unlock(&conn->lock);
+	tcp_apply_transition_effects(conn, &fx);
 }
 
 void tcp_retain_conn(void *s)
@@ -1119,23 +1152,32 @@ void tcp_end_snd(struct stack *stack, void *sock)
 		unlock_snd_buff(buff);
 		return;
 	}
+
+	struct tcp_transition_effects fx = {0};
+	pthread_mutex_lock(&conn->lock);
+	if (conn->state == ESTABLISHED) {
+		tcp_set_state_locked(conn, FIN_WAIT_1, &fx);
+	} else if (conn->state == CLOSE_WAIT) {
+		tcp_set_state_locked(conn, LAST_ACK, &fx);
+	} else {
+		pthread_mutex_unlock(&conn->lock);
+		unlock_snd_buff(buff);
+		return; // not in a state that sends a FIN
+	}
+	pthread_mutex_unlock(&conn->lock);
+
 	buff->shutdown = true;
 	sndbuf_insert_ghost_byte(buff, TCP_FIN);
 	unlock_snd_buff(buff);
 	notify_socket_readable_snd(stack->sock_manager, sock, &tcp_conn_ops);
-
-	// SHOULD ONLY TRANSITION AFTER FIN IS ACTUALLY SENT OUT??
-	if (conn->state == ESTABLISHED)
-		tcp_transition_to_state(conn, FIN_WAIT_1);
-	else if (conn->state == CLOSE_WAIT)
-		tcp_transition_to_state(conn, LAST_ACK);
+	tcp_apply_transition_effects(conn,
+				     &fx); // nothing for these two states, but keep the pattern
 }
 
 void tcp_close_conn(struct stack *stack, void *sock)
 {
-	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)sock;
-	if (conn->state == ESTABLISHED || conn->state == CLOSE_WAIT)
-		tcp_end_snd(stack, sock);
+	// tcp_end_snd checks the state itself, under the lock
+	tcp_end_snd(stack, sock);
 }
 
 ssize_t tcp_write_to_snd_buff(struct stack *stack, void *sock, struct send_request *req)
