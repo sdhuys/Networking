@@ -54,6 +54,7 @@ void assign_sock_h(struct sockfd_manager *fd_mgr, int fd, struct socket_handle h
 	pthread_mutex_unlock(&fd_mgr->fds_lock);
 }
 
+// retains the socket, caller should release
 int get_socket_handle(struct sockfd_manager *fd_mgr, int fd, struct socket_handle *out)
 {
 	if (fd < 0 || fd >= MAX_SOCKETS)
@@ -66,6 +67,7 @@ int get_socket_handle(struct sockfd_manager *fd_mgr, int fd, struct socket_handl
 		pthread_mutex_unlock(&fd_mgr->fds_lock);
 		return -1;
 	}
+	h.ops->retain(h.sock);
 
 	*out = h;
 	pthread_mutex_unlock(&fd_mgr->fds_lock);

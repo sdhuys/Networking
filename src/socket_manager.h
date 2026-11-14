@@ -78,7 +78,7 @@ void notify_socket_readable_snd(struct socket_manager *mgr,
 struct socket_handle dequeue_sock_snd_down_q(struct socket_manager *mgr);
 void release_socket(struct socket_handle sock);
 struct socket_h_q_node *dequeue_q_node(struct socket_h_q *q);
-void enqueue_socket(struct socket_h_q *q, struct socket_handle sock);
+void enqueue_socket_node(struct socket_h_q *q, struct socket_h_q_node *node);
 int create_socket_handle(struct stack *stack,
 			 socket_type type,
 			 uint16_t local_port,

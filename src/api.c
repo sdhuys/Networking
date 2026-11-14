@@ -33,7 +33,12 @@ int receive(struct stack *stack, int sockfd, unsigned char *buff, size_t len)
 	int r = get_socket_handle(stack->sock_manager->sockfd_manager, sockfd, &h);
 	if (r < 0)
 		return -1; // INVALID FD
-	size_t bytes_read = h.ops->read_rcv_buffer(h.sock, len, buff);
+
+	if (!h.ops->read_rcv_buffer)
+		return -2; // INVALID SOCKET TYPE
+
+	ssize_t bytes_read = h.ops->read_rcv_buffer(h.sock, len, buff);
+	h.ops->release(h.sock);
 	return bytes_read;
 }
 
@@ -52,7 +57,8 @@ int receive_from(struct stack *stack,
 	if (!h.ops->read_rcv_buffer_from)
 		return -2; // INVALID SOCKET TYPE
 
-	size_t bytes_read = h.ops->read_rcv_buffer_from(h.sock, len, buff, addr_out, port_out);
+	ssize_t bytes_read = h.ops->read_rcv_buffer_from(h.sock, len, buff, addr_out, port_out);
+	h.ops->release(h.sock);
 	return bytes_read;
 }
 
@@ -67,6 +73,7 @@ int send_down(struct stack *stack, int sockfd, struct send_request *req)
 		return -2; // INVALID SOCK TYPE!
 
 	ssize_t written_bytes = h.ops->write_to_snd_buffer(stack, h.sock, req);
+	h.ops->release(h.sock);
 	return written_bytes;
 }
 
@@ -81,12 +88,17 @@ int close_socket(struct stack *stack, int sockfd)
 	h.ops->release(h.sock);
 
 	sockfd_free(stack->sock_manager->sockfd_manager, sockfd);
+	h.ops->release(h.sock);
 	return 0;
 }
 
 int accept_connection(struct stack *stack, int sockfd)
 {
 	struct sockfd_manager *sockfd_mgr = stack->sock_manager->sockfd_manager;
+	int fd = get_sockfd(sockfd_mgr);
+	if (fd == -1)
+		return -1; // MAX FD REACHED
+
 	struct socket_handle lis_h;
 	int r = get_socket_handle(sockfd_mgr, sockfd, &lis_h);
 	if (r < 0)
@@ -99,11 +111,8 @@ int accept_connection(struct stack *stack, int sockfd)
 	    lis_h.sock); // app takes over con ref from q, no need for extra retain
 
 	struct socket_handle conn_h = create_conn_sock_h(conn);
-	int fd = get_sockfd(sockfd_mgr);
-	if (fd == -1)
-		return -1; // MAX FD REACHED
-
 	assign_sock_h(sockfd_mgr, fd, conn_h);
+	lis_h.ops->release(lis_h.sock);
 	return fd;
 }
 
@@ -112,6 +121,11 @@ int tcp_connect(struct stack *stack,
 		uint16_t extern_port,
 		ipv4_address_t extern_addr)
 {
+	struct sockfd_manager *sockfd_mgr = stack->sock_manager->sockfd_manager;
+	int fd = get_sockfd(sockfd_mgr);
+	if (fd == -1)
+		return -1; // MAX FD REACHED
+
 	struct tcp_ipv4_conn_htable *htable = stack->sock_manager->tcp_ipv4_conn_htable;
 	struct tcp_ipv4_conn_htable *tw_htable =
 	    stack->sock_manager->tcp_ipv4_conn_time_wait_htable;
@@ -119,7 +133,9 @@ int tcp_connect(struct stack *stack,
 	memcpy(id.extern_addr, extern_addr, IPV4_ADDR_LEN);
 	memcpy(id.loc_addr, stack->local_address, IPV4_ADDR_LEN);
 
-	if (query_tcp_conn_hashtable(htable, &id) || query_tcp_conn_hashtable(tw_htable, &id))
+	struct tcp_ipv4_conn *c;
+	if ((c = query_tcp_conn_hashtable(htable, &id)) == 1 ||
+	    (c = query_tcp_conn_hashtable(tw_htable, &id)) == 1)
 		return -1; // CONNECTION ALREADY IN USE
 
 	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, stack->tcp_layer);
@@ -149,11 +165,6 @@ int tcp_connect(struct stack *stack,
 	}
 	tcp_unlock_conn(conn);
 	struct socket_handle conn_h = create_conn_sock_h(conn);
-	struct sockfd_manager *sockfd_mgr = stack->sock_manager->sockfd_manager;
-	int fd = get_sockfd(sockfd_mgr);
-	if (fd == -1)
-		return -1; // MAX FD REACHED
-
 	assign_sock_h(sockfd_mgr, fd, conn_h);
 	return fd;
 }
@@ -168,5 +179,6 @@ int tcp_end_send(struct stack *stack, int sockfd)
 	if (!h.ops->end_snd)
 		return -2; // INVALID SOCKET TYPE
 	h.ops->end_snd(stack, h.sock);
+	h.ops->release(h.sock);
 	return 0;
 }

@@ -14,17 +14,29 @@ void notify_socket_readable_snd(struct socket_manager *mgr,
 				void *sock,
 				const struct socket_ops *ops)
 {
-	ops->retain(sock);
+	ops->retain(sock); // q's reference, handed over to the TX thread
 	ops->lock(sock);
-	if (!ops->is_snd_queued(sock)) {
-		ops->set_snd_queued(sock, true);
+	if (ops->is_snd_queued(sock)) {
 		ops->unlock(sock);
-		struct socket_handle h = {.sock = sock, .ops = ops};
-		enqueue_socket(mgr->send_down_sock_q, h);
-	} else {
+		ops->release(sock); // already queued => already hold reference
+		return;
+	}
+
+	// if this malloc fails, notification is lost
+	// will need to wait for next one
+	// FIX => embed queue node intrusively in socket, no more malloc
+	struct socket_h_q_node *node = malloc(sizeof(*node));
+	if (!node) {
 		ops->unlock(sock);
 		ops->release(sock);
+		return;
 	}
+	ops->set_snd_queued(sock, true);
+	ops->unlock(sock);
+
+	node->socket = (struct socket_handle){.sock = sock, .ops = ops};
+	node->next = NULL;
+	enqueue_socket_node(mgr->send_down_sock_q, node);
 }
 
 // CONSUMER: Stack side (TX)
@@ -66,15 +78,9 @@ struct socket_h_q_node *dequeue_q_node(struct socket_h_q *q)
 	return node;
 }
 
-void enqueue_socket(struct socket_h_q *q, struct socket_handle sock)
+// links an already-allocated node into the queue; cannot fail
+void enqueue_socket_node(struct socket_h_q *q, struct socket_h_q_node *node)
 {
-	struct socket_h_q_node *node = malloc(sizeof(*node));
-	if (!node)
-		return;
-
-	node->socket = sock;
-	node->next = NULL;
-
 	pthread_mutex_lock(&q->lock);
 	if (!q->head) {
 		q->head = node;
