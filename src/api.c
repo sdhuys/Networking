@@ -89,7 +89,7 @@ int send_down(struct stack *stack, int sockfd, struct send_request *req)
 int close_socket(struct stack *stack, int sockfd)
 {
 	struct socket_handle h;
-	int r = take_socket_handle(stack->sock_manager->sockfd_manager, sockfd, &h);
+	int r = unassign_sock_h(stack->sock_manager->sockfd_manager, sockfd, &h);
 	if (r < 0)
 		return r;
 
