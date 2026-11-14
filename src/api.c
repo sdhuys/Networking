@@ -153,8 +153,10 @@ int tcp_connect(struct stack *stack,
 	}
 
 	conn = create_init_tcp_connection(&id, stack->tcp_layer);
-	if (!conn)
+	if (!conn) {
+		sockfd_free(sockfd_mgr, fd);
 		return -4; // FAILED TO CREATE CONNECTION
+	}
 
 	retain_tcp_conn(conn);
 	client_init_tcp_connection(conn);
