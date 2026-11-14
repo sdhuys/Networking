@@ -45,6 +45,11 @@ const struct socket_ops tcp_conn_ops = {.is_snd_queued = tcp_is_snd_queued,
 					.accept = NULL,
 					.end_snd = tcp_end_snd};
 
+static inline bool tcp_state_accepts_data(tcp_connection_state s)
+{
+	return s == ESTABLISHED || s == FIN_WAIT_1 || s == FIN_WAIT_2;
+}
+
 static inline void tcp_flag_conn_aborted(struct tcp_ipv4_conn *conn)
 {
 	atomic_store(&conn->aborted, true);
@@ -349,7 +354,9 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 				pthread_cond_broadcast(&sb->cond);
 				// add socket to tx queue to send out potential new packets
 				notify_socket_readable_snd(smgr, conn, &tcp_conn_ops);
-			} else if (conn->is_wndw_probing && window_update) { // don't stop window probing yet, sender might suffer from silly-window syndrome
+			} else if (conn->is_wndw_probing &&
+				   window_update) { // don't stop window probing yet, sender might
+						    // suffer from silly-window syndrome
 				notify_socket_readable_snd(smgr, conn, &tcp_conn_ops);
 			}
 
@@ -361,14 +368,18 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 	}
 
 	// data handling: trimming is done by rcv_buffer_write_tcp_segment
-	if (conn->state >= ESTABLISHED && seg->payload_len > 0) {
+	if (tcp_state_accepts_data(conn) && seg->payload_len > 0) {
 		rcv_buffer_write_tcp_segment(&conn->rcv_buffer, seg, &immediate_ack);
 		conn->rcv_buffer.rcv_wnd = calc_rcv_wnd_sws(conn);
 		// delayed ACK logic: 1st packet starts timer, 2nd packet triggers immediate
 		// ACK
 		if (!immediate_ack && !conn->ack_pending) {
 			conn->ack_pending = true;
-			tcp_arm_data_timer(conn, conn->del_ack_timer, TCP_DEL_ACK_MS);
+			if (!tcp_arm_data_timer(conn, conn->del_ack_timer, TCP_DEL_ACK_MS)) {
+				conn->ack_pending = false;
+				immediate_ack =
+				    true; // if setting ACK timer fails, send immediate ack
+			}
 		} else {
 			immediate_ack = true;
 		}
@@ -751,13 +762,18 @@ void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state st
 {
 	bool can_accept = false;
 	bool cancel_data_timers = false;
+	bool cancel_snd_timers = false;
 
 	pthread_mutex_lock(&conn->lock);
 	conn->state = state;
 
-	// don't cancel before our FIN got ACKd, might need to retransmit!
-	if ((state == CLOSED || state == FIN_WAIT_2 || state == TIME_WAIT) &&
-	    !atomic_load(&conn->data_timers_cancelled)) {
+	// our FIN is acked, nothing left to retransmit or probe, but the peer
+	// may still send data that we must ACK => keep the delayed-ACK timer
+	if (state == FIN_WAIT_2)
+		cancel_snd_timers = true;
+
+	// TIME_WAIT / CLOSED: no more data either way
+	if ((state == CLOSED || state == TIME_WAIT) && !atomic_load(&conn->data_timers_cancelled)) {
 		atomic_store(&conn->data_timers_cancelled, true);
 		cancel_data_timers = true;
 	}
@@ -788,14 +804,13 @@ void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state st
 
 	pthread_mutex_unlock(&conn->lock);
 
-	if (cancel_data_timers) {
-		struct timer_manager *tmgr =
-		    ((struct tcp_context *)conn->tcp_layer->context)->timer_mgr;
-
+	struct timer_manager *tmgr = ((struct tcp_context *)conn->tcp_layer->context)->timer_mgr;
+	if (cancel_snd_timers || cancel_data_timers) {
 		cancel_timer(tmgr, conn->rto_timer);
-		cancel_timer(tmgr, conn->del_ack_timer);
 		cancel_timer(tmgr, conn->zwp_timer);
 	}
+	if (cancel_data_timers)
+		cancel_timer(tmgr, conn->del_ack_timer);
 
 	if (state == TIME_WAIT) {
 		struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;

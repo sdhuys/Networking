@@ -125,14 +125,22 @@ int tcp_connect(struct stack *stack,
 	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, stack->tcp_layer);
 	retain_tcp_conn(conn);
 	client_init_tcp_connection(conn);
-	add_to_tcp_conn_hashtable(htable, conn);
+	if (!add_to_tcp_conn_hashtable(htable, conn)) {
+		release_tcp_conn(conn);
+		return -3; // FAILED TO ADD CONN TO HTABLE
+	}
+	
 	tcp_transition_to_state(conn, SYN_SENT);
 	tcp_syn_to_snd_buff(conn);
 	tcp_lock_conn(conn);
 
 	while (conn->state != ESTABLISHED) {
-		if (conn->state == CLOSED)
+		if (conn->state == CLOSED) {
+			tcp_unlock_conn(conn);
+			release_tcp_conn(conn);
 			return -2; // CONNECTION FAILED
+		}
+
 		pthread_cond_wait(&conn->estblshd_cond, &conn->lock);
 	}
 	tcp_unlock_conn(conn);
