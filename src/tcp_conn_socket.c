@@ -368,7 +368,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 	}
 
 	// data handling: trimming is done by rcv_buffer_write_tcp_segment
-	if (tcp_state_accepts_data(conn) && seg->payload_len > 0) {
+	if (tcp_state_accepts_data(conn->state) && seg->payload_len > 0) {
 		rcv_buffer_write_tcp_segment(&conn->rcv_buffer, seg, &immediate_ack);
 		conn->rcv_buffer.rcv_wnd = calc_rcv_wnd_sws(conn);
 		// delayed ACK logic: 1st packet starts timer, 2nd packet triggers immediate

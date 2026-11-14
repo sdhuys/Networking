@@ -126,10 +126,11 @@ int tcp_connect(struct stack *stack,
 	retain_tcp_conn(conn);
 	client_init_tcp_connection(conn);
 	if (!add_to_tcp_conn_hashtable(htable, conn)) {
+		tcp_transition_to_state(conn, CLOSED);
 		release_tcp_conn(conn);
 		return -3; // FAILED TO ADD CONN TO HTABLE
 	}
-	
+
 	tcp_transition_to_state(conn, SYN_SENT);
 	tcp_syn_to_snd_buff(conn);
 	tcp_lock_conn(conn);
