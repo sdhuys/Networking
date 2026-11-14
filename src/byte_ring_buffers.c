@@ -32,6 +32,7 @@ int init_byte_rcv_buffer(struct byte_reassembly_rcv_buffer *b, size_t capacity)
 	b->ooo_count = 0;
 	b->ooo_capacity = MAX_OOO_RCV_SEG_STORED;
 	b->fin_received = false;
+	b->fin_consumed = false;
 	b->contiguous_bytes = 0;
 	b->head = 0;
 	b->tail = 0;
