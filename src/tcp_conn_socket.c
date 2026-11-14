@@ -75,17 +75,6 @@ static bool tcp_arm_data_timer_if_idle(struct tcp_ipv4_conn *conn,
 	return start_timer_if_idle(t_mgr, t, delay_ms);
 }
 
-// called when RST received or passive close
-// closes and removes conn from main conn htable
-static void close_and_unhash_conn(struct tcp_ipv4_conn *conn)
-{
-	tcp_transition_to_state(conn, CLOSED);
-
-	struct tcp_ipv4_conn_htable *htable =
-	    ((struct tcp_context *)conn->tcp_layer->context)->socket_manager->tcp_ipv4_conn_htable;
-	remove_from_tcp_conn_hashtable(htable, conn);
-}
-
 pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tcp_ipv4_conn *conn)
 {
 	uint32_t seg_seq = ntohl(seg->header->seq_num);
@@ -145,7 +134,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 	if (flags & TCP_RST) {
 		if (seg_seq == rcv_next) {
 			tcp_flag_conn_aborted(conn);
-			close_and_unhash_conn(conn);
+			tcp_transition_to_state(conn, CLOSED);
 			return INC_RST_CONN_DEAD;
 		}
 		// per RFC 5961
@@ -187,7 +176,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 			// unexpected SYN in established session
 			tcp_flag_conn_aborted(conn);
 			tcp_fast_reply_rst(conn->tcp_layer, p, seg);
-			close_and_unhash_conn(conn);
+			tcp_transition_to_state(conn, CLOSED);
 			return RST_UNEXPECTED_SYN;
 		}
 	}
@@ -237,18 +226,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 						    tcp_seq_after(seg_ack, sb->ctrl[i].seq)) {
 							fin_acked = true;
 							data_ackd--;
-							if (i + 1 < sb->ctrl_count)
-								memmove(
-								    &sb->ctrl[i],
-								    &sb->ctrl[i + 1],
-								    (sb->ctrl_count - i - 1) *
-									sizeof(
-									    sb->ctrl
-										[0])); // len is
-										       // zero when
-										       // fin at
-										       // index 1,
-										       // no move
+							assert(i == sb->ctrl_count - 1);
 							sb->ctrl_count--;
 							break;
 						}
@@ -265,7 +243,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 							tcp_transition_to_state(conn, TIME_WAIT);
 							break;
 						case LAST_ACK: // peer's FIN came first, we're done
-							close_and_unhash_conn(conn);
+							tcp_transition_to_state(conn, CLOSED);
 							break;
 						default: // unreachable: tcp_end_snd changes state
 							 // before sending out FIN
@@ -821,8 +799,10 @@ void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
 
 	if (state == TIME_WAIT)
 		fx->enter_time_wait = true;
-	if (state == CLOSED)
+	if (state == CLOSED) {
 		fx->leave_time_wait = true;
+		fx->unhash = true;
+	}
 }
 
 // does the work necessary after state transitions
@@ -852,6 +832,9 @@ void tcp_apply_transition_effects(struct tcp_ipv4_conn *conn,
 		remove_from_tcp_conn_hashtable(smgr->tcp_ipv4_conn_time_wait_htable, conn);
 		cancel_timer(tmgr, conn->time_wait_timer);
 	}
+
+	if (fx->unhash)
+		remove_from_tcp_conn_hashtable(smgr->tcp_ipv4_conn_htable, conn);
 }
 
 void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state state)
@@ -1155,6 +1138,9 @@ void tcp_end_snd(struct stack *stack, void *sock)
 
 	struct tcp_transition_effects fx = {0};
 	pthread_mutex_lock(&conn->lock);
+
+	// change state before sending out FIN
+	// avoids ACK of our FIN coming in at stale state
 	if (conn->state == ESTABLISHED) {
 		tcp_set_state_locked(conn, FIN_WAIT_1, &fx);
 	} else if (conn->state == CLOSE_WAIT) {
