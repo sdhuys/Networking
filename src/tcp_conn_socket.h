@@ -23,6 +23,10 @@ extern const struct socket_ops tcp_conn_ops;
 #define TCP_MAX_RTO_MS 60000
 #define TCP_MAX_ZWP_MS 60000
 
+#define TCP_SYN_TIMEOUTS_MAX 8	 // SYN / SYN-ACK: at least 3 minutes (RFC 9293, 3.8.3)
+#define TCP_DATA_TIMEOUTS_MAX 10 // data: at least 100 s (RFC 9293, 3.8.3)
+#define TCP_ZWP_UNANSWERED_MAX 10
+
 typedef enum {
 	CLOSED,
 	SYN_SENT,     // Sent SYN, waiting for SYN+ACK
@@ -51,6 +55,7 @@ struct tcp_ipv4_conn {
 	struct byte_snd_buffer snd_buffer;
 	struct timer *rto_timer;
 	uint32_t rto_interval; // Current Retransmission Timeout value
+	uint8_t rto_timeouts;  // RTO expiries in a row without progress (snd buffer lock)
 
 	ipv4_address_t local_addr;
 	ipv4_address_t extern_addr;
@@ -101,6 +106,8 @@ struct tcp_ipv4_conn {
 	struct timer *zwp_timer; // start timer as soon as peer advertises window < mss
 	bool is_wndw_probing;
 	uint32_t zwp_interval;
+	uint8_t zwp_unanswered; // probes sent since the last ACK from the peer (snd buffer lock)
+
 	struct timer *time_wait_timer;
 
 	// doesn't include TIME_WAIT timer!!

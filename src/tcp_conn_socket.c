@@ -55,6 +55,25 @@ static inline void tcp_flag_conn_aborted(struct tcp_ipv4_conn *conn)
 	atomic_store(&conn->aborted, true);
 }
 
+static void tcp_abort_conn(struct tcp_ipv4_conn *conn)
+{
+	tcp_flag_conn_aborted(conn);
+	tcp_transition_to_state(conn, CLOSED);
+}
+
+// Resends our SYN / SYN-ACK right away, without going through the RTO: no backoff,
+// no cwnd collapse, and it doesn't count as a timeout.
+static void tcp_resend_syn_now(struct tcp_ipv4_conn *conn)
+{
+	struct byte_snd_buffer *sb = &conn->snd_buffer;
+	lock_snd_buff(sb);
+	sb->retransmit = true; // retransmitting from snd_una = the SYN
+	unlock_snd_buff(sb);
+	struct socket_manager *smgr =
+	    ((struct tcp_context *)conn->tcp_layer->context)->socket_manager;
+	notify_socket_readable_snd(smgr, conn, &tcp_conn_ops);
+}
+
 // never use for TIME_WAIT TIMER
 static bool tcp_arm_data_timer(struct tcp_ipv4_conn *conn, struct timer *t, uint64_t delay_ms)
 {
@@ -116,7 +135,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		if (s_len > 0 && (flags & TCP_SYN) && !(flags & TCP_ACK) &&
 		    conn->state == SYN_RECEIVED &&
 		    seg_seq == conn->irs) { // duplicate SYN: retrigger SYN-ACK sending
-			tcp_arm_data_timer(conn, conn->rto_timer, 0);
+			tcp_resend_syn_now(conn);
 			return RCOV_SYN_ACK_TO_SND_BUFFER;
 		}
 		if (s_len > 0) {
@@ -133,8 +152,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 	// RST processing
 	if (flags & TCP_RST) {
 		if (seg_seq == rcv_next) {
-			tcp_flag_conn_aborted(conn);
-			tcp_transition_to_state(conn, CLOSED);
+			tcp_abort_conn(conn);
 			return INC_RST_CONN_DEAD;
 		}
 		// per RFC 5961
@@ -166,7 +184,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 				// trigger SYN-retransmission, SYN_RECEIVED state will
 				// append ACK
 				tcp_transition_to_state(conn, SYN_RECEIVED);
-				tcp_arm_data_timer(conn, conn->rto_timer, 0);
+				tcp_resend_syn_now(conn);
 				return TCP_SIMULTANEOUS_OPEN;
 			}
 			// else (SYN-ACK) => fallthrough to ACK processing below to finalise
@@ -174,9 +192,8 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 
 		} else if (conn->state >= ESTABLISHED) {
 			// unexpected SYN in established session
-			tcp_flag_conn_aborted(conn);
 			tcp_fast_reply_rst(conn->tcp_layer, p, seg);
-			tcp_transition_to_state(conn, CLOSED);
+			tcp_abort_conn(conn);
 			return RST_UNEXPECTED_SYN;
 		}
 	}
@@ -192,6 +209,13 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 			lock_snd_buff(sb);
 			uint16_t prev_peer_wndw = sb->snd_wndw;
 			sb->snd_wndw = ntohs(seg->header->window);
+			
+			// peer is alive: any ACK answers our window probes
+			// new data acked means our retransmissions got through
+			conn->zwp_unanswered = 0;
+			if (valid_new_ack)
+				conn->rto_timeouts = 0;
+
 			bool window_update = conn->is_wndw_probing && sb->snd_wndw > prev_peer_wndw;
 
 			switch (conn->state) {
@@ -493,6 +517,8 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 
 	conn->is_wndw_probing = false;
 	conn->rto_interval = TCP_INIT_RTO_MS;
+	conn->rto_timeouts = 0;
+	conn->zwp_unanswered = 0;
 	conn->ack_pending = false;
 	conn->in_order_full_seg_count = 0;
 	conn->tcp_layer = tcp;
@@ -534,6 +560,15 @@ void zwp_callback(void *c)
 		unlock_snd_buff(sb);
 		return;
 	}
+
+	// live peer ACKs every probe even with zero window (process_tcp_segment resets the count)
+	if (conn->zwp_unanswered >= TCP_ZWP_UNANSWERED_MAX) {
+		unlock_snd_buff(sb);
+		tcp_abort_conn(conn);
+		return;
+	}
+	conn->zwp_unanswered++;
+
 	uint32_t probe_seq = sb->snd_una - 1;
 
 	// keep probing until windows opens (stop_wndw_probing will get called)
@@ -564,7 +599,6 @@ void zwp_callback(void *c)
 
 void rto_callback(void *c)
 {
-	printf("\n        RTO callback! \n \n");
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)c;
 	struct byte_snd_buffer *sb = &conn->snd_buffer;
 
@@ -579,7 +613,18 @@ void rto_callback(void *c)
 
 	pthread_mutex_lock(&conn->lock);
 	conn->dup_ack_cnt = 0;
+	bool handshake = conn->state == SYN_SENT || conn->state == SYN_RECEIVED;
 	pthread_mutex_unlock(&conn->lock);
+
+	// zero window isn't a failure: the peer is alive and ACKs
+	if (!conn->is_wndw_probing) {
+		uint8_t limit = handshake ? TCP_SYN_TIMEOUTS_MAX : TCP_DATA_TIMEOUTS_MAX;
+		if (++conn->rto_timeouts >= limit) {
+			unlock_snd_buff(sb);
+			tcp_abort_conn(conn); // peer gone: give up (RFC 9293, 3.8.3)
+			return;
+		}
+	}
 
 	sb->c_state = SLOW_START;
 	sb->cwnd = conn->snd_mss;
@@ -587,6 +632,10 @@ void rto_callback(void *c)
 	conn->rto_interval *= 2;
 	if (conn->rto_interval > TCP_MAX_RTO_MS)
 		conn->rto_interval = TCP_MAX_RTO_MS;
+
+	// re-arm here, not only in TX path: the next timeout must happen even if this
+	// retransmission can't be built (packet pool empty, window closed, ...).
+	tcp_arm_data_timer(conn, conn->rto_timer, conn->rto_interval);
 	unlock_snd_buff(sb);
 
 	struct socket_manager *mgr =
@@ -759,7 +808,13 @@ void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
 			  tcp_connection_state state,
 			  struct tcp_transition_effects *fx)
 {
+	tcp_connection_state old = conn->state;
 	conn->state = state;
+
+	// passively opened connection stops being half-open as soon as it leaves
+	// SYN_RECEIVED, either: handshake done, RST, or SYN-ACK retries exhausted
+	if (old == SYN_RECEIVED && state != SYN_RECEIVED && conn->lstnr)
+		atomic_fetch_sub(&conn->lstnr->half_open_count, 1);
 
 	// our FIN is acked, nothing left to retransmit or probe, but the peer
 	// may still send data that we must ACK => keep the delayed-ACK timer
@@ -776,7 +831,6 @@ void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
 	if (state == ESTABLISHED) {
 		struct tcp_ipv4_listener *l = conn->lstnr;
 		if (l) {
-			atomic_fetch_sub(&l->half_open_count, 1);
 			push_q(l->ready_q, &conn->q_node, true);
 		} else {
 			pthread_cond_broadcast(&conn->estblshd_cond); // wake tcp_connect()
