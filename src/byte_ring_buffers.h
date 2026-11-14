@@ -45,7 +45,7 @@ struct byte_reassembly_rcv_buffer {
 
 	uint32_t fin_seq;
 	bool fin_received;
-	uint32_t consumed_seq;
+	bool fin_consumed;
 };
 
 struct byte_snd_buffer {
@@ -116,6 +116,7 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b,
 ssize_t blocking_read_from_rcv_buff(struct byte_reassembly_rcv_buffer *b,
 				    unsigned char *buffer,
 				    size_t len);
+void rcv_buff_accept_fin(struct byte_reassembly_rcv_buffer *b);
 
 static inline void sndbuf_insert_ghost_byte(struct byte_snd_buffer *b, uint8_t flag)
 {

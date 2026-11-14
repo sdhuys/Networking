@@ -137,7 +137,6 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	conn->rcv_buffer.rcv_nxt = conn->irs + seg_seq_len(seg);
 	conn->snd_buffer.snd_nxt = cookie + 1;
 	conn->snd_buffer.snd_una = cookie + 1;
-	conn->rcv_buffer.consumed_seq = conn->irs;
 
 	conn->state = ESTABLISHED;
 

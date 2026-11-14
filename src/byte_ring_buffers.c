@@ -148,6 +148,16 @@ void read_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t
 	}
 }
 
+// called once the peer's FIN is in order (fin_seq == rcv_nxt)
+void rcv_buff_accept_fin(struct byte_reassembly_rcv_buffer *b)
+{
+	lock_rcv_buff(b);
+	b->rcv_nxt++; // FIN occupies one sequence number
+	b->fin_consumed = true;
+	unlock_rcv_buff(b);
+	pthread_cond_broadcast(&b->cond); // a blocked reader can now return EOF
+}
+
 // writes raw bytes into receive buffer at a physical index.
 // does not update any metadata fields (head, contiguous_bytes, rcv_nxt, ...)
 static size_t write_to_rcv_buff(struct byte_reassembly_rcv_buffer *b,
@@ -587,34 +597,17 @@ ssize_t blocking_read_from_rcv_buff(struct byte_reassembly_rcv_buffer *b,
 	if (!readable)
 		return -1;
 
-	printf("\n[DEBUG] Buffer State:\n"
-	       "  contiguous_bytes: %zu\n"
-	       "  fin_received:     %s\n"
-	       "  rcv_nxt:          %u\n"
-	       "  fin_seq:          %u\n"
-	       "  consumed_seq:     %u\n"
-	       "  Condition Check:  (rcv_nxt >= fin_seq): %s, (consumed < fin-1): %s\n\n",
-	       b->contiguous_bytes,
-	       b->fin_received ? "TRUE" : "FALSE",
-	       b->rcv_nxt,
-	       b->fin_seq,
-	       b->consumed_seq,
-	       (b->rcv_nxt >= b->fin_seq) ? "YES" : "NO",
-	       (b->consumed_seq < b->fin_seq - 1) ? "YES" : "NO");
-
 	// block with state rechecked on each iteration
-	while (b->contiguous_bytes == 0 && (!b->fin_received || b->consumed_seq < b->fin_seq - 1)) {
+	while (b->contiguous_bytes == 0 && !b->fin_consumed) {
 		pthread_cond_wait(&b->cond, &b->lock);
-
 		if (tcp_conn_is_aborted(conn))
 			return -1;
 	}
 
 	printf("FIN SEQ: %u \n", b->fin_seq);
 	// FIN received AND we've read everything up to the FIN
-	if (b->contiguous_bytes == 0 && b->fin_received && b->consumed_seq >= b->fin_seq - 1) {
+	if (b->contiguous_bytes == 0 && b->fin_consumed)
 		return 0; // EOF
-	}
 
 	// read what's avialable
 	size_t to_read = len;
@@ -636,7 +629,6 @@ ssize_t blocking_read_from_rcv_buff(struct byte_reassembly_rcv_buffer *b,
 	// update metadata
 	b->head = (b->head + to_read) & (b->capacity - 1);
 	b->contiguous_bytes -= to_read;
-	b->consumed_seq += to_read;
 
 	return (ssize_t)to_read;
 }

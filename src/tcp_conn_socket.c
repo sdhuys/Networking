@@ -164,7 +164,6 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 			// init connection
 			conn->irs = seg_seq;
 			conn->rcv_buffer.rcv_nxt = seg_seq + 1;
-			conn->rcv_buffer.consumed_seq = seg_seq;
 			conn->ts_enabled = seg->options->ts_present;
 			conn->sack_enabled = seg->options->sack_permitted;
 			conn->snd_mss = tcp_effective_snd_mss(seg->options->mss_present,
@@ -392,7 +391,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 	}
 
 	if (conn->rcv_buffer.fin_received && conn->rcv_buffer.fin_seq == conn->rcv_buffer.rcv_nxt) {
-		conn->rcv_buffer.rcv_nxt++; // add FIN ghost byte
+		rcv_buff_accept_fin(&conn->rcv_buffer);
 		immediate_ack = true;
 		if (conn->state == ESTABLISHED)
 			tcp_transition_to_state(conn, CLOSE_WAIT);
