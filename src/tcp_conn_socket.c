@@ -50,9 +50,22 @@ static inline bool tcp_state_accepts_data(tcp_connection_state s)
 	return s == ESTABLISHED || s == FIN_WAIT_1 || s == FIN_WAIT_2;
 }
 
-static inline void tcp_flag_conn_aborted(struct tcp_ipv4_conn *conn)
+// marks the connection aborted and wakes every blocked reader and writer.
+// each broadcast is made while holding its buffer's lock => a waiter checks aborted flag under
+// same lock and keeps holding it until pthread_cond_wait() releases it, so it either
+// sees the flag, or is already waiting when the broadcast arrives => no wakeup can be lost.
+// caller MUST NOT hold rcv nor snd buffer lock
+static void tcp_flag_conn_aborted(struct tcp_ipv4_conn *conn)
 {
 	atomic_store(&conn->aborted, true);
+
+	lock_snd_buff(&conn->snd_buffer);
+	pthread_cond_broadcast(&conn->snd_buffer.cond);
+	unlock_snd_buff(&conn->snd_buffer);
+
+	lock_rcv_buff(&conn->rcv_buffer);
+	pthread_cond_broadcast(&conn->rcv_buffer.cond);
+	unlock_rcv_buff(&conn->rcv_buffer);
 }
 
 static void tcp_abort_conn(struct tcp_ipv4_conn *conn)
@@ -209,7 +222,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 			lock_snd_buff(sb);
 			uint16_t prev_peer_wndw = sb->snd_wndw;
 			sb->snd_wndw = ntohs(seg->header->window);
-			
+
 			// peer is alive: any ACK answers our window probes
 			// new data acked means our retransmissions got through
 			conn->zwp_unanswered = 0;
@@ -837,19 +850,11 @@ void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
 		}
 	}
 
-	// no more read nor write: separate broadcasts for CLOSED in case of RST (not going
-	// through the standard closing states)
-	if (state == CLOSED) {
-		pthread_cond_broadcast(&conn->snd_buffer.cond);
-		pthread_cond_broadcast(&conn->rcv_buffer.cond);
+	// tcp_connect() waits for ESTABLISHED or CLOSED under conn->lock.
+	// Readers and writers don't wait on the state: they're woken where their own conditions
+	// change (data, FIN, room, shutdown, abort), under their own buffer's lock
+	if (state == CLOSED)
 		pthread_cond_broadcast(&conn->estblshd_cond);
-	}
-	// no more read, can still write
-	if (state == CLOSE_WAIT || state == TIME_WAIT || state == CLOSING)
-		pthread_cond_broadcast(&conn->rcv_buffer.cond);
-	// no more write, can still read
-	if (state == FIN_WAIT_1)
-		pthread_cond_broadcast(&conn->snd_buffer.cond);
 
 	if (state == TIME_WAIT)
 		fx->enter_time_wait = true;
@@ -1207,6 +1212,7 @@ void tcp_end_snd(struct stack *stack, void *sock)
 	pthread_mutex_unlock(&conn->lock);
 
 	buff->shutdown = true;
+	pthread_cond_broadcast(&buff->cond); // writers blocked on a full buffer: no more writing
 	sndbuf_insert_ghost_byte(buff, TCP_FIN);
 	unlock_snd_buff(buff);
 	notify_socket_readable_snd(stack->sock_manager, sock, &tcp_conn_ops);

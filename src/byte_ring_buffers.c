@@ -529,27 +529,19 @@ ssize_t blocking_write_to_snd_buff(struct byte_snd_buffer *b,
 		return 0;
 
 	lock_snd_buff(b);
-	if (b->shutdown) {
-		unlock_snd_buff(b);
-		return -1; // FIN already queued or sent
-	}
 
-	size_t available = sndbuff_available_space(b);
-	size_t to_write = len;
-
-	// block while buffer is full and connection is still established
-	while (available == 0) {
+	// wait for room, unless the connection is reset or our side already sent its FIN.
+	// All three are in the condition, so they're checked before every wait, not only after.
+	size_t available;
+	while ((available = sndbuff_available_space(b)) == 0 && !tcp_conn_is_aborted(conn) &&
+	       !b->shutdown)
 		pthread_cond_wait(&b->cond, &b->lock);
 
-		tcp_lock_conn(conn);
-		if (tcp_conn_is_aborted(conn) || b->shutdown) {
-			tcp_unlock_conn(conn);
-			unlock_snd_buff(b);
-			return -1;
-		}
-		tcp_unlock_conn(conn);
-		available = sndbuff_available_space(b);
+	if (tcp_conn_is_aborted(conn) || b->shutdown) {
+		unlock_snd_buff(b);
+		return -1; // reset, or FIN already queued
 	}
+	size_t to_write = len;
 
 	// write what we can fit
 	if (to_write > available)
@@ -593,19 +585,14 @@ ssize_t blocking_read_from_rcv_buff(struct byte_reassembly_rcv_buffer *b,
 	printf("       START BLOCKING READ \n");
 	struct tcp_ipv4_conn *conn = CONTAINER_OF(b, struct tcp_ipv4_conn, rcv_buffer);
 
-	int readable = !tcp_conn_is_aborted(conn);
+	// wait for data, the peer's FIN, or a reset. All three are in the condition, so
+	// they're checked before every wait, not only after one.
+	while (b->contiguous_bytes == 0 && !b->fin_consumed && !tcp_conn_is_aborted(conn))
+		pthread_cond_wait(&b->cond, &b->lock);
 
-	if (!readable)
+	if (tcp_conn_is_aborted(conn))
 		return -1;
 
-	// block with state rechecked on each iteration
-	while (b->contiguous_bytes == 0 && !b->fin_consumed) {
-		pthread_cond_wait(&b->cond, &b->lock);
-		if (tcp_conn_is_aborted(conn))
-			return -1;
-	}
-
-	printf("FIN SEQ: %u \n", b->fin_seq);
 	// FIN received AND we've read everything up to the FIN
 	if (b->contiguous_bytes == 0 && b->fin_consumed)
 		return 0; // EOF
