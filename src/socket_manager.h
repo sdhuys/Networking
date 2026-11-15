@@ -43,7 +43,7 @@ struct socket_ops {
 
 	void (*close)(struct stack *stack, void *sock);
 	struct tcp_ipv4_conn *(*accept)(void *sock);
-	void (*end_snd)(struct stack *stack, void *sock);
+	void (*end_snd)(void *sock);
 };
 
 struct socket_manager {

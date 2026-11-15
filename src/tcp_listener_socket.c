@@ -44,6 +44,7 @@ pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lstnr,
 	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, lstnr->tcp_layer);
 	if (conn == NULL)
 		return TCP_CONN_CREATION_ERROR;
+
 	retain_tcp_conn(conn);
 	conn->lstnr = lstnr;
 	retain_tcp_listener(lstnr);

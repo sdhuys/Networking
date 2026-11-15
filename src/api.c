@@ -203,7 +203,7 @@ int tcp_end_send(struct stack *stack, int sockfd)
 		h.ops->release(h.sock);
 		return -2; // INVALID SOCKET TYPE
 	}
-	h.ops->end_snd(stack, h.sock);
+	h.ops->end_snd(h.sock);
 	h.ops->release(h.sock);
 	return 0;
 }

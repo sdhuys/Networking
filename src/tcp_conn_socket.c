@@ -54,7 +54,6 @@ static inline bool tcp_state_accepts_data(tcp_connection_state s)
 // each broadcast is made while holding its buffer's lock => a waiter checks aborted flag under
 // same lock and keeps holding it until pthread_cond_wait() releases it, so it either
 // sees the flag, or is already waiting when the broadcast arrives => no wakeup can be lost.
-// caller MUST NOT hold rcv nor snd buffer lock
 static void tcp_flag_conn_aborted(struct tcp_ipv4_conn *conn)
 {
 	conn->aborted = true;
@@ -65,8 +64,12 @@ static void tcp_flag_conn_aborted(struct tcp_ipv4_conn *conn)
 
 void abort_tcp_conn(struct tcp_ipv4_conn *conn)
 {
+	struct tcp_deferred_work d = {0};
+	pthread_mutex_lock(&conn->lock);
 	tcp_flag_conn_aborted(conn);
-	tcp_transition_to_state(conn, CLOSED);
+	tcp_set_state_locked(conn, CLOSED, &d);
+	pthread_mutex_unlock(&conn->lock);
+	tcp_execute_deffered_work(conn, &d);
 }
 
 // Resends our SYN / SYN-ACK right away, without going through the RTO: no backoff,
@@ -752,7 +755,6 @@ void delayed_ack_callback(void *c)
 		return;
 	}
 	tcp_create_ack_reply(p, conn, &d);
-	d.pkt_snd_now = p;
 	pthread_mutex_unlock(&conn->lock);
 	tcp_execute_deffered_work(conn, &d);
 }
@@ -779,6 +781,7 @@ void tcp_create_ack_reply(struct pkt *p, struct tcp_ipv4_conn *conn, struct tcp_
 	struct timer_manager *tmgr = ctx->timer_mgr;
 	cancel_timer(tmgr, conn->del_ack_timer);
 	d->pkt_snd_now = p;
+	retain_pkt(p); // d->pkt_snd_now's reference, released upon execution
 }
 
 void tcp_init_packet_addresses(struct pkt *pkt, struct tcp_ipv4_conn *conn)
@@ -797,7 +800,6 @@ void tcp_init_packet_addresses(struct pkt *pkt, struct tcp_ipv4_conn *conn)
 void write_pkt_tcp_general_metadata(struct tcp_ipv4_conn *conn, struct pkt *p)
 {
 	tcp_init_packet_addresses(p, conn);
-	tcp_lock_conn(conn);
 	p->tcp_seq =
 	    conn->snd_buffer.retransmit ? conn->snd_buffer.snd_una : conn->snd_buffer.snd_nxt;
 	p->tcp_ack = conn->rcv_buffer.rcv_nxt;
@@ -821,8 +823,6 @@ void write_pkt_tcp_general_metadata(struct tcp_ipv4_conn *conn, struct pkt *p)
 	p->tcp_options->wscale_present = false;
 	// no sack blocks
 	p->tcp_options->sack_block_count = 0;
-
-	tcp_unlock_conn(conn);
 }
 
 // sets new state and wake waiters, hand a passively opened connection to its listener.
@@ -914,6 +914,9 @@ void tcp_execute_deffered_work(struct tcp_ipv4_conn *conn, const struct tcp_defe
 		conn->tcp_layer->send_down(conn->tcp_layer, d->pkt_snd_now);
 		release_pkt(d->pkt_snd_now);
 	}
+
+	if (d->notify_TX_snd)
+		notify_socket_readable_snd(smgr, conn, &tcp_conn_ops);
 }
 
 // takes lock, records deffered work, unlocks and executes the work
@@ -1207,39 +1210,42 @@ pkt_result tcp_send_packet(struct stack *stack, struct pkt *p)
 	return r;
 }
 
-void tcp_end_snd(struct stack *stack, void *sock)
+void tcp_end_snd(void *sock)
 {
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)sock;
 	struct byte_snd_buffer *buff = &conn->snd_buffer;
+
+	pthread_mutex_lock(&conn->lock);
 	if (buff->shutdown) {
+		pthread_mutex_unlock(&conn->lock);
 		return;
 	}
 
-	struct tcp_deferred_work fx = {0};
-	pthread_mutex_lock(&conn->lock);
+	struct tcp_deferred_work d = {0};
 
 	// change state before sending out FIN
 	// avoids ACK of our FIN coming in at stale state
 	if (conn->state == ESTABLISHED) {
-		tcp_set_state_locked(conn, FIN_WAIT_1, &fx);
+		tcp_set_state_locked(conn, FIN_WAIT_1, &d);
 	} else if (conn->state == CLOSE_WAIT) {
-		tcp_set_state_locked(conn, LAST_ACK, &fx);
+		tcp_set_state_locked(conn, LAST_ACK, &d);
 	} else {
 		pthread_mutex_unlock(&conn->lock);
 		return; // not in a state that sends a FIN
 	}
-	pthread_mutex_unlock(&conn->lock);
 
 	buff->shutdown = true;
 	pthread_cond_broadcast(&buff->cond); // writers blocked on a full buffer: no more writing
 	sndbuf_insert_ghost_byte(buff, TCP_FIN);
-	notify_socket_readable_snd(stack->sock_manager, sock, &tcp_conn_ops);
+	d.notify_TX_snd = true;
+	pthread_mutex_unlock(&conn->lock);
+	tcp_execute_deffered_work(conn, &d);
 }
 
 void tcp_close_conn(struct stack *stack, void *sock)
 {
 	// tcp_end_snd checks the state itself, under the lock
-	tcp_end_snd(stack, sock);
+	tcp_end_snd(sock);
 }
 
 ssize_t tcp_write_to_snd_buff(struct stack *stack, void *sock, struct send_request *req)
