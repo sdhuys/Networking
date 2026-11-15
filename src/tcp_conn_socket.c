@@ -853,8 +853,6 @@ void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
 		if (l) {
 			if (!push_q(l->ready_q, &conn->q_node))
 				fx->abort = true;
-			release_tcp_listener(l);
-			conn->lstnr = NULL;
 		} else {
 			pthread_cond_broadcast(&conn->estblshd_cond); // wake tcp_connect()
 		}
@@ -996,6 +994,10 @@ void destroy_tcp_conn(struct tcp_ipv4_conn *conn)
 	free(conn->time_wait_timer);
 	pthread_cond_destroy(&conn->estblshd_cond);
 	pthread_mutex_destroy(&conn->lock);
+
+	if (conn->lstnr)
+		release_tcp_listener(conn->lstnr);
+
 	free(conn);
 }
 
