@@ -29,7 +29,7 @@ struct queue *create_q(void (*release_parent)(struct queue_node *),
 		       void (*retain_parent)(struct queue_node *),
 		       size_t cap);
 void destroy_q(struct queue *q);
-void close_q(struct queue *q);
+struct queue_node *close_q(struct queue *q);
 bool push_q(struct queue *q, struct queue_node *n);
 bool q_full(struct queue *q);
 struct queue_node *pop_q(struct queue *q);

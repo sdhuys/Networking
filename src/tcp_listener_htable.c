@@ -23,8 +23,10 @@ bool add_to_tcp_listener_hashtable(struct tcp_ipv4_listener_htable *htable,
 	}
 
 	struct tcp_ipv4_listener_node *new_node = malloc(sizeof(struct tcp_ipv4_listener_node));
-	if (new_node == NULL)
+	if (new_node == NULL) {
+		pthread_mutex_unlock(&htable->bucket_locks[hash]);
 		return false;
+	}
 	retain_tcp_listener(listener);
 
 	new_node->listener = listener;
@@ -47,8 +49,8 @@ struct tcp_ipv4_listener *query_tcp_listener_hashtable(struct tcp_ipv4_listener_
 		struct tcp_ipv4_listener *listener = bucket_node->listener;
 		if (is_tcp_lstnr_match(listener, port, addr)) {
 			retain_tcp_listener(listener);
-				pthread_mutex_unlock(bucket_lock);
-				return listener;
+			pthread_mutex_unlock(bucket_lock);
+			return listener;
 		}
 		bucket_node = bucket_node->next;
 	}

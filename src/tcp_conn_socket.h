@@ -182,7 +182,7 @@ void tcp_set_snd_queued(void *s, bool v);
 void tcp_end_snd(struct stack *stack, void *sock);
 void tcp_close_conn(struct stack *stack, void *sock);
 
-void tcp_abort_conn(struct tcp_ipv4_conn *conn);
+void abort_tcp_con(struct tcp_ipv4_conn *conn);
 
 static inline bool tcp_conn_alive(struct tcp_ipv4_conn *conn)
 {

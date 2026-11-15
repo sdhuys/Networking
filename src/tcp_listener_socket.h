@@ -37,8 +37,6 @@ void destroy_tcp_listener(struct tcp_ipv4_listener *listener);
 void retain_tcp_listener(struct tcp_ipv4_listener *listener);
 void release_tcp_listener(struct tcp_ipv4_listener *listener);
 void tcp_close_listener(struct stack *stack, void *s);
-void tcp_lock_listener(void *s);
-void tcp_unlock_listener(void *s);
 void tcp_retain_listener(void *s);
 void tcp_release_listener(void *s);
 

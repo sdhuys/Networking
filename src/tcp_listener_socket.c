@@ -68,9 +68,8 @@ struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack
 	if (listener == NULL)
 		return NULL;
 
-	listener->ready_q = create_q(q_release_tcp_conn,
-				     q_retain_tcp_conn,
-				     TCP_LSTNR_BACKLOG_DEFAULT);
+	listener->ready_q =
+	    create_q(q_release_tcp_conn, q_retain_tcp_conn, TCP_LSTNR_BACKLOG_DEFAULT);
 	if (!listener->ready_q) {
 		destroy_tcp_listener(listener);
 		return NULL;
@@ -119,7 +118,17 @@ void tcp_close_listener(struct stack *stack, void *s)
 {
 	struct tcp_ipv4_listener *listener = (struct tcp_ipv4_listener *)s;
 	remove_from_tcp_listener_hashtable(stack->sock_manager->tcp_ipv4_listener_htable, listener);
-	close_q(listener->ready_q);
+	// mark q closed
+	struct queue_node *node = close_q(listener->ready_q);
+	// abort and release all connections from the q
+	while (node) {
+		struct tcp_ipv4_conn *c = CONTAINER_OF(node, struct tcp_ipv4_conn, q_node);
+		abort_tcp_con(c);
+		release_tcp_conn(c);
+		struct queue_node *nxt = node->nxt;
+		node->nxt = Q_NODE_UNLINKED;
+		node = nxt;
+	}
 }
 
 struct tcp_ipv4_conn *tcp_lstnr_accept_conn(void *s)

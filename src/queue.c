@@ -44,6 +44,8 @@ void destroy_q(struct queue *q)
 			q->release_parent(curr);
 		curr = nxt;
 	}
+	pthread_mutex_destroy(&q->lock);
+	pthread_cond_destroy(&q->not_empty_or_closed);
 	free(q);
 }
 
@@ -131,13 +133,19 @@ struct queue_node *pop_q_blocking(struct queue *q)
 	pthread_mutex_unlock(&(q->lock));
 	return r;
 }
-
-void close_q(struct queue *q)
+// marks the queue closed
+// detaches all nodes from the queue
+// returns old head of the queue for safe disposal without holding queue lock
+struct queue_node *close_q(struct queue *q)
 {
 	pthread_mutex_lock(&(q->lock));
 	q->closed = true;
+	struct queue_node *list = q->head;
+	q->head = q->tail = NULL;
+	q->count = 0;
 	pthread_cond_broadcast(&(q->not_empty_or_closed));
 	pthread_mutex_unlock(&(q->lock));
+	return list;
 }
 
 bool q_full(struct queue *q)
