@@ -59,7 +59,7 @@ void *start_server_app_wrapper(void *arg)
 void *start_listening_wrapper(void *arg)
 {
 	struct nw_layer *tap = (struct nw_layer *)arg;
-	start_listening(tap);
+	read_from_interface(tap);
 	return NULL;
 }
 
@@ -76,19 +76,21 @@ int main()
 
 	struct nw_layer *tap = stack->if_layer;
 	// struct socket_manager *socket_manager = stack.sock_manager;
-	pthread_t timer_thread_id;
+	pthread_t interface_reader_tid;
+	pthread_t timer_tid;
 	pthread_t client_app_tid;
 	pthread_t server_app_tid;
 	pthread_t stack_tx_tid;
 	pthread_t ping_testid;
 
 	// pthread_create(&ping_testid, NULL, ping_test, (void *)stack);
-	pthread_create(&timer_thread_id, NULL, start_timers_loop, (void *)stack);
+	pthread_create(&interface_reader_tid, NULL, read_from_interface, (void *) tap);
+	pthread_create(&timer_tid, NULL, start_timers_loop, (void *)stack);
 	pthread_create(&client_app_tid, NULL, start_client_app_wrapper, (void *)stack);
 	pthread_create(&server_app_tid, NULL, start_server_app_wrapper, (void *)stack);
 	pthread_create(&stack_tx_tid, NULL, stack_transmission_loop, (void *)stack);
 
-	start_listening(tap);
+	process_ingress_q_packets(tap);
 
 	return 0;
 }

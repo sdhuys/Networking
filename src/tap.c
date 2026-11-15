@@ -1,4 +1,5 @@
 #include "tap.h"
+#include "container_of.h"
 #include "buffer_pool.h"
 #include "nw_interface.h"
 #include "nw_layer.h"
@@ -8,8 +9,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-void start_listening(struct nw_layer *interface)
+void *read_from_interface(void *i_face)
 {
+	struct nw_layer * interface = (struct nw_layer *)i_face;
 	struct interface_context *interface_context =
 	    ((struct interface_context *)interface->context);
 	int fd = interface_context->interfaces[0].fd;
@@ -33,10 +35,26 @@ void start_listening(struct nw_layer *interface)
 			fprintf(log, "\n");
 			fclose(log);
 		}
-		pkt_result result = interface->rcv_up(interface, packet);
+		push_q(interface_context->ingress_q, &packet->q_node);
+	}
+}
+
+void process_ingress_q_packets(struct nw_layer *interface)
+{
+	struct interface_context *if_cntx = ((struct interface_context *)interface->context);
+	struct queue *q = if_cntx->ingress_q;
+
+	while (true) {
+		struct queue_node *n = pop_q_blocking(q);
+		if (!n)
+			return; // INGRESS QUEUE STOPPED, STACK DISABLED
+		struct pkt *p = CONTAINER_OF(n, struct pkt, q_node);
+
+		pkt_result result = interface->rcv_up(interface, p);
 		printf("LISTEN LOOP RELEASING \n");
-		release_pkt(packet);
+		release_pkt(p);
 		printf("%d \n\n", result);
+
 	}
 }
 
@@ -50,6 +68,7 @@ pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
 {
 	// context could contain array of interfaces
 	struct interface_context *if_cntx = (struct interface_context *)interface->context;
+	struct queue *q = if_cntx->ingress_q;
 	struct nw_interface *nw_interfaces = if_cntx->interfaces;
 	struct nw_interface nw_if = nw_interfaces[packet->if_index];
 	int fd = nw_if.fd;
@@ -65,7 +84,6 @@ pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
 	// mac address all zeros is sentinel value for loopback!
 	bool loopback = ((packet->dest_mac[0] | packet->dest_mac[1] | packet->dest_mac[2] |
 			  packet->dest_mac[3] | packet->dest_mac[4] | packet->dest_mac[5]) == 0);
-	pkt_result loopback_result;
 
 	if (!loopback) {
 		ssize_t nwrite = write(fd, (packet->data + packet->offset), packet->len);
@@ -75,13 +93,9 @@ pkt_result write_to_interface(struct nw_layer *interface, struct pkt *packet)
 			return WRITE_ERROR;
 		}
 	} else {
-		loopback_result = interface->rcv_up(interface, packet);
+		push_q(q, &packet->q_node);
 	}
 
 	printf("SENT \n");
-
-	if (loopback)
-		printf("\n\n      loopback result: %i \n\n", loopback_result);
-
 	return SENT;
 }

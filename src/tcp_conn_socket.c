@@ -939,7 +939,6 @@ void release_tcp_conn(struct tcp_ipv4_conn *conn)
 		destroy_tcp_conn(conn);
 }
 
-// caller must hold lock!
 void q_retain_tcp_conn(struct queue_node *n)
 {
 	struct tcp_ipv4_conn *conn = CONTAINER_OF(n, struct tcp_ipv4_conn, q_node);

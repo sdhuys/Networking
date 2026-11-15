@@ -1,4 +1,5 @@
 #include "buffer_pool.h"
+#include "container_of.h"
 #include "pkt.h"
 #include "tcp_options.h"
 #include <assert.h>
@@ -74,4 +75,16 @@ void retain_pkt(struct pkt *pkt)
 {
 	unsigned int old = atomic_fetch_add(&pkt->ref_count, 1);
 	printf("Retained PACKET %d id, %d ref count \n", pkt->pool_index, old + 1);
+}
+
+void q_release_pkt(struct queue_node* n)
+{
+	struct pkt *p = CONTAINER_OF(n, struct pkt, q_node);
+	release_pkt(p);
+}
+
+void q_retain_pkt(struct queue_node* n)
+{
+	struct pkt *p = CONTAINER_OF(n, struct pkt, q_node);
+	retain_pkt(p);
 }

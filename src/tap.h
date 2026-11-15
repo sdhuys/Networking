@@ -12,13 +12,15 @@ struct nw_interface;
 struct interface_context {
 	struct nw_interface *interfaces;
 	size_t if_amount;
+	struct queue *ingress_q;
 };
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void start_listening(struct nw_layer *interface);
+void *read_from_interface(void *i_face);
+void process_ingress_q_packets(struct nw_layer *interface);
 pkt_result send_up_to_ethernet(struct nw_layer *tap, struct pkt *packet);
 pkt_result write_to_interface(struct nw_layer *tap, struct pkt *packet);
 
