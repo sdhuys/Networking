@@ -46,6 +46,7 @@ pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lstnr,
 		return TCP_CONN_CREATION_ERROR;
 	retain_tcp_conn(conn);
 	conn->lstnr = lstnr;
+	retain_tcp_listener(lstnr);
 	server_init_tcp_connection(conn, seg);
 
 	struct tcp_ipv4_conn_htable *htable =

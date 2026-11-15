@@ -243,10 +243,11 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 
 			case SYN_RECEIVED:
 				if (valid_new_ack) {
+					assert(conn->lstnr);
 					// if ready q full drop whole segment and stay in
 					// SYN_RECEIVED try again after SYN-ACK retransmission's new
 					// ACK reply
-					if (conn->lstnr && q_full(conn->lstnr->ready_q))
+					if (q_full(conn->lstnr->ready_q))
 						return TCP_LSTNR_READY_Q_FULL;
 					tcp_transition_to_state(conn, ESTABLISHED);
 					conn->snd_buffer.snd_una = seg_ack;
@@ -853,6 +854,8 @@ void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
 		if (l) {
 			if (!push_q(l->ready_q, &conn->q_node))
 				fx->abort = true;
+			release_tcp_listener(l);
+			conn->lstnr = NULL;
 		} else {
 			pthread_cond_broadcast(&conn->estblshd_cond); // wake tcp_connect()
 		}
