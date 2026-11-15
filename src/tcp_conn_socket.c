@@ -243,11 +243,10 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 
 			case SYN_RECEIVED:
 				if (valid_new_ack) {
-					assert(conn->lstnr);
 					// if ready q full drop whole segment and stay in
 					// SYN_RECEIVED try again after SYN-ACK retransmission's new
 					// ACK reply
-					if (q_full(conn->lstnr->ready_q))
+					if (conn->lstnr && q_full(conn->lstnr->ready_q))
 						return TCP_LSTNR_READY_Q_FULL;
 					tcp_transition_to_state(conn, ESTABLISHED);
 					conn->snd_buffer.snd_una = seg_ack;
