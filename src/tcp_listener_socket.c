@@ -79,7 +79,7 @@ struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack
 	}
 
 	listener->ready_q = create_q(
-	    q_release_tcp_conn, q_retain_tcp_conn, &listener->accept_cond, &listener->lock);
+	    q_release_tcp_conn, q_retain_tcp_conn, &listener->accept_cond, &listener->lock, TCP_LSTNR_BACKLOG_DEFAULT);
 	if (!listener->ready_q) {
 		destroy_tcp_listener(listener);
 		return NULL;

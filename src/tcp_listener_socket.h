@@ -6,6 +6,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define TCP_LSTNR_BACKLOG_DEFAULT 128
+
 extern const struct socket_ops tcp_listener_ops;
 
 typedef enum { TCP_LIS_LISTEN, TCP_LIS_CLOSED } tcp_listener_state;

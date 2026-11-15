@@ -1,6 +1,7 @@
 #pragma once
 #include "address_types.h"
 #include "common_layer_defs.h"
+#include "queue.h"
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stddef.h>
@@ -35,4 +36,6 @@ struct pkt {
 	uint16_t rcv_window;
 	struct tcp_options *tcp_options;
 	struct route *route;
+
+	struct queue_node q_node; // loopback queue linkage
 };

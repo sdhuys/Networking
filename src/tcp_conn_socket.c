@@ -844,7 +844,7 @@ void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
 	if (state == ESTABLISHED) {
 		struct tcp_ipv4_listener *l = conn->lstnr;
 		if (l) {
-			push_q(l->ready_q, &conn->q_node, true);
+			push_q(l->ready_q, &conn->q_node);
 		} else {
 			pthread_cond_broadcast(&conn->estblshd_cond); // wake tcp_connect()
 		}

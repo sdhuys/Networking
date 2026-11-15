@@ -149,7 +149,7 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 		tcp_release_conn(conn);
 		return TCP_CONN_HTABLE_ADD_FAILED;
 	}
-	push_q(listener->ready_q, &conn->q_node, true);
+	push_q(listener->ready_q, &conn->q_node);
 
 	if (seg_seq_len(seg) > 0)
 		process_tcp_segment(p, seg, conn);

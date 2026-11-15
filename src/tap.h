@@ -1,6 +1,9 @@
 #pragma once
 #include "pkt_result.h"
+#include "queue.h"
 #include <stddef.h>
+
+#define LOOPBACK_QUEUE_CAP 256
 
 struct pkt;
 struct nw_layer;

@@ -18,7 +18,6 @@ extern "C" {
 
 void set_net_if_struct(int fd, char *if_name, struct nw_interface *n_if);
 void set_stack_ipv4_addr(struct nw_interface *n_if, ipv4_address_t stack_ip_addr);
-void set_net_if_struct(int fd, char *if_name, struct nw_interface *n_if);
 
 #ifdef __cplusplus
 }

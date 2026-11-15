@@ -27,8 +27,10 @@ bool add_to_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct tcp_i
 		node = node->next;
 	}
 	struct tcp_ipv4_conn_htbl_node *new_node = malloc(sizeof(struct tcp_ipv4_conn_htbl_node));
-	if (new_node == NULL)
+	if (new_node == NULL) {
+		pthread_mutex_unlock(&htable->bucket_locks[hash]);
 		return false;
+	}
 	retain_tcp_conn(conn);
 
 	new_node->conn = conn;
@@ -97,7 +99,7 @@ bool remove_from_tcp_conn_hashtable(struct tcp_ipv4_conn_htable *htable, struct 
 
 uint32_t calc_tcp_conn_hash(struct tcp_ipv4_conn_htable *htable, struct tcp_conn_id *id)
 {
-	return hash_table(id, sizeof(id)) & (htable->buckets_amount - 1);
+	return hash_table(id, sizeof(*id)) & (htable->buckets_amount - 1);
 }
 
 struct tcp_ipv4_conn_htable *create_tcp_ipv4_conn_htable(size_t size)

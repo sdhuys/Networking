@@ -49,6 +49,7 @@ struct pkt *allocate_pkt()
 	p->ref_count = 1;
 	p->route = NULL;
 	memset(p->tcp_options, 0, sizeof(*p->tcp_options));
+	p->q_node.nxt = Q_NODE_UNLINKED;
 
 	return p;
 }
