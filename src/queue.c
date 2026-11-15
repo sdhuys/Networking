@@ -42,7 +42,6 @@ void destroy_q(struct queue *q)
 	free(q);
 }
 
-// if caller already holds lock, lock should be false
 bool push_q(struct queue *q, struct queue_node *n)
 {
 	assert(n->nxt == Q_NODE_UNLINKED);
@@ -50,13 +49,13 @@ bool push_q(struct queue *q, struct queue_node *n)
 		return false;
 	if (q->lock)
 		pthread_mutex_lock(q->lock);
-	n->nxt = NULL;
 
-	if (q->cap && q->count == q->cap) {
+	if ((q->cap && q->count == q->cap) || q->closed) {
 		if (q->lock)
 			pthread_mutex_unlock(q->lock);
 		return false; // no retain: caller still owns n
 	}
+	n->nxt = NULL;
 	q->count++;
 
 	if (q->head == NULL) {
@@ -105,7 +104,7 @@ struct queue_node *pop_q(struct queue *q)
 		q->tail = NULL;
 
 	q->count--;
-
+	r->nxt = Q_NODE_UNLINKED;
 	if (q->lock)
 		pthread_mutex_unlock(q->lock);
 	return r;
@@ -119,14 +118,18 @@ struct queue_node *pop_q_blocking(struct queue *q)
 		pthread_cond_wait(q->not_empty_or_closed, q->lock);
 	}
 
-	if (q->closed)
+	if (q->closed) {
+		pthread_mutex_unlock(q->lock);
 		return NULL;
+	}
 
 	struct queue_node *r = q->head;
 	q->head = r->nxt;
 	if (!q->head)
 		q->tail = NULL;
 
+	r->nxt = Q_NODE_UNLINKED;
+	q->count--;
 	pthread_mutex_unlock(q->lock);
 	return r;
 }
@@ -146,7 +149,7 @@ bool q_full(struct queue *q)
 		pthread_mutex_lock(q->lock);
 	bool r = q->cap && q->cap == q->count;
 	if (q->lock)
-		pthread_mutex_lock(q->lock);
+		pthread_mutex_unlock(q->lock);
 	return r;
 }
 

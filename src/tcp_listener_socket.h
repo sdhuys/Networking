@@ -30,7 +30,7 @@ struct tcp_ipv4_listener {
 	atomic_uint half_open_count;
 	struct queue *ready_q;
 
-	uint32_t ref_count;
+	atomic_uint ref_count;
 	struct nw_layer *tcp_layer;
 };
 

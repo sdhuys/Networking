@@ -114,7 +114,7 @@ struct tcp_ipv4_conn {
 	atomic_bool data_timers_cancelled;
 
 	// Intrusive data structures
-	struct queue_node q_node;
+	struct queue_node q_node; // listener's accept_q
 };
 
 // work that must be done after state transition, after releasing lock
@@ -124,6 +124,7 @@ struct tcp_transition_effects {
 	bool enter_time_wait; // move to the TIME_WAIT table, start the TIME_WAIT timer
 	bool leave_time_wait; // remove from the TIME_WAIT table, stop its timer
 	bool unhash;	      // remove from main conn_htable
+	bool abort;
 };
 
 #ifdef __cplusplus
@@ -180,6 +181,8 @@ bool tcp_is_snd_queued(void *s);
 void tcp_set_snd_queued(void *s, bool v);
 void tcp_end_snd(struct stack *stack, void *sock);
 void tcp_close_conn(struct stack *stack, void *sock);
+
+void tcp_abort_conn(struct tcp_ipv4_conn *conn);
 
 static inline bool tcp_conn_alive(struct tcp_ipv4_conn *conn)
 {

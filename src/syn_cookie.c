@@ -71,6 +71,9 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 				struct tcp_segment *seg,
 				struct pkt *p)
 {
+	if (q_full(listener->ready_q))
+		return TCP_LSTNR_READY_Q_FULL;
+
 	uint32_t cookie = ntohl(seg->header->ack_num) - 1;
 	// top 5 bits: t
 	// middle 3 bits: 2 bits encoded MSS, 1 bit sack_permitted
@@ -149,7 +152,11 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 		tcp_release_conn(conn);
 		return TCP_CONN_HTABLE_ADD_FAILED;
 	}
-	push_q(listener->ready_q, &conn->q_node);
+
+	if (!push_q(listener->ready_q, &conn->q_node)) {
+		tcp_abort_conn(conn);
+		return TCP_LSTNR_READY_Q_FULL_ABORT_CONN;
+	}
 
 	if (seg_seq_len(seg) > 0)
 		process_tcp_segment(p, seg, conn);

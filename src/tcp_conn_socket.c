@@ -68,7 +68,7 @@ static void tcp_flag_conn_aborted(struct tcp_ipv4_conn *conn)
 	unlock_rcv_buff(&conn->rcv_buffer);
 }
 
-static void tcp_abort_conn(struct tcp_ipv4_conn *conn)
+void tcp_abort_conn(struct tcp_ipv4_conn *conn)
 {
 	tcp_flag_conn_aborted(conn);
 	tcp_transition_to_state(conn, CLOSED);
@@ -234,6 +234,10 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 			switch (conn->state) {
 			case SYN_SENT:
 				if (valid_new_ack && (seg_ack == conn->iss + 1)) {
+					// if ready q full drop whole segment and stay in SYN_SENT
+					// try again after SYN-ACK retransmission's new ACK reply
+					if (conn->lstnr && q_full(conn->lstnr->ready_q))
+						return TCP_LSTNR_READY_Q_FULL;
 					conn->snd_buffer.snd_una = seg_ack;
 					conn->snd_buffer.ctrl_count--;
 					if (flags & TCP_SYN)
@@ -538,6 +542,8 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 	conn->lstnr = NULL;
 	conn->snd_buffer.snd_wscale = 0;
 	conn->queued_for_snd = false;
+
+	conn->q_node.nxt = Q_NODE_UNLINKED;
 
 	struct tcp_context *ctx = (struct tcp_context *)tcp->context;
 	get_route(
@@ -845,6 +851,7 @@ void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
 		struct tcp_ipv4_listener *l = conn->lstnr;
 		if (l) {
 			push_q(l->ready_q, &conn->q_node);
+			fx->abort = true;
 		} else {
 			pthread_cond_broadcast(&conn->estblshd_cond); // wake tcp_connect()
 		}
@@ -874,6 +881,9 @@ void tcp_apply_transition_effects(struct tcp_ipv4_conn *conn,
 	struct timer_manager *tmgr = ctx->timer_mgr;
 	struct socket_manager *smgr = ctx->socket_manager;
 
+	if (fx->abort)
+		tcp_abort_conn(conn);
+		
 	if (fx->cancel_snd_timers) {
 		cancel_timer(tmgr, conn->rto_timer);
 		cancel_timer(tmgr, conn->zwp_timer);

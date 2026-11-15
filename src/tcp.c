@@ -5,6 +5,7 @@
 #include "layer_router.h"
 #include "nw_layer.h"
 #include "pkt.h"
+#include "queue.h"
 #include "random.h"
 #include "routing_table.h"
 #include "socket_manager.h"
@@ -17,7 +18,6 @@
 #include "tcp_options.h"
 #include "tcp_segment.h"
 #include "time_now.h"
-#include "queue.h"
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <string.h>
@@ -125,27 +125,33 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 		// if proper SYN without ACK, open new connection
 		// can include ECE, CWR
 		if ((header->flags & (TCP_SYN | TCP_ACK)) == TCP_SYN) {
-			if (q_full(lstnr->ready_q))
+			if (q_full(lstnr->ready_q)) {
+				release_tcp_listener(lstnr);
 				return TCP_LSTNR_READY_Q_FULL;
+			}
 
 			// syn cookie open
 			if (lstnr->half_open_count >= lstnr->half_open_limit) {
 				pkt_result r = tcp_fast_reply_syn_cookie(lstnr, packet, &seg);
-				if (r == SENT)
+				if (r == SENT) {
+					release_tcp_listener(lstnr);
 					return SYN_COOKIE_SENT;
+				}
+				release_tcp_listener(lstnr);
 				return r;
 			}
 			// regular open
 			pkt_result r = tcp_server_open_new_connection(lstnr, packet, &seg);
+			release_tcp_listener(lstnr);
 			return r;
 		}
 
 		// if ACK, check for valid SYN cookie
 		if (header->flags & TCP_ACK) {
 			pkt_result r = syn_cookie_check_ack(lstnr, &seg, packet);
+			release_tcp_listener(lstnr);
 			return r;
 		}
-		release_tcp_listener(lstnr);
 	}
 
 	// no connection, not a listener SYN, nor RST

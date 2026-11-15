@@ -121,9 +121,11 @@ int accept_connection(struct stack *stack, int sockfd)
 	struct tcp_ipv4_conn *conn = lis_h.ops->accept(
 	    lis_h.sock); // app takes over con ref from q, no need for extra retain
 
-	if (!conn)
+	if (!conn) {
+		lis_h.ops->release(lis_h.sock);
+		sockfd_free(sockfd_mgr, fd);
 		return -3; // LISTENER CLOSED!
-
+	}
 	struct socket_handle conn_h = create_conn_sock_h(conn);
 	assign_sock_h(sockfd_mgr, fd, conn_h);
 	lis_h.ops->release(lis_h.sock);

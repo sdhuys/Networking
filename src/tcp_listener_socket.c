@@ -78,8 +78,11 @@ struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack
 		return NULL;
 	}
 
-	listener->ready_q = create_q(
-	    q_release_tcp_conn, q_retain_tcp_conn, &listener->accept_cond, &listener->lock, TCP_LSTNR_BACKLOG_DEFAULT);
+	listener->ready_q = create_q(q_release_tcp_conn,
+				     q_retain_tcp_conn,
+				     &listener->accept_cond,
+				     &listener->lock,
+				     TCP_LSTNR_BACKLOG_DEFAULT);
 	if (!listener->ready_q) {
 		destroy_tcp_listener(listener);
 		return NULL;
@@ -98,22 +101,12 @@ struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack
 
 void retain_tcp_listener(struct tcp_ipv4_listener *listener)
 {
-	pthread_mutex_lock(&(listener->lock));
-	listener->ref_count++;
-	pthread_mutex_unlock(&(listener->lock));
+	atomic_fetch_add(&listener->ref_count, 1);
 }
 
 void release_tcp_listener(struct tcp_ipv4_listener *listener)
 {
-	bool should_destroy = false;
-	pthread_mutex_lock(&(listener->lock));
-
-	listener->ref_count--;
-	if (listener->ref_count == 0)
-		should_destroy = true;
-
-	pthread_mutex_unlock(&(listener->lock));
-	if (should_destroy)
+	if (atomic_fetch_sub(&listener->ref_count, 1) == 1)
 		destroy_tcp_listener(listener);
 }
 
@@ -144,6 +137,7 @@ void tcp_close_listener(struct stack *stack, void *s)
 {
 	struct tcp_ipv4_listener *listener = (struct tcp_ipv4_listener *)s;
 	remove_from_tcp_listener_hashtable(stack->sock_manager->tcp_ipv4_listener_htable, listener);
+	close_q(listener->ready_q);
 }
 
 void tcp_lock_listener(void *s)
@@ -161,5 +155,9 @@ void tcp_unlock_listener(void *s)
 struct tcp_ipv4_conn *tcp_lstnr_accept_conn(void *s)
 {
 	struct tcp_ipv4_listener *listener = (struct tcp_ipv4_listener *)s;
-	return CONTAINER_OF(pop_q_blocking(listener->ready_q), struct tcp_ipv4_conn, q_node);
+	struct queue_node *n = pop_q_blocking(listener->ready_q);
+	if (!n)
+		return NULL;
+
+	return CONTAINER_OF(n, struct tcp_ipv4_conn, q_node);
 }
