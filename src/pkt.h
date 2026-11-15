@@ -37,5 +37,5 @@ struct pkt {
 	struct tcp_options *tcp_options;
 	struct route *route;
 
-	struct queue_node q_node; // loopback queue linkage
+	struct queue_node q_node; // ingress queue linkage
 };

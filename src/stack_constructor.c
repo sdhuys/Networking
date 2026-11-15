@@ -59,7 +59,7 @@ struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 	struct interface_context *nw_if_context = malloc(sizeof(struct interface_context));
 	nw_if_context->if_amount = if_count;
 	nw_if_context->interfaces = interfaces;
-	nw_if_context->ingress_q = create_q(q_release_pkt, q_retain_pkt, LOOPBACK_QUEUE_CAP);
+	nw_if_context->ingress_q = create_q(q_release_pkt, q_retain_pkt, INGRESS_QUEUE_CAP);
 	interface->context = nw_if_context;
 
 	// assign stack mac address and ip address on same subnet as interface

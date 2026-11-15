@@ -56,7 +56,7 @@ void *start_server_app_wrapper(void *arg)
 	return NULL;
 }
 
-void *start_listening_wrapper(void *arg)
+void *read_from_interface_wrapper(void *arg)
 {
 	struct nw_layer *tap = (struct nw_layer *)arg;
 	read_from_interface(tap);
@@ -84,7 +84,7 @@ int main()
 	pthread_t ping_testid;
 
 	// pthread_create(&ping_testid, NULL, ping_test, (void *)stack);
-	pthread_create(&interface_reader_tid, NULL, read_from_interface, (void *) tap);
+	pthread_create(&interface_reader_tid, NULL, read_from_interface_wrapper, (void *) tap);
 	pthread_create(&timer_tid, NULL, start_timers_loop, (void *)stack);
 	pthread_create(&client_app_tid, NULL, start_client_app_wrapper, (void *)stack);
 	pthread_create(&server_app_tid, NULL, start_server_app_wrapper, (void *)stack);

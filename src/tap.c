@@ -9,17 +9,14 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-void *read_from_interface(void *i_face)
+void read_from_interface(struct nw_layer *interface)
 {
-	struct nw_layer * interface = (struct nw_layer *)i_face;
 	struct interface_context *interface_context =
 	    ((struct interface_context *)interface->context);
 	int fd = interface_context->interfaces[0].fd;
 
 	for (;;) {
-		struct pkt *packet = allocate_pkt();
-		if (packet == NULL)
-			continue;
+		struct pkt *packet = allocate_pkt_wait();
 		ssize_t nread = read(fd, packet->data, MAX_ETH_FRAME_SIZE);
 		if (nread < 0) {
 			printf("NO READ RELEASING \n");
@@ -36,6 +33,7 @@ void *read_from_interface(void *i_face)
 			fclose(log);
 		}
 		push_q(interface_context->ingress_q, &packet->q_node);
+		release_pkt(packet);
 	}
 }
 

@@ -3,7 +3,7 @@
 #include "queue.h"
 #include <stddef.h>
 
-#define LOOPBACK_QUEUE_CAP 256
+#define INGRESS_QUEUE_CAP 512
 
 struct pkt;
 struct nw_layer;
