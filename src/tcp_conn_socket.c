@@ -68,7 +68,7 @@ static void tcp_flag_conn_aborted(struct tcp_ipv4_conn *conn)
 	unlock_rcv_buff(&conn->rcv_buffer);
 }
 
-void abort_tcp_con(struct tcp_ipv4_conn *conn)
+void abort_tcp_conn(struct tcp_ipv4_conn *conn)
 {
 	tcp_flag_conn_aborted(conn);
 	tcp_transition_to_state(conn, CLOSED);
@@ -165,7 +165,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 	// RST processing
 	if (flags & TCP_RST) {
 		if (seg_seq == rcv_next) {
-			abort_tcp_con(conn);
+			abort_tcp_conn(conn);
 			return INC_RST_CONN_DEAD;
 		}
 		// per RFC 5961
@@ -206,7 +206,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		} else if (conn->state >= ESTABLISHED) {
 			// unexpected SYN in established session
 			tcp_fast_reply_rst(conn->tcp_layer, p, seg);
-			abort_tcp_con(conn);
+			abort_tcp_conn(conn);
 			return RST_UNEXPECTED_SYN;
 		}
 	}
@@ -584,7 +584,7 @@ void zwp_callback(void *c)
 	// live peer ACKs every probe even with zero window (process_tcp_segment resets the count)
 	if (conn->zwp_unanswered >= TCP_ZWP_UNANSWERED_MAX) {
 		unlock_snd_buff(sb);
-		abort_tcp_con(conn);
+		abort_tcp_conn(conn);
 		return;
 	}
 	conn->zwp_unanswered++;
@@ -641,7 +641,7 @@ void rto_callback(void *c)
 		uint8_t limit = handshake ? TCP_SYN_TIMEOUTS_MAX : TCP_DATA_TIMEOUTS_MAX;
 		if (++conn->rto_timeouts >= limit) {
 			unlock_snd_buff(sb);
-			abort_tcp_con(conn); // peer gone: give up (RFC 9293, 3.8.3)
+			abort_tcp_conn(conn); // peer gone: give up (RFC 9293, 3.8.3)
 			return;
 		}
 	}
@@ -904,7 +904,7 @@ void tcp_apply_transition_effects(struct tcp_ipv4_conn *conn,
 		remove_from_tcp_conn_hashtable(smgr->tcp_ipv4_conn_htable, conn);
 
 	if (fx->abort)
-		abort_tcp_con(conn);
+		abort_tcp_conn(conn);
 }
 
 void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state state)

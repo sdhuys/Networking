@@ -122,11 +122,12 @@ void tcp_close_listener(struct stack *stack, void *s)
 	struct queue_node *node = close_q(listener->ready_q);
 	// abort and release all connections from the q
 	while (node) {
-		struct tcp_ipv4_conn *c = CONTAINER_OF(node, struct tcp_ipv4_conn, q_node);
-		abort_tcp_con(c);
-		release_tcp_conn(c);
 		struct queue_node *nxt = node->nxt;
 		node->nxt = Q_NODE_UNLINKED;
+
+		struct tcp_ipv4_conn *c = CONTAINER_OF(node, struct tcp_ipv4_conn, q_node);
+		abort_tcp_conn(c);
+		release_tcp_conn(c);
 		node = nxt;
 	}
 }

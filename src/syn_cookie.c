@@ -154,7 +154,7 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	}
 
 	if (!push_q(listener->ready_q, &conn->q_node)) {
-		abort_tcp_con(conn);
+		abort_tcp_conn(conn);
 		tcp_release_conn(conn);
 		return TCP_LSTNR_READY_Q_FULL_ABORT_CONN;
 	}
