@@ -51,7 +51,7 @@ static inline bool tcp_state_accepts_data(tcp_connection_state s)
 }
 
 // marks the connection aborted and wakes every blocked reader and writer.
-// each broadcast is made while holding its buffer's lock => a waiter checks aborted flag under
+// each broadcast is made while holding conn->lock => a waiter checks aborted flag under
 // same lock and keeps holding it until pthread_cond_wait() releases it, so it either
 // sees the flag, or is already waiting when the broadcast arrives => no wakeup can be lost.
 static void tcp_flag_conn_aborted(struct tcp_ipv4_conn *conn)
@@ -754,8 +754,9 @@ void delayed_ack_callback(void *c)
 		pthread_mutex_unlock(&conn->lock);
 		return;
 	}
-	tcp_create_ack_reply(p, conn, &d);
+	tcp_create_ack_reply(p, conn, &d); // retains pkt for d->snd_pkt_now
 	pthread_mutex_unlock(&conn->lock);
+	release_pkt(p); // release allocation ref
 	tcp_execute_deffered_work(conn, &d);
 }
 
@@ -1254,11 +1255,14 @@ ssize_t tcp_write_to_snd_buff(struct stack *stack, void *sock, struct send_reque
 		return -1;
 
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)sock;
+	struct tcp_deferred_work d = {0};
+
 	pthread_mutex_lock(&conn->lock);
 	ssize_t r = blocking_write_to_snd_buff(&conn->snd_buffer, req->data, req->len, conn);
-	pthread_mutex_unlock(&conn->lock);
 	if (r > 0)
-		notify_socket_readable_snd(stack->sock_manager, sock, &tcp_conn_ops);
+		d.notify_TX_snd = true;
+	pthread_mutex_unlock(&conn->lock);
+	tcp_execute_deffered_work(conn, &d);
 	return r;
 }
 
@@ -1282,7 +1286,8 @@ ssize_t tcp_read_from_rcv_buff(void *sock, size_t len, unsigned char *buff)
 		printf("SEND WINDOW UPDATE!! NEW WINDOW: %u \n", b->rcv_wnd);
 		struct pkt *p = allocate_pkt();
 		if (p) {
-			tcp_create_ack_reply(p, conn, &d); // SEND WINDOW UPDATE!
+			tcp_create_ack_reply(p, conn, &d); // SEND WINDOW UPDATE!; retains pkt for d->pkt_snd_now
+			release_pkt(p);
 		}
 	}
 
