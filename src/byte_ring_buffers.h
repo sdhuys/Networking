@@ -23,7 +23,6 @@ struct byte_reassembly_rcv_buffer {
 	unsigned char *data;
 	size_t capacity;
 
-	pthread_mutex_t lock;
 	pthread_cond_t cond;
 
 	struct ooo_seg ooo_segs[MAX_OOO_RCV_SEG_STORED]; // ordered by seq, binary search + shifting
@@ -52,7 +51,6 @@ struct byte_snd_buffer {
 	unsigned char *data;
 	size_t capacity;
 
-	pthread_mutex_t lock;
 	pthread_cond_t cond;
 
 	bool shutdown; // FIN has been queued => no more writes, protected by lock
@@ -128,30 +126,10 @@ static inline void sndbuf_insert_ghost_byte(struct byte_snd_buffer *b, uint8_t f
 	    (struct ctrl_seg){.seq = b->snd_nxt + unsent_bytes, .flags = flag};
 }
 
-static inline void lock_snd_buff(struct byte_snd_buffer *buff)
-{
-	pthread_mutex_lock(&buff->lock);
-}
-
-static inline void unlock_snd_buff(struct byte_snd_buffer *buff)
-{
-	pthread_mutex_unlock(&buff->lock);
-}
-
 // snd buff always only in order data
 static inline size_t sndbuff_available_space(struct byte_snd_buffer *buff)
 {
 	return buff->capacity - buff->used_bytes;
-}
-
-static inline void lock_rcv_buff(struct byte_reassembly_rcv_buffer *buff)
-{
-	pthread_mutex_lock(&buff->lock);
-}
-
-static inline void unlock_rcv_buff(struct byte_reassembly_rcv_buffer *buff)
-{
-	pthread_mutex_unlock(&buff->lock);
 }
 
 static inline size_t rcvbuf_available_space(struct byte_reassembly_rcv_buffer *buff)

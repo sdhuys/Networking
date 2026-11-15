@@ -64,7 +64,7 @@ struct tcp_ipv4_conn {
 
 	atomic_uint ref_count;
 	tcp_connection_state state;
-	atomic_bool aborted; // RST sent or received
+	bool aborted; // RST sent or received
 
 	uint32_t iss; // initial Send Sequence
 	uint32_t irs; // initial Receive Sequence
@@ -111,20 +111,23 @@ struct tcp_ipv4_conn {
 	struct timer *time_wait_timer;
 
 	// doesn't include TIME_WAIT timer!!
-	atomic_bool data_timers_cancelled;
+	bool data_timers_cancelled;
 
 	// Intrusive data structures
 	struct queue_node q_node; // listener's accept_q
 };
 
 // work that must be done after state transition, after releasing lock
-struct tcp_transition_effects {
+struct tcp_deferred_work {
 	bool cancel_snd_timers; // RTO + zero-window probe
 	bool cancel_del_ack;
 	bool enter_time_wait; // move to the TIME_WAIT table, start the TIME_WAIT timer
 	bool leave_time_wait; // remove from the TIME_WAIT table, stop its timer
 	bool unhash;	      // remove from main conn_htable
 	bool abort;
+
+	struct pkt *pkt_snd_now;
+	bool notify_TX_snd;
 };
 
 #ifdef __cplusplus
@@ -138,11 +141,11 @@ void delayed_ack_callback(void *c);
 void zwp_callback(void *c);
 void rto_callback(void *c);
 void time_wait_callback(void *c);
-void fast_recovery(struct tcp_ipv4_conn *conn);
+void fast_recovery(struct tcp_ipv4_conn *conn, struct tcp_deferred_work *d);
 void stop_wndw_probing(struct tcp_ipv4_conn *conn);
 void start_wndw_probing(struct tcp_ipv4_conn *conn);
 
-pkt_result tcp_fast_reply_pure_ack(struct pkt *p, struct tcp_ipv4_conn *conn);
+void tcp_create_ack_reply(struct pkt *p, struct tcp_ipv4_conn *conn, struct tcp_deferred_work *d);
 void destroy_tcp_conn(struct tcp_ipv4_conn *conn);
 uint32_t generate_random_iss();
 uint32_t tcp_effective_snd_mss(bool peer_mss_present,
@@ -153,8 +156,11 @@ uint32_t tcp_calc_rcv_mss(const struct route *route);
 
 pkt_result process_tcp_segment(struct pkt *p,
 			       struct tcp_segment *seg,
-			       struct tcp_ipv4_conn *connection);
+			       struct tcp_ipv4_conn *conn,
+			       struct tcp_deferred_work *out_d);
+
 void tcp_syn_to_snd_buff(struct tcp_ipv4_conn *conn);
+void tcp_syn_to_snd_buff_deferred(struct tcp_ipv4_conn *conn, struct tcp_deferred_work *d);
 
 void write_pkt_tcp_general_metadata(struct tcp_ipv4_conn *conn, struct pkt *p);
 void tcp_init_packet_addresses(struct pkt *pkt, struct tcp_ipv4_conn *conn);
@@ -162,9 +168,8 @@ void tcp_init_packet_addresses(struct pkt *pkt, struct tcp_ipv4_conn *conn);
 void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state state);
 void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
 			  tcp_connection_state state,
-			  struct tcp_transition_effects *fx);
-void tcp_apply_transition_effects(struct tcp_ipv4_conn *conn,
-				  const struct tcp_transition_effects *fx);
+			  struct tcp_deferred_work *d);
+void tcp_execute_deffered_work(struct tcp_ipv4_conn *conn, const struct tcp_deferred_work *d);
 
 void retain_tcp_conn(struct tcp_ipv4_conn *conn);
 void release_tcp_conn(struct tcp_ipv4_conn *conn);

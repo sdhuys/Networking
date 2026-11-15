@@ -14,9 +14,8 @@ struct pkt *allocate_pkt_wait();
 void init_buffer_pool();
 void release_pkt(struct pkt *pkt);
 void retain_pkt(struct pkt *pkt);
-void q_release_pkt(struct queue_node* n);
-void q_retain_pkt(struct queue_node* n);
-
+void q_release_pkt(struct queue_node *n);
+void q_retain_pkt(struct queue_node *n);
 
 #ifdef __cplusplus
 }

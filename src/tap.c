@@ -1,6 +1,6 @@
 #include "tap.h"
-#include "container_of.h"
 #include "buffer_pool.h"
+#include "container_of.h"
 #include "nw_interface.h"
 #include "nw_layer.h"
 #include "pkt.h"
@@ -52,7 +52,6 @@ void process_ingress_q_packets(struct nw_layer *interface)
 		printf("LISTEN LOOP RELEASING \n");
 		release_pkt(p);
 		printf("%d \n\n", result);
-
 	}
 }
 

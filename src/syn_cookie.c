@@ -159,8 +159,13 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 		return TCP_LSTNR_READY_Q_FULL_ABORT_CONN;
 	}
 
-	if (seg_seq_len(seg) > 0)
-		process_tcp_segment(p, seg, conn);
+	if (seg_seq_len(seg) > 0) {
+		struct tcp_deferred_work d = {0};
+		pthread_mutex_lock(&conn->lock);
+		process_tcp_segment(p, seg, conn, &d);
+		pthread_mutex_unlock(&conn->lock);
+		tcp_execute_deffered_work(conn, &d);
+	}
 
 	tcp_release_conn(conn);
 	return SYN_COOKIE_CONN_CREATED;

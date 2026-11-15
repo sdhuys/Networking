@@ -19,7 +19,7 @@ struct interface_context {
 extern "C" {
 #endif
 
-void *read_from_interface(void *i_face);
+void read_from_interface(struct nw_layer *interface);
 void process_ingress_q_packets(struct nw_layer *interface);
 pkt_result send_up_to_ethernet(struct nw_layer *tap, struct pkt *packet);
 pkt_result write_to_interface(struct nw_layer *tap, struct pkt *packet);

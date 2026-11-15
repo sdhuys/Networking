@@ -90,13 +90,13 @@ void retain_pkt(struct pkt *pkt)
 	printf("Retained PACKET %d id, %d ref count \n", pkt->pool_index, old + 1);
 }
 
-void q_release_pkt(struct queue_node* n)
+void q_release_pkt(struct queue_node *n)
 {
 	struct pkt *p = CONTAINER_OF(n, struct pkt, q_node);
 	release_pkt(p);
 }
 
-void q_retain_pkt(struct queue_node* n)
+void q_retain_pkt(struct queue_node *n)
 {
 	struct pkt *p = CONTAINER_OF(n, struct pkt, q_node);
 	retain_pkt(p);

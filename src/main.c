@@ -84,7 +84,7 @@ int main()
 	pthread_t ping_testid;
 
 	// pthread_create(&ping_testid, NULL, ping_test, (void *)stack);
-	pthread_create(&interface_reader_tid, NULL, read_from_interface_wrapper, (void *) tap);
+	pthread_create(&interface_reader_tid, NULL, read_from_interface_wrapper, (void *)tap);
 	pthread_create(&timer_tid, NULL, start_timers_loop, (void *)stack);
 	pthread_create(&client_app_tid, NULL, start_client_app_wrapper, (void *)stack);
 	pthread_create(&server_app_tid, NULL, start_server_app_wrapper, (void *)stack);

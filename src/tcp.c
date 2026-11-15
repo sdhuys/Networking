@@ -111,7 +111,11 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 		conn = query_tcp_conn_hashtable(mgr->tcp_ipv4_conn_time_wait_htable, &id);
 
 	if (conn != NULL) {
-		pkt_result r = process_tcp_segment(packet, &seg, conn);
+		pthread_mutex_lock(&conn->lock);
+		struct tcp_deferred_work d = {0};
+		pkt_result r = process_tcp_segment(packet, &seg, conn, &d);
+		pthread_mutex_unlock(&conn->lock);
+		tcp_execute_deffered_work(conn, &d);
 		release_tcp_conn(conn);
 		return r;
 	}

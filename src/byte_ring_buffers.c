@@ -17,13 +17,7 @@ int init_byte_rcv_buffer(struct byte_reassembly_rcv_buffer *b, size_t capacity)
 	if (!b->data)
 		return -1;
 
-	if (pthread_mutex_init(&b->lock, NULL) != 0) {
-		free(b->data);
-		return -1;
-	}
-
 	if (pthread_cond_init(&b->cond, NULL) != 0) {
-		pthread_mutex_destroy(&b->lock);
 		free(b->data);
 		return -1;
 	}
@@ -45,9 +39,7 @@ void destroy_byte_rcv_buffer(struct byte_reassembly_rcv_buffer *b)
 	if (!b)
 		return;
 
-	pthread_mutex_destroy(&b->lock);
 	pthread_cond_destroy(&b->cond);
-
 	free(b->data);
 }
 
@@ -62,14 +54,8 @@ int init_byte_snd_buffer(struct byte_snd_buffer *b, size_t capacity)
 		return -1;
 	b->capacity = capacity;
 
-	if (pthread_mutex_init(&b->lock, NULL) != 0) {
-		free(b->data);
-		return -1;
-	}
-
 	if (pthread_cond_init(&b->cond, NULL) != 0) {
 		free(b->data);
-		pthread_mutex_destroy(&b->lock);
 		return -1;
 	}
 
@@ -95,13 +81,11 @@ void destroy_byte_snd_buffer(struct byte_snd_buffer *b)
 	if (!b)
 		return;
 
-	pthread_mutex_destroy(&b->lock);
 	pthread_cond_destroy(&b->cond);
-
 	free(b->data);
 }
 
-// caller must hold lock
+// caller must hold conn lock
 size_t write_to_snd_buff(struct byte_snd_buffer *b, unsigned char *data, size_t len)
 {
 	if (!b || !data || len == 0)
@@ -152,10 +136,8 @@ void read_from_snd_buff(struct byte_snd_buffer *b, unsigned char *buffer, size_t
 // called once the peer's FIN is in order (fin_seq == rcv_nxt)
 void rcv_buff_accept_fin(struct byte_reassembly_rcv_buffer *b)
 {
-	lock_rcv_buff(b);
 	b->rcv_nxt++; // FIN occupies one sequence number
 	b->fin_consumed = true;
-	unlock_rcv_buff(b);
 	pthread_cond_broadcast(&b->cond); // a blocked reader can now return EOF
 }
 
@@ -201,7 +183,7 @@ size_t bin_search_seq_after_eq_indx(uint32_t seq, struct ooo_seg *segs, size_t c
 // writes data to rcv buff, not overwriting already written ooo segments
 // "first arrival wins"
 // when inserting ooo segment, provide ooo_i so we can use it afterwards to insert ooo_seg
-// caller must hold lock
+// caller must hold conn lock
 static size_t write_unwritten_bytes(struct byte_reassembly_rcv_buffer *b,
 				    uint32_t seq_start,
 				    uint32_t seq_end,
@@ -260,7 +242,6 @@ static size_t write_unwritten_bytes(struct byte_reassembly_rcv_buffer *b,
 
 // finds the stored out-of-order block that contains seq
 // returns false if seq isn't inside any block
-// caller must hold rcv_buffer lock
 static bool find_ooo_block(struct byte_reassembly_rcv_buffer *b, uint32_t seq, size_t *idx)
 {
 	size_t i = bin_search_seq_after_eq_indx(seq + 1, b->ooo_segs, b->ooo_count);
@@ -275,7 +256,6 @@ static bool find_ooo_block(struct byte_reassembly_rcv_buffer *b, uint32_t seq, s
 
 // records new ooo arrival in the SACK recency list
 // called after ooo_seg is inserted and possibly merged with earlier ooo segs
-// caller must hold rcv_buffer lock
 static void note_ooo_arrival(struct byte_reassembly_rcv_buffer *b, uint32_t seq)
 {
 	size_t blk;
@@ -299,7 +279,6 @@ static void note_ooo_arrival(struct byte_reassembly_rcv_buffer *b, uint32_t seq)
 }
 
 // drops recency entries whose blocks became contiguous data when rcv_nxt advanced
-// caller must hold rcv_buffer lock
 static void purge_sack_recent(struct byte_reassembly_rcv_buffer *b)
 {
 	size_t keep = 0;
@@ -321,7 +300,6 @@ static bool sack_already_chosen(const struct ooo_seg *out, size_t count, const s
 // most recently arrived SACK blocks first
 // then if slots remain, the highest stored blocks not already chosen
 // Returns the number of blocks written, at most max
-// caller must hold rcv_buffer lock
 size_t rcv_buff_choose_sack_blocks(struct byte_reassembly_rcv_buffer *b,
 				   struct ooo_seg *out,
 				   size_t max)
@@ -379,7 +357,6 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b,
 		data_len -= delta;
 	}
 
-	lock_rcv_buff(b);
 	// in order data
 	if (data_seq == rcv_nxt) {
 		// Fill all gaps in [rcv_nxt, rcv_nxt + min(data_len, available)) that
@@ -412,7 +389,6 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b,
 			b->ooo_count--;
 		}
 		purge_sack_recent(b);
-		unlock_rcv_buff(b);
 		pthread_cond_broadcast(&b->cond);
 	} else {
 		*immediate_ack = true;
@@ -431,7 +407,6 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b,
 			insert_ooo_segment(b->ooo_segs, &b->ooo_count, b->ooo_capacity, seg, ooo_i);
 			note_ooo_arrival(b, seg.start_seq);
 		}
-		unlock_rcv_buff(b);
 	}
 
 	return written;
@@ -528,17 +503,14 @@ ssize_t blocking_write_to_snd_buff(struct byte_snd_buffer *b,
 	if (!b || !data || len == 0)
 		return 0;
 
-	lock_snd_buff(b);
-
 	// wait for room, unless the connection is reset or our side already sent its FIN.
 	// All three are in the condition, so they're checked before every wait, not only after.
 	size_t available;
 	while ((available = sndbuff_available_space(b)) == 0 && !tcp_conn_is_aborted(conn) &&
 	       !b->shutdown)
-		pthread_cond_wait(&b->cond, &b->lock);
+		pthread_cond_wait(&b->cond, &conn->lock);
 
 	if (tcp_conn_is_aborted(conn) || b->shutdown) {
-		unlock_snd_buff(b);
 		return -1; // reset, or FIN already queued
 	}
 	size_t to_write = len;
@@ -547,7 +519,6 @@ ssize_t blocking_write_to_snd_buff(struct byte_snd_buffer *b,
 	if (to_write > available)
 		to_write = available;
 	write_to_snd_buff(b, data, to_write);
-	unlock_snd_buff(b);
 
 	return (ssize_t)to_write;
 }
@@ -588,7 +559,7 @@ ssize_t blocking_read_from_rcv_buff(struct byte_reassembly_rcv_buffer *b,
 	// wait for data, the peer's FIN, or a reset. All three are in the condition, so
 	// they're checked before every wait, not only after one.
 	while (b->contiguous_bytes == 0 && !b->fin_consumed && !tcp_conn_is_aborted(conn))
-		pthread_cond_wait(&b->cond, &b->lock);
+		pthread_cond_wait(&b->cond, &conn->lock);
 
 	if (tcp_conn_is_aborted(conn))
 		return -1;

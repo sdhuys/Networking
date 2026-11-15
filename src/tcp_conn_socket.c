@@ -57,15 +57,10 @@ static inline bool tcp_state_accepts_data(tcp_connection_state s)
 // caller MUST NOT hold rcv nor snd buffer lock
 static void tcp_flag_conn_aborted(struct tcp_ipv4_conn *conn)
 {
-	atomic_store(&conn->aborted, true);
+	conn->aborted = true;
 
-	lock_snd_buff(&conn->snd_buffer);
 	pthread_cond_broadcast(&conn->snd_buffer.cond);
-	unlock_snd_buff(&conn->snd_buffer);
-
-	lock_rcv_buff(&conn->rcv_buffer);
 	pthread_cond_broadcast(&conn->rcv_buffer.cond);
-	unlock_rcv_buff(&conn->rcv_buffer);
 }
 
 void abort_tcp_conn(struct tcp_ipv4_conn *conn)
@@ -76,21 +71,17 @@ void abort_tcp_conn(struct tcp_ipv4_conn *conn)
 
 // Resends our SYN / SYN-ACK right away, without going through the RTO: no backoff,
 // no cwnd collapse, and it doesn't count as a timeout.
-static void tcp_resend_syn_now(struct tcp_ipv4_conn *conn)
+static void tcp_resend_syn_deferred(struct tcp_ipv4_conn *conn, struct tcp_deferred_work *d)
 {
 	struct byte_snd_buffer *sb = &conn->snd_buffer;
-	lock_snd_buff(sb);
 	sb->retransmit = true; // retransmitting from snd_una = the SYN
-	unlock_snd_buff(sb);
-	struct socket_manager *smgr =
-	    ((struct tcp_context *)conn->tcp_layer->context)->socket_manager;
-	notify_socket_readable_snd(smgr, conn, &tcp_conn_ops);
+	d->notify_TX_snd = true;
 }
 
 // never use for TIME_WAIT TIMER
 static bool tcp_arm_data_timer(struct tcp_ipv4_conn *conn, struct timer *t, uint64_t delay_ms)
 {
-	if (atomic_load(&conn->data_timers_cancelled))
+	if (conn->data_timers_cancelled)
 		return false;
 	struct timer_manager *t_mgr = ((struct tcp_context *)conn->tcp_layer->context)->timer_mgr;
 	return start_timer(t_mgr, t, delay_ms);
@@ -101,13 +92,17 @@ static bool arm_tcp_data_timer_if_idle(struct tcp_ipv4_conn *conn,
 				       struct timer *t,
 				       uint64_t delay_ms)
 {
-	if (atomic_load(&conn->data_timers_cancelled))
+	if (conn->data_timers_cancelled)
 		return false;
 	struct timer_manager *t_mgr = ((struct tcp_context *)conn->tcp_layer->context)->timer_mgr;
 	return start_timer_if_idle(t_mgr, t, delay_ms);
 }
 
-pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tcp_ipv4_conn *conn)
+// caller must hold conn->lock execute deferred work after unlocking
+pkt_result process_tcp_segment(struct pkt *p,
+			       struct tcp_segment *seg,
+			       struct tcp_ipv4_conn *conn,
+			       struct tcp_deferred_work *out_d)
 {
 	uint32_t seg_seq = ntohl(seg->header->seq_num);
 	uint32_t seg_ack = ntohl(seg->header->ack_num);
@@ -121,7 +116,6 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 	size_t s_len = seg_seq_len(seg);
 
 	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
-	struct socket_manager *smgr = ctx->socket_manager;
 	struct timer_manager *tmgr = ctx->timer_mgr;
 
 	// window Validation
@@ -148,13 +142,13 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		if (s_len > 0 && (flags & TCP_SYN) && !(flags & TCP_ACK) &&
 		    conn->state == SYN_RECEIVED &&
 		    seg_seq == conn->irs) { // duplicate SYN: retrigger SYN-ACK sending
-			tcp_resend_syn_now(conn);
+			tcp_resend_syn_deferred(conn, out_d);
 			return RCOV_SYN_ACK_TO_SND_BUFFER;
 		}
 		if (s_len > 0) {
 			printf("\nTCP SEG NOT IN WINDOW, Sending challenge ACK/Replying to window "
 			       "probe! \n");
-			tcp_fast_reply_pure_ack(p, conn);
+			tcp_create_ack_reply(p, conn, out_d);
 			// our previous ACK lost, restart timer
 			if (conn->state == TIME_WAIT && flags & TCP_FIN)
 				start_timer(tmgr, conn->time_wait_timer, TCP_TIMEWAIT_MS);
@@ -170,7 +164,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		}
 		// per RFC 5961
 		if (conn->state != SYN_SENT && in_window) {
-			tcp_fast_reply_pure_ack(p, conn);
+			tcp_create_ack_reply(p, conn, out_d);
 			return INC_RST_CHALL_ACK_SENT;
 		}
 		return INVALID_RST_DROPPED;
@@ -196,8 +190,8 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 				// simultaneous open: received SYN while expecting SYN-ACK
 				// trigger SYN-retransmission, SYN_RECEIVED state will
 				// append ACK
-				tcp_transition_to_state(conn, SYN_RECEIVED);
-				tcp_resend_syn_now(conn);
+				tcp_set_state_locked(conn, SYN_RECEIVED, out_d);
+				tcp_resend_syn_deferred(conn, out_d);
 				return TCP_SIMULTANEOUS_OPEN;
 			}
 			// else (SYN-ACK) => fallthrough to ACK processing below to finalise
@@ -219,7 +213,6 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 
 		if (valid_new_ack || dupe_ack) {
 			struct byte_snd_buffer *sb = &conn->snd_buffer;
-			lock_snd_buff(sb);
 			uint16_t prev_peer_wndw = sb->snd_wndw;
 			sb->snd_wndw = ntohs(seg->header->window);
 
@@ -237,7 +230,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 					conn->snd_buffer.snd_una = seg_ack;
 					conn->snd_buffer.ctrl_count--;
 					if (flags & TCP_SYN)
-						tcp_transition_to_state(conn, ESTABLISHED);
+						tcp_set_state_locked(conn, ESTABLISHED, out_d);
 				}
 				break;
 
@@ -248,7 +241,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 					// ACK reply
 					if (conn->lstnr && q_full(conn->lstnr->ready_q))
 						return TCP_LSTNR_READY_Q_FULL;
-					tcp_transition_to_state(conn, ESTABLISHED);
+					tcp_set_state_locked(conn, ESTABLISHED, out_d);
 					conn->snd_buffer.snd_una = seg_ack;
 					conn->snd_buffer.ctrl_count--;
 				}
@@ -279,13 +272,15 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 					if (fin_acked) {
 						switch (conn->state) {
 						case FIN_WAIT_1: // waiting for the peer's FIN
-							tcp_transition_to_state(conn, FIN_WAIT_2);
+							tcp_set_state_locked(
+							    conn, FIN_WAIT_2, out_d);
 							break;
 						case CLOSING: // both FINs sent and acked
-							tcp_transition_to_state(conn, TIME_WAIT);
+							tcp_set_state_locked(
+							    conn, TIME_WAIT, out_d);
 							break;
 						case LAST_ACK: // peer's FIN came first, we're done
-							tcp_transition_to_state(conn, CLOSED);
+							tcp_set_state_locked(conn, CLOSED, out_d);
 							break;
 						default: // unreachable: tcp_end_snd changes state
 							 // before sending out FIN
@@ -347,7 +342,7 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 					default:
 						conn->dup_ack_cnt++;
 						if (conn->dup_ack_cnt == 3)
-							fast_recovery(conn);
+							fast_recovery(conn, out_d);
 						break;
 					}
 				}
@@ -375,7 +370,6 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 				}
 				break;
 			}
-			unlock_snd_buff(sb);
 
 			if (valid_new_ack) {
 				// retransmission timer
@@ -388,16 +382,16 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 				// notify send buffer we can overwrite acked data
 				pthread_cond_broadcast(&sb->cond);
 				// add socket to tx queue to send out potential new packets
-				notify_socket_readable_snd(smgr, conn, &tcp_conn_ops);
+				out_d->notify_TX_snd = true;
 			} else if (conn->is_wndw_probing &&
 				   window_update) { // don't stop window probing yet, sender might
 						    // suffer from silly-window syndrome
-				notify_socket_readable_snd(smgr, conn, &tcp_conn_ops);
+				out_d->notify_TX_snd = true;
 			}
 
 		} else if (tcp_seq_after(seg_ack, snd_next)) {
 			// ACK out of sync, send challenge ACK
-			tcp_fast_reply_pure_ack(p, conn);
+			tcp_create_ack_reply(p, conn, out_d);
 			return TCP_ACK_OUT_OF_SYNC;
 		}
 	}
@@ -430,20 +424,20 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 		rcv_buff_accept_fin(&conn->rcv_buffer);
 		immediate_ack = true;
 		if (conn->state == ESTABLISHED)
-			tcp_transition_to_state(conn, CLOSE_WAIT);
+			tcp_set_state_locked(conn, CLOSE_WAIT, out_d);
 		else if (conn->state == FIN_WAIT_1) {
 			bool fin_acked =
 			    (flags & TCP_ACK) &&
 			    (seg_ack ==
 			     snd_next); // no more data after FIN, so snd_next is FIN's seq + 1
-			tcp_transition_to_state(conn, fin_acked ? TIME_WAIT : CLOSING);
+			tcp_set_state_locked(conn, fin_acked ? TIME_WAIT : CLOSING, out_d);
 
 		} else if (conn->state == FIN_WAIT_2) {
-			tcp_transition_to_state(conn, TIME_WAIT);
+			tcp_set_state_locked(conn, TIME_WAIT, out_d);
 		}
 	}
 	if (immediate_ack) {
-		tcp_fast_reply_pure_ack(p, conn);
+		tcp_create_ack_reply(p, conn, out_d);
 		return TCP_IMMEDIATE_ACK_SNT;
 	}
 	return TCP_SEG_PROCESSED;
@@ -451,6 +445,13 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 
 // enqueues the tcp connection sock to TX worker queue
 // after dequeing actual ops.send_packet will check state and append ACK if needed
+void tcp_syn_to_snd_buff_deferred(struct tcp_ipv4_conn *conn, struct tcp_deferred_work *d)
+{
+	sndbuf_insert_ghost_byte(&conn->snd_buffer, TCP_SYN);
+	d->notify_TX_snd = true;
+}
+
+// enqueues the tcp connection sock to TX worker queue
 void tcp_syn_to_snd_buff(struct tcp_ipv4_conn *conn)
 {
 	sndbuf_insert_ghost_byte(&conn->snd_buffer, TCP_SYN);
@@ -521,8 +522,8 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 		goto err_free_timers;
 
 	atomic_init(&conn->ref_count, 0);
-	atomic_init(&conn->data_timers_cancelled, false);
-	atomic_init(&conn->aborted, false);
+	conn->data_timers_cancelled = false;
+	conn->aborted = false;
 
 	conn->local_port = id->loc_port;
 	conn->extern_port = id->extern_port;
@@ -575,16 +576,19 @@ void zwp_callback(void *c)
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)c;
 	struct byte_snd_buffer *sb = &conn->snd_buffer;
 
-	lock_snd_buff(sb);
-	if (atomic_load(&conn->data_timers_cancelled) || !conn->is_wndw_probing) {
-		unlock_snd_buff(sb);
+	struct tcp_deferred_work d = {0};
+	pthread_mutex_lock(&conn->lock);
+
+	if (conn->data_timers_cancelled || !conn->is_wndw_probing) {
+		pthread_mutex_unlock(&conn->lock);
 		return;
 	}
 
 	// live peer ACKs every probe even with zero window (process_tcp_segment resets the count)
 	if (conn->zwp_unanswered >= TCP_ZWP_UNANSWERED_MAX) {
-		unlock_snd_buff(sb);
-		abort_tcp_conn(conn);
+		d.abort = true;
+		pthread_mutex_unlock(&conn->lock);
+		tcp_execute_deffered_work(conn, &d);
 		return;
 	}
 	conn->zwp_unanswered++;
@@ -597,11 +601,13 @@ void zwp_callback(void *c)
 		conn->zwp_interval = TCP_MAX_ZWP_MS;
 	tcp_arm_data_timer(conn, conn->zwp_timer, conn->zwp_interval);
 
-	unlock_snd_buff(sb);
-
 	struct pkt *p = allocate_pkt();
-	if (!p)
+	if (!p) {
+		conn->zwp_unanswered--; // probe not being sent out, shouldn't count toward max
+					// attempts
+		pthread_mutex_unlock(&conn->lock);
 		return;
+	}
 
 	write_pkt_tcp_general_metadata(conn, p);
 	p->tcp_flags = TCP_ACK;
@@ -613,39 +619,38 @@ void zwp_callback(void *c)
 	p->len = sizeof(struct tcp_header_no_options) + calc_tcp_options_len(p->tcp_options) + 1;
 	p->offset = PKT_SIZE - p->len;
 
-	conn->tcp_layer->send_down(conn->tcp_layer, p);
-	release_pkt(p);
+	d.pkt_snd_now = p;
+	pthread_mutex_unlock(&conn->lock);
+	tcp_execute_deffered_work(conn, &d);
 }
 
 void rto_callback(void *c)
 {
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)c;
 	struct byte_snd_buffer *sb = &conn->snd_buffer;
-
-	lock_snd_buff(sb);
+	struct tcp_deferred_work d = {0};
+	pthread_mutex_lock(&conn->lock);
 
 	// cancel_timer can't stop a callback that was already popped + an ACK may have
 	// acknowledged everything between the pop and now => no data outstanding = stale RTO.
-	if (atomic_load(&conn->data_timers_cancelled) || sb->snd_una == sb->snd_nxt) {
-		unlock_snd_buff(sb);
+	if (conn->data_timers_cancelled || sb->snd_una == sb->snd_nxt) {
+		pthread_mutex_unlock(&conn->lock);
 		return;
 	}
 
-	pthread_mutex_lock(&conn->lock);
 	conn->dup_ack_cnt = 0;
 	bool handshake = conn->state == SYN_SENT || conn->state == SYN_RECEIVED;
-	pthread_mutex_unlock(&conn->lock);
 
 	// zero window isn't a failure: the peer is alive and ACKs
 	if (!conn->is_wndw_probing) {
 		uint8_t limit = handshake ? TCP_SYN_TIMEOUTS_MAX : TCP_DATA_TIMEOUTS_MAX;
 		if (++conn->rto_timeouts >= limit) {
-			unlock_snd_buff(sb);
-			abort_tcp_conn(conn); // peer gone: give up (RFC 9293, 3.8.3)
+			d.abort = true; // peer gone: give up (RFC 9293, 3.8.3)
+			pthread_mutex_unlock(&conn->lock);
+			tcp_execute_deffered_work(conn, &d);
 			return;
 		}
 	}
-
 	sb->c_state = SLOW_START;
 	sb->cwnd = conn->snd_mss;
 	sb->retransmit = true;
@@ -656,11 +661,10 @@ void rto_callback(void *c)
 	// re-arm here, not only in TX path: the next timeout must happen even if this
 	// retransmission can't be built (packet pool empty, window closed, ...).
 	tcp_arm_data_timer(conn, conn->rto_timer, conn->rto_interval);
-	unlock_snd_buff(sb);
 
-	struct socket_manager *mgr =
-	    ((struct tcp_context *)conn->tcp_layer->context)->socket_manager;
-	notify_socket_readable_snd(mgr, c, &tcp_conn_ops);
+	d.notify_TX_snd = true;
+	pthread_mutex_unlock(&conn->lock);
+	tcp_execute_deffered_work(conn, &d);
 }
 
 void time_wait_callback(void *c)
@@ -669,8 +673,7 @@ void time_wait_callback(void *c)
 	tcp_transition_to_state(conn, CLOSED);
 }
 
-// caller must hold lock
-void fast_recovery(struct tcp_ipv4_conn *conn)
+void fast_recovery(struct tcp_ipv4_conn *conn, struct tcp_deferred_work *d)
 {
 	printf("\n\n            FAST RETRANSMIT! \n \n");
 
@@ -683,10 +686,7 @@ void fast_recovery(struct tcp_ipv4_conn *conn)
 	sb->cwnd = sb->ssthresh + 3 * conn->snd_mss;
 
 	sb->retransmit = true;
-
-	struct socket_manager *mgr =
-	    ((struct tcp_context *)conn->tcp_layer->context)->socket_manager;
-	notify_socket_readable_snd(mgr, conn, &tcp_conn_ops);
+	d->notify_TX_snd = true;
 }
 
 void client_init_tcp_connection(struct tcp_ipv4_conn *conn)
@@ -738,19 +738,27 @@ void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *
 void delayed_ack_callback(void *c)
 {
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)c;
+	struct tcp_deferred_work d = {0};
+	pthread_mutex_lock(&conn->lock);
 
-	if (atomic_load(&conn->data_timers_cancelled))
+	if (conn->data_timers_cancelled) {
+		pthread_mutex_unlock(&conn->lock);
 		return;
+	}
 
 	struct pkt *p = allocate_pkt();
-	if (!p)
+	if (!p) {
+		pthread_mutex_unlock(&conn->lock);
 		return;
-	tcp_fast_reply_pure_ack(p, conn);
-	release_pkt(p);
+	}
+	tcp_create_ack_reply(p, conn, &d);
+	d.pkt_snd_now = p;
+	pthread_mutex_unlock(&conn->lock);
+	tcp_execute_deffered_work(conn, &d);
 }
 
-// fast reply bypassing send buffer
-pkt_result tcp_fast_reply_pure_ack(struct pkt *p, struct tcp_ipv4_conn *conn)
+// create ack reply and notify deferred work to immediate send out
+void tcp_create_ack_reply(struct pkt *p, struct tcp_ipv4_conn *conn, struct tcp_deferred_work *d)
 {
 	printf("Fast reply pure ACK! \n \n");
 	write_pkt_tcp_general_metadata(conn, p);
@@ -760,10 +768,8 @@ pkt_result tcp_fast_reply_pure_ack(struct pkt *p, struct tcp_ipv4_conn *conn)
 	if (conn->sack_enabled) {
 		struct byte_reassembly_rcv_buffer *buff = &conn->rcv_buffer;
 		size_t max = conn->ts_enabled ? TCP_HEADER_MAX_SACK_WITH_TS : TCP_HEADER_MAX_SACK;
-		lock_rcv_buff(buff);
 		p->tcp_options->sack_block_count =
 		    rcv_buff_choose_sack_blocks(buff, p->tcp_options->sacks, max);
-		unlock_rcv_buff(buff);
 	}
 
 	p->len = sizeof(struct tcp_header_no_options) + calc_tcp_options_len(p->tcp_options);
@@ -772,8 +778,7 @@ pkt_result tcp_fast_reply_pure_ack(struct pkt *p, struct tcp_ipv4_conn *conn)
 	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
 	struct timer_manager *tmgr = ctx->timer_mgr;
 	cancel_timer(tmgr, conn->del_ack_timer);
-
-	return conn->tcp_layer->send_down(conn->tcp_layer, p);
+	d->pkt_snd_now = p;
 }
 
 void tcp_init_packet_addresses(struct pkt *pkt, struct tcp_ipv4_conn *conn)
@@ -826,7 +831,7 @@ void write_pkt_tcp_general_metadata(struct tcp_ipv4_conn *conn, struct pkt *p)
 // caller must hold conn->lock
 void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
 			  tcp_connection_state state,
-			  struct tcp_transition_effects *fx)
+			  struct tcp_deferred_work *d)
 {
 	tcp_connection_state old = conn->state;
 	conn->state = state;
@@ -839,20 +844,20 @@ void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
 	// our FIN is acked, nothing left to retransmit or probe, but the peer
 	// may still send data that we must ACK => keep the delayed-ACK timer
 	if (state == FIN_WAIT_2)
-		fx->cancel_snd_timers = true;
+		d->cancel_snd_timers = true;
 
 	// TIME_WAIT / CLOSED: no more data either way
-	if ((state == CLOSED || state == TIME_WAIT) && !atomic_load(&conn->data_timers_cancelled)) {
-		atomic_store(&conn->data_timers_cancelled, true);
-		fx->cancel_snd_timers = true;
-		fx->cancel_del_ack = true;
+	if ((state == CLOSED || state == TIME_WAIT) && !conn->data_timers_cancelled) {
+		conn->data_timers_cancelled = true;
+		d->cancel_snd_timers = true;
+		d->cancel_del_ack = true;
 	}
 
 	if (state == ESTABLISHED) {
 		struct tcp_ipv4_listener *l = conn->lstnr;
 		if (l) {
 			if (!push_q(l->ready_q, &conn->q_node))
-				fx->abort = true;
+				d->abort = true;
 		} else {
 			pthread_cond_broadcast(&conn->estblshd_cond); // wake tcp_connect()
 		}
@@ -865,55 +870,60 @@ void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
 		pthread_cond_broadcast(&conn->estblshd_cond);
 
 	if (state == TIME_WAIT)
-		fx->enter_time_wait = true;
+		d->enter_time_wait = true;
 	if (state == CLOSED) {
-		fx->leave_time_wait = true;
-		fx->unhash = true;
+		d->leave_time_wait = true;
+		d->unhash = true;
 	}
 }
 
 // does the work necessary after state transitions
 // caller CANNOT hold conn->lock
 // caller MUST hold own conn reference
-void tcp_apply_transition_effects(struct tcp_ipv4_conn *conn,
-				  const struct tcp_transition_effects *fx)
+void tcp_execute_deffered_work(struct tcp_ipv4_conn *conn, const struct tcp_deferred_work *d)
 {
 	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
 	struct timer_manager *tmgr = ctx->timer_mgr;
 	struct socket_manager *smgr = ctx->socket_manager;
 
-	if (fx->cancel_snd_timers) {
+	if (d->cancel_snd_timers) {
 		cancel_timer(tmgr, conn->rto_timer);
 		cancel_timer(tmgr, conn->zwp_timer);
 	}
-	if (fx->cancel_del_ack)
+	if (d->cancel_del_ack)
 		cancel_timer(tmgr, conn->del_ack_timer);
 
-	if (fx->enter_time_wait) {
+	if (d->enter_time_wait) {
 		add_to_tcp_conn_hashtable(smgr->tcp_ipv4_conn_time_wait_htable, conn);
 		remove_from_tcp_conn_hashtable(smgr->tcp_ipv4_conn_htable, conn);
 		start_timer(tmgr, conn->time_wait_timer, TCP_TIMEWAIT_MS);
 	}
 
-	if (fx->leave_time_wait) {
+	if (d->leave_time_wait) {
 		remove_from_tcp_conn_hashtable(smgr->tcp_ipv4_conn_time_wait_htable, conn);
 		cancel_timer(tmgr, conn->time_wait_timer);
 	}
 
-	if (fx->unhash)
+	if (d->unhash)
 		remove_from_tcp_conn_hashtable(smgr->tcp_ipv4_conn_htable, conn);
 
-	if (fx->abort)
+	if (d->abort)
 		abort_tcp_conn(conn);
+
+	if (d->pkt_snd_now) {
+		conn->tcp_layer->send_down(conn->tcp_layer, d->pkt_snd_now);
+		release_pkt(d->pkt_snd_now);
+	}
 }
 
+// takes lock, records deffered work, unlocks and executes the work
 void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state state)
 {
-	struct tcp_transition_effects fx = {0};
+	struct tcp_deferred_work fx = {0};
 	pthread_mutex_lock(&conn->lock);
 	tcp_set_state_locked(conn, state, &fx);
 	pthread_mutex_unlock(&conn->lock);
-	tcp_apply_transition_effects(conn, &fx);
+	tcp_execute_deffered_work(conn, &fx);
 }
 
 void tcp_retain_conn(void *s)
@@ -1076,12 +1086,10 @@ struct pkt *tcp_try_get_pkt(void *s)
 		tcp_unlock_conn(conn);
 		return NULL;
 	}
-	tcp_unlock_conn(conn);
 
 	struct byte_snd_buffer *buff = &conn->snd_buffer;
 	struct pkt *p;
 
-	lock_snd_buff(buff);
 	// safety net: retransmit request but no outstanding data
 	// => continue to send new data instead
 	if (buff->retransmit && buff->snd_una == buff->snd_nxt)
@@ -1093,7 +1101,7 @@ struct pkt *tcp_try_get_pkt(void *s)
 	uint32_t bytes_ready = tail_seq - snd_seq;
 	printf("BYTES READY: %d \n", bytes_ready);
 	if (bytes_ready == 0) {
-		unlock_snd_buff(buff);
+		tcp_unlock_conn(conn);
 		return NULL;
 	}
 	uint32_t peer_wndw;
@@ -1102,7 +1110,7 @@ struct pkt *tcp_try_get_pkt(void *s)
 	if (usable_wndw == 0) {
 		if (peer_wndw == 0)
 			start_wndw_probing(conn);
-		unlock_snd_buff(buff);
+		tcp_unlock_conn(conn);
 		return NULL;
 	}
 
@@ -1117,7 +1125,7 @@ struct pkt *tcp_try_get_pkt(void *s)
 			p = create_tcp_packet(conn, snd_seq, len_to_reach_ctrl);
 			if (conn->is_wndw_probing)
 				stop_wndw_probing(conn);
-			unlock_snd_buff(buff);
+			tcp_unlock_conn(conn);
 			return p;
 		}
 	}
@@ -1154,7 +1162,7 @@ struct pkt *tcp_try_get_pkt(void *s)
 			printf("START PROBING DUE TO WINDOW = %d \n\n", peer_wndw);
 			start_wndw_probing(conn);
 		}
-		unlock_snd_buff(buff);
+		tcp_unlock_conn(conn);
 		return NULL;
 	}
 
@@ -1163,7 +1171,7 @@ struct pkt *tcp_try_get_pkt(void *s)
 
 	if (conn->is_wndw_probing)
 		stop_wndw_probing(conn);
-	unlock_snd_buff(buff);
+	tcp_unlock_conn(conn);
 
 	return p;
 }
@@ -1203,13 +1211,11 @@ void tcp_end_snd(struct stack *stack, void *sock)
 {
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)sock;
 	struct byte_snd_buffer *buff = &conn->snd_buffer;
-	lock_snd_buff(buff);
 	if (buff->shutdown) {
-		unlock_snd_buff(buff);
 		return;
 	}
 
-	struct tcp_transition_effects fx = {0};
+	struct tcp_deferred_work fx = {0};
 	pthread_mutex_lock(&conn->lock);
 
 	// change state before sending out FIN
@@ -1220,7 +1226,6 @@ void tcp_end_snd(struct stack *stack, void *sock)
 		tcp_set_state_locked(conn, LAST_ACK, &fx);
 	} else {
 		pthread_mutex_unlock(&conn->lock);
-		unlock_snd_buff(buff);
 		return; // not in a state that sends a FIN
 	}
 	pthread_mutex_unlock(&conn->lock);
@@ -1228,10 +1233,7 @@ void tcp_end_snd(struct stack *stack, void *sock)
 	buff->shutdown = true;
 	pthread_cond_broadcast(&buff->cond); // writers blocked on a full buffer: no more writing
 	sndbuf_insert_ghost_byte(buff, TCP_FIN);
-	unlock_snd_buff(buff);
 	notify_socket_readable_snd(stack->sock_manager, sock, &tcp_conn_ops);
-	tcp_apply_transition_effects(conn,
-				     &fx); // nothing for these two states, but keep the pattern
 }
 
 void tcp_close_conn(struct stack *stack, void *sock)
@@ -1246,7 +1248,9 @@ ssize_t tcp_write_to_snd_buff(struct stack *stack, void *sock, struct send_reque
 		return -1;
 
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)sock;
+	pthread_mutex_lock(&conn->lock);
 	ssize_t r = blocking_write_to_snd_buff(&conn->snd_buffer, req->data, req->len, conn);
+	pthread_mutex_unlock(&conn->lock);
 	if (r > 0)
 		notify_socket_readable_snd(stack->sock_manager, sock, &tcp_conn_ops);
 	return r;
@@ -1257,23 +1261,26 @@ ssize_t tcp_read_from_rcv_buff(void *sock, size_t len, unsigned char *buff)
 	if (!sock || len < 1 || !buff)
 		return -1;
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)sock;
+	struct tcp_deferred_work d = {0};
+	pthread_mutex_lock(&conn->lock);
+
 	struct byte_reassembly_rcv_buffer *b = &conn->rcv_buffer;
 
-	lock_rcv_buff(b);
 	bool prev_low_wndw = b->rcv_wnd < TCP_MSS_DEFAULT_FALLBACK;
 	ssize_t r = blocking_read_from_rcv_buff(&conn->rcv_buffer, buff, len);
 	printf("READ %ld BYTES FROM BUFFER!\n\n", r);
 	b->rcv_wnd = calc_rcv_wnd_sws(conn);
 	bool curr_low_wnwd = b->rcv_wnd < TCP_MSS_DEFAULT_FALLBACK;
-	unlock_rcv_buff(b);
 
 	if (prev_low_wndw && !curr_low_wnwd) {
 		printf("SEND WINDOW UPDATE!! NEW WINDOW: %u \n", b->rcv_wnd);
 		struct pkt *p = allocate_pkt();
 		if (p) {
-			tcp_fast_reply_pure_ack(p, conn); // SEND WINDOW UPDATE!
-			release_pkt(p);
+			tcp_create_ack_reply(p, conn, &d); // SEND WINDOW UPDATE!
 		}
 	}
+
+	pthread_mutex_unlock(&conn->lock);
+	tcp_execute_deffered_work(conn, &d);
 	return r;
 }
