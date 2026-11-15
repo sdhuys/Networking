@@ -234,10 +234,6 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 			switch (conn->state) {
 			case SYN_SENT:
 				if (valid_new_ack && (seg_ack == conn->iss + 1)) {
-					// if ready q full drop whole segment and stay in SYN_SENT
-					// try again after SYN-ACK retransmission's new ACK reply
-					if (conn->lstnr && q_full(conn->lstnr->ready_q))
-						return TCP_LSTNR_READY_Q_FULL;
 					conn->snd_buffer.snd_una = seg_ack;
 					conn->snd_buffer.ctrl_count--;
 					if (flags & TCP_SYN)
@@ -247,6 +243,11 @@ pkt_result process_tcp_segment(struct pkt *p, struct tcp_segment *seg, struct tc
 
 			case SYN_RECEIVED:
 				if (valid_new_ack) {
+					// if ready q full drop whole segment and stay in
+					// SYN_RECEIVED try again after SYN-ACK retransmission's new
+					// ACK reply
+					if (conn->lstnr && q_full(conn->lstnr->ready_q))
+						return TCP_LSTNR_READY_Q_FULL;
 					tcp_transition_to_state(conn, ESTABLISHED);
 					conn->snd_buffer.snd_una = seg_ack;
 					conn->snd_buffer.ctrl_count--;
@@ -850,8 +851,8 @@ void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
 	if (state == ESTABLISHED) {
 		struct tcp_ipv4_listener *l = conn->lstnr;
 		if (l) {
-			push_q(l->ready_q, &conn->q_node);
-			fx->abort = true;
+			if (!push_q(l->ready_q, &conn->q_node))
+				fx->abort = true;
 		} else {
 			pthread_cond_broadcast(&conn->estblshd_cond); // wake tcp_connect()
 		}
@@ -881,9 +882,6 @@ void tcp_apply_transition_effects(struct tcp_ipv4_conn *conn,
 	struct timer_manager *tmgr = ctx->timer_mgr;
 	struct socket_manager *smgr = ctx->socket_manager;
 
-	if (fx->abort)
-		tcp_abort_conn(conn);
-		
 	if (fx->cancel_snd_timers) {
 		cancel_timer(tmgr, conn->rto_timer);
 		cancel_timer(tmgr, conn->zwp_timer);
@@ -904,6 +902,9 @@ void tcp_apply_transition_effects(struct tcp_ipv4_conn *conn,
 
 	if (fx->unhash)
 		remove_from_tcp_conn_hashtable(smgr->tcp_ipv4_conn_htable, conn);
+
+	if (fx->abort)
+		tcp_abort_conn(conn);
 }
 
 void tcp_transition_to_state(struct tcp_ipv4_conn *conn, tcp_connection_state state)

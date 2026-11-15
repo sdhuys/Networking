@@ -15,8 +15,8 @@ struct queue {
 	bool closed;
 	size_t count;
 	size_t cap; // 0 = unbounded
-	pthread_mutex_t *lock;
-	pthread_cond_t *not_empty_or_closed;
+	pthread_mutex_t lock;
+	pthread_cond_t not_empty_or_closed;
 	void (*release_parent)(struct queue_node *);
 	void (*retain_parent)(struct queue_node *);
 };
@@ -27,8 +27,6 @@ extern "C" {
 
 struct queue *create_q(void (*release_parent)(struct queue_node *),
 		       void (*retain_parent)(struct queue_node *),
-		       pthread_cond_t *cond,
-		       pthread_mutex_t *lock,
 		       size_t cap);
 void destroy_q(struct queue *q);
 void close_q(struct queue *q);

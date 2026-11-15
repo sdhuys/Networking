@@ -10,8 +10,6 @@
 
 extern const struct socket_ops tcp_listener_ops;
 
-typedef enum { TCP_LIS_LISTEN, TCP_LIS_CLOSED } tcp_listener_state;
-
 struct stack;
 struct nw_layer;
 struct pkt;
@@ -19,12 +17,8 @@ struct queue;
 struct tcp_segment;
 
 struct tcp_ipv4_listener {
-	pthread_cond_t accept_cond;
-	pthread_mutex_t lock;
-
 	ipv4_address_t local_addr;
 	uint16_t local_port;
-	tcp_listener_state state;
 
 	size_t half_open_limit;
 	atomic_uint half_open_count;

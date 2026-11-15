@@ -47,16 +47,8 @@ struct tcp_ipv4_listener *query_tcp_listener_hashtable(struct tcp_ipv4_listener_
 		struct tcp_ipv4_listener *listener = bucket_node->listener;
 		if (is_tcp_lstnr_match(listener, port, addr)) {
 			retain_tcp_listener(listener);
-
-			pthread_mutex_lock(&listener->lock);
-			if (listener->state != TCP_LIS_CLOSED) {
-				pthread_mutex_unlock(&listener->lock);
 				pthread_mutex_unlock(bucket_lock);
 				return listener;
-			} else {
-				pthread_mutex_unlock(&listener->lock);
-				release_tcp_listener(listener);
-			}
 		}
 		bucket_node = bucket_node->next;
 	}
@@ -69,8 +61,8 @@ bool remove_from_tcp_listener_hashtable(struct tcp_ipv4_listener_htable *htable,
 {
 	uint32_t hash = calc_tcp_listener_hash(listener->local_port, listener->local_addr, htable);
 
-	pthread_mutex_t *lock = &(htable->bucket_locks[hash]);
-	pthread_mutex_lock(lock);
+	pthread_mutex_t *bucket_lock = &(htable->bucket_locks[hash]);
+	pthread_mutex_lock(bucket_lock);
 
 	struct tcp_ipv4_listener_node *node = htable->buckets[hash];
 	struct tcp_ipv4_listener_node *prev = NULL;
@@ -81,18 +73,15 @@ bool remove_from_tcp_listener_hashtable(struct tcp_ipv4_listener_htable *htable,
 			else
 				htable->buckets[hash] = node->next;
 
-			pthread_mutex_lock(&listener->lock);
-			listener->state = TCP_LIS_CLOSED;
-			pthread_mutex_unlock(&listener->lock);
 			release_tcp_listener(listener);
 			free(node);
-			pthread_mutex_unlock(lock);
+			pthread_mutex_unlock(bucket_lock);
 			return true;
 		}
 		prev = node;
 		node = node->next;
 	}
-	pthread_mutex_unlock(lock);
+	pthread_mutex_unlock(bucket_lock);
 	return false;
 }
 

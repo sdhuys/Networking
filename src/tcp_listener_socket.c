@@ -24,8 +24,8 @@ const struct socket_ops tcp_listener_ops = {.is_snd_queued = NULL,
 					    .release = tcp_release_listener,
 					    .write_to_snd_buffer = NULL,
 					    .read_rcv_buffer = NULL,
-					    .unlock = tcp_unlock_listener,
-					    .lock = tcp_lock_listener,
+					    .unlock = NULL,
+					    .lock = NULL,
 					    .try_get_pkt = NULL,
 					    .send_pkt = NULL,
 					    .close = tcp_close_listener,
@@ -68,20 +68,8 @@ struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack
 	if (listener == NULL)
 		return NULL;
 
-	if (pthread_mutex_init(&listener->lock, NULL) != 0) {
-		free(listener);
-		return NULL;
-	}
-	if (pthread_cond_init(&listener->accept_cond, NULL) != 0) {
-		pthread_mutex_destroy(&listener->lock);
-		free(listener);
-		return NULL;
-	}
-
 	listener->ready_q = create_q(q_release_tcp_conn,
 				     q_retain_tcp_conn,
-				     &listener->accept_cond,
-				     &listener->lock,
 				     TCP_LSTNR_BACKLOG_DEFAULT);
 	if (!listener->ready_q) {
 		destroy_tcp_listener(listener);
@@ -93,7 +81,6 @@ struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack
 	listener->half_open_limit = TCP_LSTNR_HALF_OPENS_LIMIT;
 	listener->local_port = port;
 	memcpy(listener->local_addr, stack->local_address, IPV4_ADDR_LEN);
-	listener->state = TCP_LIS_LISTEN;
 
 	listener->tcp_layer = stack->tcp_layer;
 	return listener;
@@ -112,12 +99,7 @@ void release_tcp_listener(struct tcp_ipv4_listener *listener)
 
 void destroy_tcp_listener(struct tcp_ipv4_listener *listener)
 {
-	pthread_mutex_lock(&listener->lock);
-	listener->state = TCP_LIS_CLOSED;
 	destroy_q(listener->ready_q);
-	pthread_cond_destroy(&listener->accept_cond);
-	pthread_mutex_unlock(&listener->lock);
-	pthread_mutex_destroy(&listener->lock);
 	free(listener);
 }
 
@@ -138,18 +120,6 @@ void tcp_close_listener(struct stack *stack, void *s)
 	struct tcp_ipv4_listener *listener = (struct tcp_ipv4_listener *)s;
 	remove_from_tcp_listener_hashtable(stack->sock_manager->tcp_ipv4_listener_htable, listener);
 	close_q(listener->ready_q);
-}
-
-void tcp_lock_listener(void *s)
-{
-	struct tcp_ipv4_listener *listener = (struct tcp_ipv4_listener *)s;
-	pthread_mutex_lock(&listener->lock);
-}
-
-void tcp_unlock_listener(void *s)
-{
-	struct tcp_ipv4_listener *listener = (struct tcp_ipv4_listener *)s;
-	pthread_mutex_unlock(&listener->lock);
 }
 
 struct tcp_ipv4_conn *tcp_lstnr_accept_conn(void *s)
