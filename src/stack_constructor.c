@@ -11,7 +11,6 @@
 #include "socket_manager.h"
 #include "sockfd_manager.h"
 #include "stack.h"
-#include "tap.h"
 #include "tcp.h"
 #include "tcp_conn_htable.h"
 #include "tcp_listener_htable.h"
@@ -33,6 +32,8 @@
 #define TCP_EST_CONN_HTBL_SIZE 4096
 #define TCP_WAIT_CONN_HTBLE_SIZE 2048
 
+#define INGRESS_QUEUE_CAP 512
+
 struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 {
 	if (if_count < 1)
@@ -49,7 +50,7 @@ struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 	struct timer_manager *timer_mgr = create_timer_manager();
 
 	interface->name = IF_NAME;
-	interface->send_down = &write_to_interface;
+	interface->send_down = &gen_interface_transmit;
 	interface->rcv_up = &send_up_to_ethernet;
 	interface->ups_count = 1;
 	interface->ups = malloc(interface->ups_count * sizeof(struct nw_layer *));
@@ -62,11 +63,6 @@ struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 	nw_if_context->ingress_q = create_q(q_release_pkt, q_retain_pkt, INGRESS_QUEUE_CAP);
 	interface->context = nw_if_context;
 
-	// assign stack mac address and ip address on same subnet as interface
-	static unsigned char stack_mac_addr[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
-	static unsigned char stack_ipv4_addr[4];
-	set_stack_ipv4_addr(&interfaces[0], stack_ipv4_addr);
-
 	eth->name = ETH_NAME;
 	eth->send_down = &send_frame_down;
 	eth->rcv_up = &receive_frame_up;
@@ -78,7 +74,8 @@ struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 	eth->downs = malloc(eth->downs_count * sizeof(struct nw_layer *));
 	eth->downs[0] = interface;
 	struct ethernet_context *eth_context = malloc(sizeof(struct ethernet_context));
-	memcpy(eth_context->mac_addr, stack_mac_addr, MAC_ADDR_LEN);
+	eth_context->nw_ifs = interfaces;
+	eth_context->if_count = if_count;
 	eth->context = eth_context;
 
 	arp->name = ARP_NAME;
@@ -94,9 +91,8 @@ struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 	arp_table->head = NULL;
 	arp_ctx->arp_table = arp_table;
 	arp_ctx->timer_mgr = timer_mgr;
-
-	memcpy(arp_ctx->ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
-	memcpy(arp_ctx->mac_addr, stack_mac_addr, MAC_ADDR_LEN);
+	arp_ctx->nw_ifs = interfaces;
+	arp_ctx->if_count = if_count;
 	arp->context = arp_ctx;
 
 	ip->name = IPV4_NAME;
@@ -113,7 +109,8 @@ struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 	struct ipv4_context *ipv4_context = malloc(sizeof(struct ipv4_context));
 	ipv4_context->arp_layer = arp;
 	ipv4_context->routing_table = create_routing_table(interfaces, if_count);
-	memcpy(ipv4_context->stack_ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
+	ipv4_context->nw_ifs = interfaces;
+	ipv4_context->if_count = if_count;
 	ip->context = ipv4_context;
 
 	icmp->name = ICMP_NAME;
@@ -150,8 +147,9 @@ struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 	udp->downs = malloc(udp->downs_count * sizeof(struct nw_layer *));
 	udp->downs[0] = ip;
 	struct udp_context *udp_context = malloc(sizeof(struct udp_context));
-	memcpy(udp_context->stack_ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
 	udp_context->sock_manager = socket_manager;
+	udp_context->nw_ifs = interfaces;
+	udp_context->if_count = if_count;
 	udp->context = udp_context;
 
 	tcp->name = TCP_NAME;
@@ -165,17 +163,18 @@ struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 	struct tcp_context *tcp_context = malloc(sizeof(struct tcp_context));
 	tcp_context->timer_mgr = timer_mgr;
 	tcp_context->socket_manager = socket_manager;
-	memcpy(tcp_context->stack_ipv4_addr, stack_ipv4_addr, IPV4_ADDR_LEN);
 	tcp_context->routing_tbl = ipv4_context->routing_table;
+	tcp_context->nw_ifs = interfaces;
+	tcp_context->if_count = if_count;
 	tcp->context = tcp_context;
 
 	struct stack *stack = malloc(sizeof(struct stack));
 	stack->icmp_layer = icmp;
 	stack->if_layer = interface;
-	memcpy(stack->local_address, stack_ipv4_addr, IPV4_ADDR_LEN);
 	stack->sock_manager = socket_manager;
 	stack->tcp_layer = tcp;
 	stack->udp_layer = udp;
 	stack->timer_mgr = timer_mgr;
+	stack->routing_table = ipv4_context->routing_table;
 	return stack;
 }

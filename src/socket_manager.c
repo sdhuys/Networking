@@ -103,7 +103,7 @@ int create_socket_handle(struct stack *stack,
 
 	switch (type) {
 	case SOCK_UDP:
-		struct udp_ipv4_socket *sock = create_udp_socket(local_port, stack);
+		struct udp_ipv4_socket *sock = create_udp_socket(local_port);
 		if (!sock)
 			return -2; // ALLOCATION FAILURE
 		retain_udp_socket(sock);
@@ -116,7 +116,8 @@ int create_socket_handle(struct stack *stack,
 		break;
 
 	case SOCK_TCP:
-		struct tcp_ipv4_listener *listener = create_tcp_listener(local_port, stack);
+		// creates wildcard listener
+		struct tcp_ipv4_listener *listener = create_tcp_listener(local_port, NULL, stack);
 		if (!listener)
 			return -2; // ALLOCATION FAILURE
 		retain_tcp_listener(listener);

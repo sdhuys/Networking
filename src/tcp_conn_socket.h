@@ -134,7 +134,9 @@ struct tcp_deferred_work {
 extern "C" {
 #endif
 
-struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct nw_layer *tcp);
+struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id,
+						 struct nw_layer *tcp,
+						 struct route *route);
 void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *seg);
 void client_init_tcp_connection(struct tcp_ipv4_conn *conn);
 void delayed_ack_callback(void *c);

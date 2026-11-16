@@ -2,45 +2,21 @@
 #include "buffer_pool.h"
 #include "hash.h"
 #include "nw_interface.h"
+#include "ping_test.h"
+#include "pkt.h"
 #include "stack.h"
 #include "stack_constructor.h"
 #include "stack_tx_worker.h"
 #include "tap.h"
 #include "timer_worker.h"
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <net/if.h>
-#include <netinet/in.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/ioctl.h>
 #include <unistd.h>
 
-#include "ping_test.h"
-
-#ifdef __linux__
-#include <linux/if_tun.h>
-#include <linux/rtnetlink.h>
-#elif defined(__APPLE__) || defined(__MACH__)
-#include <net/if_utun.h>
-#include <sys/kern_control.h>
-#include <sys/socket.h>
-#include <sys/sys_domain.h>
-#define TUNSETIFF _IOW('T', 202, int)
-#define IFF_TUN 0x0001
-#define IFF_TAP 0x0002
-#define IFF_NO_PI 0x1000
-#define UTUN_CONTROL_NAME "com.apple.net.utun_control"
-#endif
-
-int tap_setup(char *name);
-int get_tap(char *name, int flags);
-int activate_tap(char *if_name);
-int set_ipv4_addr(char *name, char *address);
-int disable_ipv6(char *ifname);
+#define STACK_MTU 1500 // must fit PKT_SIZE - Ethernet header
+_Static_assert(STACK_MTU + 14 <= PKT_SIZE, "MTU larger than a packet buffer");
 
 void *start_client_app_wrapper(void *arg)
 {
@@ -67,23 +43,46 @@ int main()
 {
 	hash_init();
 	int tap_fd;
-	if ((tap_fd = tap_setup("tap0")) < 0)
+	const ipv4_address_t tap_ip_addr = {192, 168, 100, 1};
+	const ipv4_address_t stack_ip_addr = {192, 168, 100, 2};
+	const ipv4_address_t subnet_mask = {0xFF, 0xFF, 0xFF, 0};
+	const ipv4_address_t loopback_addr = {127, 0, 0, 1};
+	const mac_address_t loopback_mac = {0};
+	const mac_address_t stack_mac_addr = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+
+	if ((tap_fd = tap_setup("tap0", tap_ip_addr, STACK_MTU)) < 0)
 		return 1;
-	struct nw_interface *nw_if = malloc(sizeof(struct nw_interface));
-	set_net_if_struct(tap_fd, "tap0", nw_if);
-	struct stack *stack = construct_stack(nw_if, 1);
+	struct nw_interface *nw_if = malloc(2 * sizeof(struct nw_interface));
+	set_nw_if_struct(&nw_if[0],
+			 tap_fd,
+			 "tap0",
+			 stack_mac_addr,
+			 stack_ip_addr,
+			 subnet_mask,
+			 STACK_MTU,
+			 tap_transmit,
+			 0);
+	set_nw_if_struct(&nw_if[1],
+			 -1,
+			 "loopback",
+			 loopback_mac,
+			 loopback_addr,
+			 subnet_mask,
+			 STACK_MTU,
+			 loopback_transmit,
+			 IF_NOARP | IF_LOOPBACK);
+	struct stack *stack = construct_stack(nw_if, 2);
 	init_buffer_pool();
 
 	struct nw_layer *tap = stack->if_layer;
-	// struct socket_manager *socket_manager = stack.sock_manager;
 	pthread_t interface_reader_tid;
 	pthread_t timer_tid;
 	pthread_t client_app_tid;
 	pthread_t server_app_tid;
 	pthread_t stack_tx_tid;
-	pthread_t ping_testid;
+	//pthread_t ping_testid;
 
-	// pthread_create(&ping_testid, NULL, ping_test, (void *)stack);
+	//pthread_create(&ping_testid, NULL, ping_test, (void *)stack);
 	pthread_create(&interface_reader_tid, NULL, read_from_interface_wrapper, (void *)tap);
 	pthread_create(&timer_tid, NULL, start_timers_loop, (void *)stack);
 	pthread_create(&client_app_tid, NULL, start_client_app_wrapper, (void *)stack);
@@ -93,205 +92,4 @@ int main()
 	process_ingress_q_packets(tap);
 
 	return 0;
-}
-
-int tap_setup(char *name)
-{
-	if (name == NULL)
-		return -1;
-
-	char if_name[IFNAMSIZ];
-	strncpy(if_name, name, IFNAMSIZ - 1);
-	if_name[IFNAMSIZ - 1] = '\0';
-
-	char tap_address[] = "192.168.100.1";
-	int tap_fd;
-	if ((tap_fd = get_tap(if_name, IFF_TAP | IFF_NO_PI)) < 0) {
-		perror("Getting TAP interace");
-		return -1;
-	}
-
-	if (activate_tap(if_name) < 0) {
-		perror("Activating TAP interface");
-		close(tap_fd);
-		return -1;
-	}
-
-	if (disable_ipv6(if_name) < 0) {
-		perror("Disabling IPv6");
-		close(tap_fd);
-		return -1;
-	}
-
-	if (set_ipv4_addr(if_name, tap_address) < 0) {
-		perror("Setting IPv4 address");
-		close(tap_fd);
-		return -1;
-	}
-	return tap_fd;
-}
-
-int disable_ipv6(char *ifname)
-{
-#ifdef __linux__
-	char path[256];
-	snprintf(path, sizeof(path), "/proc/sys/net/ipv6/conf/%s/disable_ipv6", ifname);
-
-	int fd = open(path, O_WRONLY);
-	if (fd < 0) {
-		perror("open disable_ipv6");
-		return -1;
-	}
-
-	if (write(fd, "1", 1) != 1) {
-		perror("write disable_ipv6");
-		close(fd);
-		return -1;
-	}
-
-	close(fd);
-	return 0;
-#else
-	return 0; // handled below for macOS
-#endif
-}
-// Sets ipv4 address to 192.168.100.1
-// Subnet mask defaults to 255.255.255.0 => ok for now
-int set_ipv4_addr(char *name, char *address)
-{
-	int sock;
-	struct ifreq ifr;
-	struct sockaddr_in *addr;
-	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-		perror("socket");
-		return -1;
-	}
-
-	memset(&ifr, 0, sizeof(ifr));
-	strncpy(ifr.ifr_name, name, IFNAMSIZ);
-
-	addr = (struct sockaddr_in *)&ifr.ifr_addr;
-	addr->sin_family = AF_INET;
-	addr->sin_addr.s_addr = inet_addr(address);
-
-	if (ioctl(sock, SIOCSIFADDR, &ifr) < 0) {
-		perror("ioctl SIOCSIFADDR");
-		close(sock);
-	}
-	return 0;
-}
-
-int activate_tap(char *name)
-{
-	int sock;
-	struct ifreq ifr;
-	if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-		perror("socket");
-		return -1;
-	}
-
-	memset(&ifr, 0, sizeof(ifr));
-	strcpy(ifr.ifr_name, name);
-
-	ifr.ifr_flags |= (IFF_UP | IFF_RUNNING);
-	if (ioctl(sock, SIOCSIFFLAGS, &ifr) < 0) {
-		perror("ioctl SIOCSIFFLAGS");
-		close(sock);
-		return -1;
-	}
-	close(sock);
-	return 0;
-}
-
-int get_tap(char *name, int flags)
-{
-#ifdef __linux__
-	struct ifreq ifr;
-	int fd, error;
-
-	if ((fd = open("/dev/net/tun", O_RDWR)) < 0) {
-		perror("open /dev/net/tun");
-		return fd;
-	}
-	memset(&ifr, 0, sizeof(ifr));
-
-	ifr.ifr_flags = flags;
-
-	if (name)
-		strncpy(ifr.ifr_name, name, IFNAMSIZ);
-
-	if ((error = ioctl(fd, TUNSETIFF, &ifr)) < 0) {
-		perror("ioctl TUNSETIFF");
-		close(fd);
-		return error;
-	}
-	strcpy(name, ifr.ifr_name);
-	return fd;
-#elif defined(__APPLE__) || defined(__MACH__)
-	// On macOS, try TAP first (if tuntaposx is installed), then fall back to
-	// utun (TUN)
-	int fd;
-	struct ctl_info ctl_info;
-	struct sockaddr_ctl sc;
-
-	// First, try to open /dev/tap0, /dev/tap1, etc. (if tuntaposx is installed)
-	for (int i = 0; i < 10; i++) {
-		char tap_path[32];
-		snprintf(tap_path, sizeof(tap_path), "/dev/tap%d", i);
-		fd = open(tap_path, O_RDWR);
-		if (fd >= 0) {
-			// Successfully opened TAP device
-			snprintf(name, IFNAMSIZ, "tap%d", i);
-			return fd;
-		}
-	}
-
-	// If TAP devices not available, use built-in utun (TUN interface)
-	// Note: utun is TUN (layer 3), not TAP (layer 2), but it's the best we can
-	// do
-	fd = socket(PF_SYSTEM, SOCK_DGRAM, SYSPROTO_CONTROL);
-	if (fd < 0) {
-		perror("socket PF_SYSTEM");
-		return fd;
-	}
-
-	memset(&ctl_info, 0, sizeof(ctl_info));
-	strncpy(ctl_info.ctl_name, UTUN_CONTROL_NAME, sizeof(ctl_info.ctl_name));
-
-	if (ioctl(fd, CTLIOCGINFO, &ctl_info) < 0) {
-		perror("ioctl CTLIOCGINFO");
-		close(fd);
-		return -1;
-	}
-
-	memset(&sc, 0, sizeof(sc));
-	sc.sc_id = ctl_info.ctl_id;
-	sc.sc_len = sizeof(sc);
-	sc.sc_family = AF_SYSTEM;
-	sc.ss_sysaddr = AF_SYS_CONTROL;
-	sc.sc_unit = 0; // Let the system assign a unit number
-
-	if (connect(fd, (struct sockaddr *)&sc, sizeof(sc)) < 0) {
-		if (errno == EPERM || errno == EACCES) {
-			fprintf(stderr,
-				"Error: Creating utun interface requires root privileges.\n");
-			fprintf(stderr, "Please run with: sudo ./build/networking.elf\n");
-		}
-		perror("connect utun");
-		close(fd);
-		return -1;
-	}
-
-	// Get the interface name that was assigned
-	socklen_t len = IFNAMSIZ;
-	if (getsockopt(fd, SYSPROTO_CONTROL, UTUN_OPT_IFNAME, name, &len) < 0) {
-		perror("getsockopt UTUN_OPT_IFNAME");
-		// Continue anyway, the interface should still work
-		strncpy(name, "utun0", IFNAMSIZ);
-	}
-
-	return fd;
-#else
-#error "Unsupported platform"
-#endif
 }

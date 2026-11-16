@@ -1,62 +1,130 @@
 #include "nw_interface.h"
+#include "buffer_pool.h"
+#include "container_of.h"
+#include "nw_interface.h"
+#include "nw_layer.h"
+#include "pkt.h"
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/eventfd.h>
-#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
-void set_net_if_struct(int fd, char *if_name, struct nw_interface *n_if)
+// TODO: change to passing actual interface/fd to read from
+void read_from_interface(struct nw_layer *if_layer)
 {
-	int sock;
-	struct ifreq ifr;
+	struct interface_context *interface_context =
+	    ((struct interface_context *)if_layer->context);
+	int fd = interface_context->interfaces[0].fd;
 
-	n_if->fd = fd;
-	strcpy(n_if->name, if_name);
-
-	sock = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sock < 0) {
-		perror("socket");
-		return;
+	for (;;) {
+		struct pkt *packet = allocate_pkt_wait();
+		ssize_t nread = read(fd, packet->data, MAX_ETH_FRAME_SIZE);
+		if (nread < 0) {
+			printf("NO READ RELEASING \n");
+			release_pkt(packet);
+			continue;
+		}
+		packet->len = (size_t)nread;
+		packet->offset = 0;
+		packet->if_index = 0;
+		FILE *log = fopen("io.txt", "a");
+		if (log) {
+			for (size_t i = 0; i < packet->len; i++)
+				fprintf(log, "%02X", packet->data[i + packet->offset]);
+			fprintf(log, "\n");
+			fclose(log);
+		}
+		push_q(interface_context->ingress_q, &packet->q_node);
+		release_pkt(packet);
 	}
-
-	strncpy(ifr.ifr_name, if_name, IFNAMSIZ);
-
-	if (ioctl(sock, SIOCGIFADDR, &ifr) == 0)
-		n_if->ipv4_addr = ((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr.s_addr;
-	else
-		perror("SIOCGIFADDR");
-
-	if (ioctl(sock, SIOCGIFNETMASK, &ifr) == 0)
-		n_if->subnet_mask = ((struct sockaddr_in *)&ifr.ifr_netmask)->sin_addr.s_addr;
-	else
-		perror("SIOCGIFNETMASK");
-
-	if (ioctl(sock, SIOCGIFHWADDR, &ifr) == 0)
-		memcpy(n_if->mac_addr, ifr.ifr_hwaddr.sa_data, 6);
-	else
-		perror("SIOCGIFHWADDR");
-
-	if (ioctl(sock, SIOCGIFMTU, &ifr) == 0)
-		n_if->mtu = ifr.ifr_mtu;
-	else
-		perror("SIOCGIFMTU");
-
-	close(sock);
 }
 
-// Sets stack ip address on same subnet as the interface, with host bits set to 2
-// after set_ipv4_addr() call => interface at 192.168.100.1/24
-// after this call => stack at 192.168.100.2/24
-void set_stack_ipv4_addr(struct nw_interface *n_if, ipv4_address_t stack_ip_addr)
+void process_ingress_q_packets(struct nw_layer *interface)
 {
-	uint32_t ip = ntohl(n_if->ipv4_addr);
-	uint32_t mask = ntohl(n_if->subnet_mask);
+	struct interface_context *if_cntx = ((struct interface_context *)interface->context);
+	struct queue *q = if_cntx->ingress_q;
 
-	uint32_t network = ip & mask;
+	while (true) {
+		struct queue_node *n = pop_q_blocking(q);
+		if (!n)
+			return; // INGRESS QUEUE STOPPED, STACK DISABLED
+		struct pkt *p = CONTAINER_OF(n, struct pkt, q_node);
 
-	uint32_t stack_ip = htonl(network | 2);
-	memcpy(stack_ip_addr, &stack_ip, IPV4_ADDR_LEN);
+		pkt_result result = interface->rcv_up(interface, p);
+		printf("LISTEN LOOP RELEASING \n");
+		release_pkt(p);
+		printf("%d \n\n", result);
+	}
+}
+
+// No demuxing at this layer, no need for "pass_up_to_layer" usage
+pkt_result send_up_to_ethernet(struct nw_layer *if_layer, struct pkt *packet)
+{
+	return if_layer->ups[0]->rcv_up(if_layer->ups[0], packet);
+}
+
+pkt_result tap_transmit(struct interface_context *ctx, struct nw_interface *nif, struct pkt *p)
+{
+	FILE *log = fopen("io.txt", "a");
+	if (log) {
+		for (size_t i = 0; i < p->len; i++)
+			fprintf(log, "%02X", p->data[i + p->offset]);
+		fprintf(log, "\n");
+		fclose(log);
+	}
+
+	ssize_t nwrite = write(nif->fd, (p->data + p->offset), p->len);
+
+	if (nwrite < 0) {
+		perror("Writing to TAP interface");
+		return WRITE_ERROR;
+	}
+	return SENT;
+}
+
+pkt_result loopback_transmit(struct interface_context *ctx, struct nw_interface *nif, struct pkt *p)
+{
+	FILE *log = fopen("io.txt", "a");
+	if (log) {
+		for (size_t i = 0; i < p->len; i++)
+			fprintf(log, "%02X", p->data[i + p->offset]);
+		fprintf(log, "\n");
+		fclose(log);
+	}
+
+	push_q(ctx->ingress_q, &p->q_node);
+	return SENT;
+}
+
+pkt_result gen_interface_transmit(struct nw_layer *if_layer, struct pkt *packet)
+{
+	struct interface_context *if_cntx = (struct interface_context *)if_layer->context;
+	struct nw_interface *nw_interfaces = if_cntx->interfaces;
+	struct nw_interface *nw_if = &nw_interfaces[packet->if_index];
+	return nw_if->transmit(if_cntx, nw_if, packet);
+}
+
+void set_nw_if_struct(struct nw_interface *nw_if,
+		      int tap_fd,
+		      char *if_name,
+		      const mac_address_t mac_addr,
+		      const ipv4_address_t ip_addr,
+		      const ipv4_address_t subnet_mask,
+		      const uint32_t mtu,
+		      nw_if_transmit_fn tx_function,
+		      uint32_t flags)
+{
+	nw_if->fd = tap_fd;
+	strcpy(nw_if->name, if_name);
+	memcpy(&nw_if->ipv4_addr, ip_addr, IPV4_ADDR_LEN);
+	nw_if->ipv4_addr = (nw_if->ipv4_addr);
+	memcpy(nw_if->mac_addr, mac_addr, MAC_ADDR_LEN);
+	nw_if->mtu = mtu;
+	nw_if->transmit = tx_function;
+	memcpy(&nw_if->subnet_mask, subnet_mask, IPV4_ADDR_LEN);
+	nw_if->subnet_mask = (nw_if->subnet_mask);
+	nw_if->flags = flags;
 }

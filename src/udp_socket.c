@@ -2,9 +2,11 @@
 #include "buffer_pool.h"
 #include "ethernet.h"
 #include "ipv4.h"
+#include "nw_interface.h"
 #include "nw_layer.h"
 #include "pkt.h"
 #include "pkt_ring_buffer.h"
+#include "routing_table.h"
 #include "send_request.h"
 #include "socket_manager.h"
 #include "stack.h"
@@ -29,14 +31,15 @@ const struct socket_ops udp_socket_ops = {.is_snd_queued = udp_is_snd_queued,
 					  .accept = NULL,
 					  .end_snd = NULL};
 
-struct udp_ipv4_socket *create_udp_socket(uint16_t port, struct stack *stack)
+struct udp_ipv4_socket *create_udp_socket(uint16_t port)
 {
 	struct udp_ipv4_socket *socket = malloc(sizeof(struct udp_ipv4_socket));
 	if (socket == NULL)
 		return NULL;
 
 	socket->local_port = port;
-	memcpy(socket->local_addr, stack->local_address, IPV4_ADDR_LEN);
+	// memcpy(socket->local_addr, stack->local_address, IPV4_ADDR_LEN);
+	socket->wildcard = true;
 	socket->ref_count = 0;
 	socket->queued_for_snd = false;
 	struct pkt_ring_buffer *rcv_b = create_init_pkt_ring_buffer(UDP_RING_BUFF_SIZE);
@@ -131,6 +134,7 @@ void udp_release(void *s)
 ssize_t udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_request *req)
 {
 	struct udp_ipv4_socket *socket = (struct udp_ipv4_socket *)s;
+	struct udp_context *cntxt = (struct udp_context *)stack->udp_layer->context;
 
 	pthread_mutex_lock(&socket->lock);
 	if (socket->state == UDP_CLOSED) {
@@ -152,7 +156,12 @@ ssize_t udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_reques
 		return -3; // PKT POOL EXHAUSTED
 
 	packet->len = req->len;
-	memcpy(packet->src_ip, socket->local_addr, IPV4_ADDR_LEN);
+	if (!get_route(cntxt->routing_table, req->dest_ip, &packet->route)) {
+		release_pkt(packet);
+		return -5; // UNROUTABLE
+	}
+	size_t nw_if_indx = packet->route->nw_if_id;
+	memcpy(packet->src_ip, &cntxt->nw_ifs[nw_if_indx].ipv4_addr, IPV4_ADDR_LEN);
 	memcpy(packet->dest_ip, req->dest_ip, IPV4_ADDR_LEN);
 	packet->dest_port = req->dest_port;
 	packet->src_port = socket->local_port;

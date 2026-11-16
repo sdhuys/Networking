@@ -4,6 +4,7 @@
 struct nw_layer;
 struct socket_manager;
 struct timer_manager;
+struct routing_table;
 
 struct stack {
 	struct nw_layer *if_layer;
@@ -12,5 +13,5 @@ struct stack {
 	struct nw_layer *icmp_layer;
 	struct socket_manager *sock_manager;
 	struct timer_manager *timer_mgr; // also part of tcp context
-	ipv4_address_t local_address;	 // also part of arp, ipv4, udp and tcp context
+	struct routing_table *routing_table;
 };

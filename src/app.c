@@ -5,7 +5,7 @@
 
 void client_app(struct stack *stack)
 {
-	ipv4_address_t server = {192, 168, 100, 2};
+	ipv4_address_t server = {127, 0, 0, 1};
 	int tcp_9000 = tcp_connect(stack, 1234, 9000, server);
 	if (tcp_9000 < 0) {
 		printf("CONNECTION ERROR! \n");

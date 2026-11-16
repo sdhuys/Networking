@@ -20,7 +20,8 @@ void *ping_test(void *st)
 		p->len = sizeof(struct icmp_header);
 		struct icmp_header *h = (struct icmp_header *)(p->data + p->offset);
 		ipv4_address_t dns = {8, 8, 8, 8};
-		memcpy(p->src_ip, s->local_address, IPV4_ADDR_LEN);
+		ipv4_address_t local_ip = {192, 168, 100, 2};
+		memcpy(p->src_ip, local_ip, IPV4_ADDR_LEN);
 		memcpy(p->dest_ip, dns, IPV4_ADDR_LEN);
 		h->type = ECHO_REQUEST;
 		h->checksum = 0;

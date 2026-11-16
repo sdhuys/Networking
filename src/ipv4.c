@@ -5,6 +5,7 @@
 #include "constants.h"
 #include "ethernet.h"
 #include "layer_router.h"
+#include "nw_interface.h"
 #include "nw_layer.h"
 #include "pkt.h"
 #include "routing_table.h"
@@ -37,7 +38,7 @@ pkt_result receive_ipv4_up(struct nw_layer *self, struct pkt *packet)
 	if (calc_ipv4_checksum(header, header_len) != 0)
 		return IP_CHECKSUM_ERROR;
 
-	if (!relevant_destination_ip(header->dest_ip, self))
+	if (!relevant_destination_ip(header->dest_ip, self, packet->if_index))
 		return IP_DEST_NOT_RELEVANT;
 
 	memcpy(packet->src_ip, header->src_ip, IPV4_ADDR_LEN);
@@ -77,7 +78,8 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 		}
 	}
 
-	packet->if_index = packet->route->iface_id;
+	packet->if_index = packet->route->nw_if_id;
+	struct nw_interface *nw_if = &ipv4_cntxt->nw_ifs[packet->if_index];
 
 	// Write header
 	struct ipv4_header *header = (struct ipv4_header *)(packet->data + packet->offset);
@@ -87,9 +89,9 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 	packet->offset -= sizeof(struct ethernet_header);
 	packet->len += sizeof(struct ethernet_header);
 
-	// LOOPBACK!!
-	if (memcmp(packet->dest_ip, ipv4_cntxt->stack_ipv4_addr, IPV4_ADDR_LEN) == 0) {
-		memset(packet->dest_mac, 0, MAC_ADDR_LEN); // SENTINEL VALUE FOR LOOPBACK
+	// Loopback!
+	if (nw_if->flags & IF_NOARP) {
+		memcpy(packet->dest_mac, nw_if->mac_addr, MAC_ADDR_LEN);
 		return self->downs[0]->send_down(self->downs[0], packet);
 	}
 
@@ -106,7 +108,8 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 			return ARP_TABLE_FULL; // currently actually means malloc failed, later add
 					       // ARP table size cap
 
-		struct pkt *arp_request = create_arp_request_for(arp_layer, next_hop);
+		struct pkt *arp_request =
+		    create_arp_request_for(arp_layer, next_hop, packet->route);
 		// if no arp request pkt returned, arp entry will stay incomplete until retry
 		if (arp_request) {
 			send_arp_down(arp_layer, arp_request);
@@ -136,12 +139,14 @@ void write_ipv4_header(struct ipv4_header *header, struct pkt *packet)
 	header->header_checksum = calc_ipv4_checksum(header, IPV4_HEADER_NO_OPTIONS_LEN);
 }
 
-bool relevant_destination_ip(ipv4_address_t dest_ip, struct nw_layer *self)
+// strong host model, interface only accepts packets addressed to its own ip address
+bool relevant_destination_ip(ipv4_address_t dest_ip, struct nw_layer *self, size_t nw_if_indx)
 {
-	struct ipv4_context *context = (struct ipv4_context *)self->context;
+	struct ipv4_context *cntx = (struct ipv4_context *)self->context;
+	struct nw_interface *nw_if = &cntx->nw_ifs[nw_if_indx];
 
 	if (memcmp(dest_ip, IPV4_BROADCAST_IP, IPV4_ADDR_LEN) == 0 ||
-	    memcmp(dest_ip, context->stack_ipv4_addr, IPV4_ADDR_LEN) == 0)
+	    memcmp(dest_ip, &nw_if->ipv4_addr, IPV4_ADDR_LEN) == 0)
 		return true;
 	return false;
 }

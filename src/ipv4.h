@@ -2,6 +2,7 @@
 #include "address_types.h"
 #include "pkt_result.h"
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #define IPV4_V 4
@@ -13,8 +14,9 @@ struct nw_layer;
 
 struct ipv4_context {
 	struct nw_layer *arp_layer;
-	ipv4_address_t stack_ipv4_addr;
 	struct routing_table *routing_table;
+	struct nw_interface *nw_ifs;
+	size_t if_count;
 };
 
 struct ipv4_header {
@@ -49,7 +51,7 @@ extern "C" {
 
 pkt_result receive_ipv4_up(struct nw_layer *self, struct pkt *packet);
 pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet);
-bool relevant_destination_ip(ipv4_address_t dest_ip, struct nw_layer *self);
+bool relevant_destination_ip(ipv4_address_t dest_ip, struct nw_layer *self, size_t nw_if_indx);
 void write_ipv4_header(struct ipv4_header *header, struct pkt *packet);
 
 #ifdef __cplusplus

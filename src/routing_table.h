@@ -6,7 +6,8 @@
 
 typedef enum {
 	ROUTE_ONLINK, // destination is directly reachable
-	ROUTE_VIA     // send via gateway
+	ROUTE_VIA,    // send via gateway
+	ROUTE_LOCAL   // loopback
 } route_type;
 
 struct nw_interface;
@@ -18,7 +19,7 @@ struct route {
 	uint32_t mtu;	      // max transmission unit
 	route_type type;
 	uint32_t gateway; // valid only if type == ROUTE_VIA
-	uint32_t iface_id;
+	uint32_t nw_if_id;
 
 	// to keep track of validity of route when we add routing adding/removing
 	uint32_t gen_id;

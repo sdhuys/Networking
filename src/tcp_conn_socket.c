@@ -498,7 +498,9 @@ uint32_t tcp_calc_rcv_mss(const struct route *route)
 }
 
 // create connection for id, init general values
-struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct nw_layer *tcp)
+struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id,
+						 struct nw_layer *tcp,
+						 struct route *route)
 {
 	// every field zeroed, nothing left uninitialised by accident
 	struct tcp_ipv4_conn *conn = calloc(1, sizeof(*conn));
@@ -550,9 +552,7 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id, struct 
 
 	conn->q_node.nxt = Q_NODE_UNLINKED;
 
-	struct tcp_context *ctx = (struct tcp_context *)tcp->context;
-	get_route(
-	    ctx->routing_tbl, id->extern_addr, &conn->route); // conn->route == NULL on failure
+	conn->route = route;
 	conn->rcv_mss = tcp_calc_rcv_mss(conn->route);
 	return conn;
 
@@ -1286,7 +1286,8 @@ ssize_t tcp_read_from_rcv_buff(void *sock, size_t len, unsigned char *buff)
 		printf("SEND WINDOW UPDATE!! NEW WINDOW: %u \n", b->rcv_wnd);
 		struct pkt *p = allocate_pkt();
 		if (p) {
-			tcp_create_ack_reply(p, conn, &d); // SEND WINDOW UPDATE!; retains pkt for d->pkt_snd_now
+			tcp_create_ack_reply(
+			    p, conn, &d); // SEND WINDOW UPDATE!; retains pkt for d->pkt_snd_now
 			release_pkt(p);
 		}
 	}

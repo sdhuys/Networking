@@ -3,6 +3,7 @@
 #include "nw_layer.h"
 #include "pkt.h"
 #include "queue.h"
+#include "routing_table.h"
 #include "socket_manager.h"
 #include "stack.h"
 #include "tcp.h"
@@ -41,7 +42,11 @@ pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lstnr,
 	memcpy(id.extern_addr, pkt->src_ip, IPV4_ADDR_LEN);
 	memcpy(id.loc_addr, pkt->dest_ip, IPV4_ADDR_LEN);
 
-	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, lstnr->tcp_layer);
+	struct tcp_context *ctx = (struct tcp_context *)lstnr->tcp_layer->context;
+	struct route *route;
+	get_route(ctx->routing_tbl, id.extern_addr, &route); // set to NULL if no route
+
+	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, lstnr->tcp_layer, route);
 	if (conn == NULL)
 		return TCP_CONN_CREATION_ERROR;
 
@@ -64,7 +69,12 @@ pkt_result tcp_server_open_new_connection(struct tcp_ipv4_listener *lstnr,
 	return CONN_CREATED_SYN_ACK_TO_SND_BUFFER;
 }
 
-struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack)
+// if local_addr is supplied, accept only connections for this address
+// else wildcard listener
+// (CURRENT API ONLY SUPPORTS WILDCARD CREATION)
+struct tcp_ipv4_listener *create_tcp_listener(uint16_t port,
+					      ipv4_address_t local_addr,
+					      struct stack *stack)
 {
 	struct tcp_ipv4_listener *listener = malloc(sizeof(struct tcp_ipv4_listener));
 	if (listener == NULL)
@@ -81,8 +91,14 @@ struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack
 	listener->half_open_count = 0;
 	listener->half_open_limit = TCP_LSTNR_HALF_OPENS_LIMIT;
 	listener->local_port = port;
-	memcpy(listener->local_addr, stack->local_address, IPV4_ADDR_LEN);
-
+	if (!local_addr) {
+		listener->wildcard = true;
+		ipv4_address_t zero = {0};
+		memcpy(listener->local_addr, zero, IPV4_ADDR_LEN);
+	} else {
+		listener->wildcard = false;
+		memcpy(listener->local_addr, local_addr, IPV4_ADDR_LEN);
+	}
 	listener->tcp_layer = stack->tcp_layer;
 	return listener;
 }

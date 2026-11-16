@@ -20,7 +20,8 @@ struct send_request;
 
 struct udp_ipv4_socket {
 	uint16_t local_port;
-	ipv4_address_t local_addr;
+	// ipv4_address_t local_addr;
+	bool wildcard;
 	struct pkt_ring_buffer *rcv_buffer; // stack writes, app consumes
 	struct pkt_ring_buffer *snd_buffer; // app writes, stack consumes
 	udp_socket_state state;
@@ -33,7 +34,7 @@ struct udp_ipv4_socket {
 extern "C" {
 #endif
 
-struct udp_ipv4_socket *create_udp_socket(uint16_t port, struct stack *stack);
+struct udp_ipv4_socket *create_udp_socket(uint16_t port);
 void destroy_udp_socket(struct udp_ipv4_socket *socket);
 void retain_udp_socket(struct udp_ipv4_socket *socket);
 void release_udp_socket(struct udp_ipv4_socket *socket);

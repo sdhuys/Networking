@@ -6,7 +6,7 @@
 
 bool add_to_udp_hashtable(struct udp_ipv4_sckt_htable *htable, struct udp_ipv4_socket *socket)
 {
-	uint32_t hash = calc_udp_hash(socket->local_port, socket->local_addr, htable);
+	uint32_t hash = calc_udp_hash(socket->local_port, htable);
 
 	pthread_mutex_lock(&htable->bucket_locks[hash]);
 
@@ -37,7 +37,7 @@ struct udp_ipv4_socket *query_udp_hashtable(struct udp_ipv4_sckt_htable *htable,
 					    uint16_t port,
 					    ipv4_address_t addr)
 {
-	uint32_t hash = calc_udp_hash(port, addr, htable);
+	uint32_t hash = calc_udp_hash(port, htable);
 	pthread_mutex_t *bucket_lock = &(htable->bucket_locks[hash]);
 	pthread_mutex_lock(bucket_lock);
 	struct udp_ipv4_sckt_htable_node *bucket_node = htable->buckets[hash];
@@ -65,7 +65,7 @@ struct udp_ipv4_socket *query_udp_hashtable(struct udp_ipv4_sckt_htable *htable,
 
 bool remove_from_udp_hashtable(struct udp_ipv4_sckt_htable *htable, struct udp_ipv4_socket *socket)
 {
-	uint32_t hash = calc_udp_hash(socket->local_port, socket->local_addr, htable);
+	uint32_t hash = calc_udp_hash(socket->local_port, htable);
 
 	pthread_mutex_t *lock = &(htable->bucket_locks[hash]);
 	pthread_mutex_lock(lock);
@@ -95,12 +95,11 @@ bool remove_from_udp_hashtable(struct udp_ipv4_sckt_htable *htable, struct udp_i
 	return false;
 }
 
-uint32_t calc_udp_hash(uint16_t port, ipv4_address_t ip, struct udp_ipv4_sckt_htable *htable)
+uint32_t calc_udp_hash(uint16_t port, struct udp_ipv4_sckt_htable *htable)
 {
-	unsigned char data[6];
+	unsigned char data[2];
 	data[0] = port & 0xFF;
 	data[1] = (port >> 8) & 0xFF;
-	memcpy(&data[2], ip, IPV4_ADDR_LEN);
 	return hash_table(data, sizeof(data)) & (htable->buckets_amount - 1);
 }
 

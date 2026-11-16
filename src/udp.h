@@ -1,14 +1,18 @@
 #pragma once
 #include "address_types.h"
 #include "pkt_result.h"
+#include "routing_table.h"
+#include <stddef.h>
 #include <stdint.h>
 
 struct nw_layer;
 struct pkt;
 
 struct udp_context {
-	ipv4_address_t stack_ipv4_addr;
 	struct socket_manager *sock_manager;
+	struct routing_table *routing_table;
+	struct nw_interface *nw_ifs;
+	size_t if_count;
 };
 
 struct udp_header {

@@ -2,8 +2,10 @@
 #include "buffer_pool.h"
 #include "constants.h"
 #include "ethernet.h"
+#include "nw_interface.h"
 #include "nw_layer.h"
 #include "pkt.h"
+#include "routing_table.h"
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,7 +29,7 @@ pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet)
 		return ARP_PRTCL_TYPE_NOT_SUPPORTED;
 
 	uint16_t op = ntohs(arp_data->operation);
-	unsigned char proto_addr_len = arp_data->proto_addr_len;
+	unsigned char proto_addr_len = arp_data->prtcl_addr_len;
 	unsigned char hw_addr_len = arp_data->hw_addr_len;
 	if (proto_addr_len != IPV4_ADDR_LEN || hw_addr_len != MAC_ADDR_LEN)
 		return ARP_MALFORMED;
@@ -35,10 +37,17 @@ pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet)
 	struct arp_context *cntx = (struct arp_context *)self->context;
 
 	if (op == ARP_REQUEST) {
-		if (memcmp(arp_data->target_ip, cntx->ipv4_addr, proto_addr_len) != 0)
+		struct nw_interface *interfaces = cntx->nw_ifs;
+		uint32_t if_index = packet->if_index;
+		ipv4_address_t local_ip_addr;
+		memcpy(local_ip_addr, &interfaces[if_index].ipv4_addr, IPV4_ADDR_LEN);
+		mac_address_t local_mac_addr;
+		memcpy(local_mac_addr, &interfaces[if_index].mac_addr, MAC_ADDR_LEN);
+
+		if (memcmp(arp_data->target_ip, local_ip_addr, proto_addr_len) != 0)
 			return ARP_RQST_TARGET_NOT_RELEVANT;
 
-		inc_arp_request_to_reply(packet, arp_data, cntx->mac_addr);
+		inc_arp_request_to_reply(packet, arp_data, local_mac_addr);
 		pkt_result r = send_arp_down(self, packet);
 		if (r == SENT)
 			return ARP_REPLY_SENT;
@@ -142,9 +151,9 @@ void inc_arp_request_to_reply(struct pkt *packet,
 	memcpy(header->target_mac, header->src_mac, header->hw_addr_len);
 	memcpy(header->src_mac, requested_address, header->hw_addr_len);
 	ipv4_address_t temp_ip;
-	memcpy(temp_ip, header->target_ip, header->proto_addr_len);
-	memcpy(header->target_ip, header->src_ip, header->proto_addr_len);
-	memcpy(header->src_ip, temp_ip, header->proto_addr_len);
+	memcpy(temp_ip, header->target_ip, header->prtcl_addr_len);
+	memcpy(header->target_ip, header->src_ip, header->prtcl_addr_len);
+	memcpy(header->src_ip, temp_ip, header->prtcl_addr_len);
 }
 
 void print_arp_header(struct arp_data *arp_header)
@@ -153,7 +162,7 @@ void print_arp_header(struct arp_data *arp_header)
 	printf("  Hardware Type: %u\n", ntohs(arp_header->hw_type));
 	printf("  Protocol Type: 0x%04x\n", ntohs(arp_header->proto_type));
 	printf("  Hardware Address Length: %u\n", arp_header->hw_addr_len);
-	printf("  Protocol Address Length: %u\n", arp_header->proto_addr_len);
+	printf("  Protocol Address Length: %u\n", arp_header->prtcl_addr_len);
 	printf("  Operation: %u\n", ntohs(arp_header->operation));
 
 	printf("  Sender MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
@@ -186,7 +195,9 @@ void print_arp_header(struct arp_data *arp_header)
 }
 
 // creates a new pkt ref, caller must release
-struct pkt *create_arp_request_for(struct nw_layer *self, ipv4_address_t target_ip)
+struct pkt *create_arp_request_for(struct nw_layer *self,
+				   ipv4_address_t target_ip,
+				   struct route *route)
 {
 	printf("CREATE ARP REQUEST ALLOCATING \n");
 	struct pkt *pkt = allocate_pkt();
@@ -206,14 +217,18 @@ struct pkt *create_arp_request_for(struct nw_layer *self, ipv4_address_t target_
 	arp->hw_type = htons(ETHERNET);
 	arp->proto_type = htons(IPV4);
 	arp->hw_addr_len = MAC_ADDR_LEN;
-	arp->proto_addr_len = IPV4_ADDR_LEN;
+	arp->prtcl_addr_len = IPV4_ADDR_LEN;
 	arp->operation = htons(ARP_REQUEST);
 
-	memcpy(arp->src_mac, arp_context->mac_addr, MAC_ADDR_LEN);
-	memcpy(arp->src_ip, arp_context->ipv4_addr, IPV4_ADDR_LEN);
+	struct nw_interface *interfaces = arp_context->nw_ifs;
+	uint32_t if_index = route->nw_if_id;
+
+	memcpy(arp->src_mac, &interfaces[if_index].mac_addr, MAC_ADDR_LEN);
+	memcpy(arp->src_ip, &interfaces[if_index].ipv4_addr, IPV4_ADDR_LEN);
 	memcpy(arp->target_ip, target_ip, IPV4_ADDR_LEN);
 	memset(arp->target_mac, 0x00, MAC_ADDR_LEN);
 
+	print_arp_header(arp);
 	return pkt;
 }
 

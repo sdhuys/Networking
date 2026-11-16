@@ -17,6 +17,7 @@ typedef enum {
 
 struct pkt;
 struct nw_layer;
+struct route;
 
 struct arp_table {
 	struct arp_table_node *head;
@@ -38,8 +39,8 @@ struct queue_entry {
 };
 
 struct arp_context {
-	ipv4_address_t ipv4_addr;
-	mac_address_t mac_addr;
+	struct nw_interface *nw_ifs;
+	size_t if_count;
 	struct arp_table *arp_table;
 	struct timer_manager *timer_mgr;
 };
@@ -48,7 +49,7 @@ struct arp_data {
 	uint16_t hw_type;
 	uint16_t proto_type;
 	unsigned char hw_addr_len;
-	unsigned char proto_addr_len;
+	unsigned char prtcl_addr_len;
 	uint16_t operation;
 	mac_address_t src_mac;
 	ipv4_address_t src_ip;
@@ -68,7 +69,9 @@ void inc_arp_request_to_reply(struct pkt *packet,
 			      mac_address_t requested_address);
 void complete_arp_table_node(struct arp_table_node *entry, mac_address_t src_mac);
 struct arp_table_node *query_arp_table(struct arp_table *table, ipv4_address_t ip);
-struct pkt *create_arp_request_for(struct nw_layer *self, ipv4_address_t target_ip);
+struct pkt *create_arp_request_for(struct nw_layer *self,
+				   ipv4_address_t target_ip,
+				   struct route *route);
 struct arp_table_node *insert_incomplete_for_ip(struct arp_table *table, ipv4_address_t dest_ip);
 pkt_result add_pkt_to_q(struct arp_table_node *node, struct pkt *packet);
 void flush_q(struct nw_layer *self, struct arp_table_node *arp_entry);

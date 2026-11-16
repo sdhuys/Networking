@@ -2,6 +2,7 @@
 #include "address_types.h"
 #include "pkt_result.h"
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 struct socket_manager;
@@ -15,8 +16,9 @@ struct tcp_segment;
 struct tcp_context {
 	struct socket_manager *socket_manager;
 	struct timer_manager *timer_mgr;
-	ipv4_address_t stack_ipv4_addr;
 	struct routing_table *routing_tbl;
+	struct nw_interface *nw_ifs;
+	size_t if_count;
 };
 
 #ifdef __cplusplus

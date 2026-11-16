@@ -2,7 +2,6 @@
 #include "address_types.h"
 #include "common_layer_defs.h"
 #include "queue.h"
-#include <pthread.h>
 #include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>

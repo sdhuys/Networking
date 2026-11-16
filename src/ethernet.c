@@ -1,9 +1,12 @@
 #include "ethernet.h"
 #include "constants.h"
 #include "layer_router.h"
+#include "nw_interface.h"
 #include "nw_layer.h"
 #include "pkt.h"
+#include "routing_table.h"
 #include <arpa/inet.h>
+#include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,7 +19,9 @@ pkt_result receive_frame_up(struct nw_layer *self, struct pkt *packet)
 	struct ethernet_header *header = (struct ethernet_header *)(packet->data + packet->offset);
 	// print_incoming(header);
 
-	if (relevant_destination_mac(header->dest_mac, self) == false) {
+	assert(!packet->route || packet->route->type == ROUTE_LOCAL);
+
+	if (!relevant_destination_mac(header->dest_mac, self, packet->if_index)) {
 		// printf("Frame not relevant for us. Ignoring.\n");
 		return FRAME_TARGET_NOT_RELEVANT;
 	}
@@ -53,26 +58,30 @@ pkt_result send_frame_down(struct nw_layer *self, struct pkt *packet)
 {
 	struct ethernet_header *header = (struct ethernet_header *)(packet->data + packet->offset);
 	struct ethernet_context *context = (struct ethernet_context *)self->context;
+	struct nw_interface *interfaces = context->nw_ifs;
 
 	header->ethertype = packet->ethertype;
 	memcpy(header->dest_mac, packet->dest_mac, MAC_ADDR_LEN);
-	memcpy(header->src_mac, context->mac_addr, MAC_ADDR_LEN);
+	memcpy(header->src_mac, &interfaces[packet->if_index], MAC_ADDR_LEN);
 
 	return self->downs[0]->send_down(self->downs[0], packet);
 }
 
 // Only procees frames sent to stack's MAC or ipv4 broadcast
 // No ipv6 mulicast support yet
-bool relevant_destination_mac(mac_address_t dest_mac, struct nw_layer *self)
+bool relevant_destination_mac(mac_address_t dest_mac, struct nw_layer *self, size_t nw_if_indx)
 {
 	struct ethernet_context *context = (struct ethernet_context *)self->context;
+	struct nw_interface *nw_ifs = context->nw_ifs;
 
-	if (memcmp(dest_mac, IPV4_BROADCAST_MAC, MAC_ADDR_LEN) == 0 ||
-	    memcmp(dest_mac, context->mac_addr, MAC_ADDR_LEN) == 0 ||
-	    ((dest_mac[0] | dest_mac[1] | dest_mac[2] | dest_mac[3] | dest_mac[4] | dest_mac[5]) ==
-	     0))
+	// always accept frames coming from loopback (mac should be 0 but we don't really care?)
+	if ((nw_ifs[nw_if_indx].flags & IF_LOOPBACK) != 0)
 		return true;
-	return false;
+
+	if (memcmp(dest_mac, IPV4_BROADCAST_MAC, MAC_ADDR_LEN) == 0)
+		return true;
+
+	return memcmp(dest_mac, nw_ifs[nw_if_indx].mac_addr, MAC_ADDR_LEN) == 0;
 }
 
 void print_incoming(struct ethernet_header *header)

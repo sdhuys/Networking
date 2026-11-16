@@ -1,8 +1,8 @@
 #pragma once
 #include "address_types.h"
 #include "pkt_result.h"
-#include <pthread.h>
 #include <stdatomic.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -18,6 +18,7 @@ struct tcp_segment;
 
 struct tcp_ipv4_listener {
 	ipv4_address_t local_addr;
+	bool wildcard; // accept any local addr
 	uint16_t local_port;
 
 	size_t half_open_limit;
@@ -32,7 +33,9 @@ struct tcp_ipv4_listener {
 extern "C" {
 #endif
 
-struct tcp_ipv4_listener *create_tcp_listener(uint16_t port, struct stack *stack);
+struct tcp_ipv4_listener *create_tcp_listener(uint16_t port,
+					      ipv4_address_t local_addr,
+					      struct stack *stack);
 void destroy_tcp_listener(struct tcp_ipv4_listener *listener);
 void retain_tcp_listener(struct tcp_ipv4_listener *listener);
 void release_tcp_listener(struct tcp_ipv4_listener *listener);

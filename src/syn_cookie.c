@@ -115,8 +115,11 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 				 .extern_port = ntohs(seg->header->src_port)};
 	memcpy(id.extern_addr, p->src_ip, IPV4_ADDR_LEN);
 	memcpy(id.loc_addr, listener->local_addr, IPV4_ADDR_LEN);
+	struct tcp_context *ctx = (struct tcp_context *)listener->tcp_layer->context;
+	struct route *route;
+	get_route(ctx->routing_tbl, id.extern_addr, &route); // set to NULL if no route
 
-	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, listener->tcp_layer);
+	struct tcp_ipv4_conn *conn = create_init_tcp_connection(&id, listener->tcp_layer, route);
 	if (!conn)
 		return SYN_COOKIE_OUT_OF_MEMORY;
 	tcp_retain_conn(conn);
@@ -132,7 +135,7 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 
 	struct tcp_context *cntx = (struct tcp_context *)(listener->tcp_layer->context);
 
-	// rcv_mss and route already set by create_init_tcp_connection
+	// rcv_mss already set by create_init_tcp_connection
 	// cookie MSS is always >= 536, and cookie connections never use timestamps
 	conn->snd_mss = tcp_effective_snd_mss(true, mss, conn->rcv_mss, false);
 	conn->snd_buffer.cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;

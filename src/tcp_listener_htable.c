@@ -4,10 +4,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+// doesn't allow specific ip listener when wildcard already exists
+// needs rework when listener ip binding is implemented
 bool add_to_tcp_listener_hashtable(struct tcp_ipv4_listener_htable *htable,
 				   struct tcp_ipv4_listener *listener)
 {
-	uint32_t hash = calc_tcp_listener_hash(listener->local_port, listener->local_addr, htable);
+	uint32_t hash = calc_tcp_listener_hash(listener->local_port, htable);
 
 	pthread_mutex_lock(&htable->bucket_locks[hash]);
 
@@ -36,11 +38,13 @@ bool add_to_tcp_listener_hashtable(struct tcp_ipv4_listener_htable *htable,
 	return true;
 }
 
+// can return wildcard listener before finding existing exact match listener
+// needs rework when listener ip binding is implemented
 struct tcp_ipv4_listener *query_tcp_listener_hashtable(struct tcp_ipv4_listener_htable *htable,
 						       uint16_t port,
 						       ipv4_address_t addr)
 {
-	uint32_t hash = calc_tcp_listener_hash(port, addr, htable);
+	uint32_t hash = calc_tcp_listener_hash(port, htable);
 	pthread_mutex_t *bucket_lock = &(htable->bucket_locks[hash]);
 	pthread_mutex_lock(bucket_lock);
 	struct tcp_ipv4_listener_node *bucket_node = htable->buckets[hash];
@@ -61,7 +65,7 @@ struct tcp_ipv4_listener *query_tcp_listener_hashtable(struct tcp_ipv4_listener_
 bool remove_from_tcp_listener_hashtable(struct tcp_ipv4_listener_htable *htable,
 					struct tcp_ipv4_listener *listener)
 {
-	uint32_t hash = calc_tcp_listener_hash(listener->local_port, listener->local_addr, htable);
+	uint32_t hash = calc_tcp_listener_hash(listener->local_port, htable);
 
 	pthread_mutex_t *bucket_lock = &(htable->bucket_locks[hash]);
 	pthread_mutex_lock(bucket_lock);
@@ -87,14 +91,11 @@ bool remove_from_tcp_listener_hashtable(struct tcp_ipv4_listener_htable *htable,
 	return false;
 }
 
-uint32_t calc_tcp_listener_hash(uint16_t port,
-				ipv4_address_t ip,
-				struct tcp_ipv4_listener_htable *htable)
+uint32_t calc_tcp_listener_hash(uint16_t port, struct tcp_ipv4_listener_htable *htable)
 {
-	unsigned char data[6];
+	unsigned char data[2];
 	data[0] = port & 0xFF;
 	data[1] = (port >> 8) & 0xFF;
-	memcpy(&data[2], ip, IPV4_ADDR_LEN);
 	return hash_table(data, sizeof(data)) & (htable->buckets_amount - 1);
 }
 
@@ -135,5 +136,5 @@ struct tcp_ipv4_listener_htable *create_tcp_ipv4_listener_htable(size_t size)
 bool is_tcp_lstnr_match(struct tcp_ipv4_listener *lstnr, uint16_t loc_port, ipv4_address_t loc_addr)
 {
 	return lstnr->local_port == loc_port &&
-	       memcmp(lstnr->local_addr, loc_addr, IPV4_ADDR_LEN) == 0;
+	       (memcmp(lstnr->local_addr, loc_addr, IPV4_ADDR_LEN) == 0 || lstnr->wildcard);
 }

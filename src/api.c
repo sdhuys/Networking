@@ -1,4 +1,7 @@
 #include "api.h"
+#include "nw_interface.h"
+#include "nw_layer.h"
+#include "routing_table.h"
 #include "send_request.h"
 #include "socket_manager.h"
 #include "sockfd_manager.h"
@@ -147,7 +150,16 @@ int tcp_connect(struct stack *stack,
 	    stack->sock_manager->tcp_ipv4_conn_time_wait_htable;
 	struct tcp_conn_id id = {.extern_port = extern_port, .loc_port = local_port};
 	memcpy(id.extern_addr, extern_addr, IPV4_ADDR_LEN);
-	memcpy(id.loc_addr, stack->local_address, IPV4_ADDR_LEN);
+
+	struct route *route = NULL;
+	if (!get_route(stack->routing_table, extern_addr, &route)) {
+		sockfd_free(sockfd_mgr, fd);
+		return -5; // UNROUTABLE CONN
+	}
+	uint32_t if_id = route->nw_if_id;
+	struct nw_interface *interfaces =
+	    ((struct interface_context *)(stack->if_layer->context))->interfaces;
+	memcpy(id.loc_addr, &interfaces[if_id].ipv4_addr, IPV4_ADDR_LEN);
 
 	struct tcp_ipv4_conn *conn;
 	if ((conn = query_tcp_conn_hashtable(htable, &id)) ||
@@ -157,7 +169,7 @@ int tcp_connect(struct stack *stack,
 		return -1; // CONNECTION ALREADY IN USE
 	}
 
-	conn = create_init_tcp_connection(&id, stack->tcp_layer);
+	conn = create_init_tcp_connection(&id, stack->tcp_layer, route);
 	if (!conn) {
 		sockfd_free(sockfd_mgr, fd);
 		return -4; // FAILED TO CREATE CONNECTION
