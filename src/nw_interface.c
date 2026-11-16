@@ -120,11 +120,9 @@ void set_nw_if_struct(struct nw_interface *nw_if,
 	nw_if->fd = tap_fd;
 	strcpy(nw_if->name, if_name);
 	memcpy(&nw_if->ipv4_addr, ip_addr, IPV4_ADDR_LEN);
-	nw_if->ipv4_addr = (nw_if->ipv4_addr);
 	memcpy(nw_if->mac_addr, mac_addr, MAC_ADDR_LEN);
 	nw_if->mtu = mtu;
 	nw_if->transmit = tx_function;
 	memcpy(&nw_if->subnet_mask, subnet_mask, IPV4_ADDR_LEN);
-	nw_if->subnet_mask = (nw_if->subnet_mask);
 	nw_if->flags = flags;
 }

@@ -25,8 +25,8 @@ struct nw_interface {
 	size_t index;	// index in interface_context->interfaces
 	int fd;		// -1 for loopback
 	uint32_t flags; // IF_NOARP, IF_LOOPBACK
-	uint32_t ipv4_addr;
-	uint32_t subnet_mask;
+	ipv4_address_t ipv4_addr;
+	ipv4_address_t subnet_mask;
 	mac_address_t mac_addr;
 	uint32_t mtu;
 	nw_if_transmit_fn transmit;
