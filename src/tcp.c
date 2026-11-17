@@ -160,7 +160,8 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 
 	// no connection, not a listener SYN, nor RST
 	if ((header->flags & TCP_RST) == 0) {
-		tcp_fast_reply_rst(self, packet, &seg);
+		tcp_build_rst_reply(packet, &seg);
+		self->send_down(self, packet);
 	}
 	return TCP_NO_CONNECTION;
 }
@@ -202,7 +203,7 @@ pkt_result tcp_fast_reply_syn_cookie(struct tcp_ipv4_listener *listener,
 }
 
 // fast send RST reply bypassing send buffer
-pkt_result tcp_fast_reply_rst(struct nw_layer *tcp, struct pkt *packet, struct tcp_segment *seg)
+void tcp_build_rst_reply(struct pkt *packet, struct tcp_segment *seg)
 {
 	uint32_t incoming_seq = ntohl(seg->header->seq_num);
 	uint32_t incoming_ack = ntohl(seg->header->ack_num);
@@ -221,8 +222,6 @@ pkt_result tcp_fast_reply_rst(struct nw_layer *tcp, struct pkt *packet, struct t
 		packet->tcp_seq = 0;
 		packet->tcp_ack = incoming_seq + seg_seq_len(seg);
 	}
-
-	return tcp->send_down(tcp, packet);
 }
 
 // recycle incoming packet

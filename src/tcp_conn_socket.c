@@ -162,7 +162,7 @@ pkt_result process_tcp_segment(struct pkt *p,
 	// RST processing
 	if (flags & TCP_RST) {
 		if (seg_seq == rcv_next) {
-			abort_tcp_conn(conn);
+			out_d->abort = true;
 			return INC_RST_CONN_DEAD;
 		}
 		// per RFC 5961
@@ -202,8 +202,9 @@ pkt_result process_tcp_segment(struct pkt *p,
 
 		} else if (conn->state >= ESTABLISHED) {
 			// unexpected SYN in established session
-			tcp_fast_reply_rst(conn->tcp_layer, p, seg);
-			abort_tcp_conn(conn);
+			tcp_build_rst_reply(p, seg);
+			out_d->pkt_snd_now = p;
+			out_d->abort = true;
 			return RST_UNEXPECTED_SYN;
 		}
 	}
@@ -908,9 +909,6 @@ void tcp_execute_deffered_work(struct tcp_ipv4_conn *conn, const struct tcp_defe
 	if (d->unhash)
 		remove_from_tcp_conn_hashtable(smgr->tcp_ipv4_conn_htable, conn);
 
-	if (d->abort)
-		abort_tcp_conn(conn);
-
 	if (d->pkt_snd_now) {
 		conn->tcp_layer->send_down(conn->tcp_layer, d->pkt_snd_now);
 		release_pkt(d->pkt_snd_now);
@@ -918,6 +916,9 @@ void tcp_execute_deffered_work(struct tcp_ipv4_conn *conn, const struct tcp_defe
 
 	if (d->notify_TX_snd)
 		notify_socket_readable_snd(smgr, conn, &tcp_conn_ops);
+
+	if (d->abort)
+		abort_tcp_conn(conn);
 }
 
 // takes lock, records deffered work, unlocks and executes the work
