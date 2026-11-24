@@ -133,7 +133,7 @@ int config_tap(char *name, const ipv4_address_t address, const ipv4_address_t ne
 	ifr.ifr_mtu = mtu;
 	if (ioctl(sock, SIOCSIFMTU, &ifr) < 0) {
 		perror("SIOCSIFMTU");
-		close (sock);
+		close(sock);
 		return -1;
 	}
 

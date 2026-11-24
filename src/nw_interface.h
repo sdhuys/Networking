@@ -2,6 +2,7 @@
 #include "address_types.h"
 #include "pkt_result.h"
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #define IF_NOARP 0x1

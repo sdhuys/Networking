@@ -102,7 +102,6 @@ struct stack *construct_stack(struct nw_interface *interfaces,
 	arp->downs[0] = eth;
 	struct arp_context *arp_ctx = malloc(sizeof(struct arp_context));
 	struct arp_table *arp_table = create_arp_table(ARP_NODE_PENDING_PKT_CAP);
-	arp_table->head = NULL;
 	arp_ctx->arp_table = arp_table;
 	arp_ctx->timer_mgr = timer_mgr;
 	arp_ctx->nw_ifs = interfaces;

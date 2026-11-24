@@ -36,7 +36,6 @@ static void set_route(struct route *r,
 //   loopback:  its own range (127.0.0.0/8)                        -> lo
 //   other:     its own address /32 (only if there is a loopback)  -> lo
 //              its subnet, on-link                                -> this interface
-//              default route via host of its subnet               -> this interface
 //
 // longest-prefix match: /32 wins over the subnet route => traffic to the
 // stack's own address never leaves the stack

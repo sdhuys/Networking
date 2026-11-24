@@ -14,6 +14,9 @@
 struct arp_table *create_arp_table(size_t pending_pkt_cap)
 {
 	struct arp_table *table = malloc(sizeof(*table));
+	if (!table)
+		return NULL;
+	table->head = NULL;
 	table->node_pending_pkt_cap = pending_pkt_cap;
 	if (pthread_mutex_init(&table->lock, NULL) != 0) {
 		free(table);
