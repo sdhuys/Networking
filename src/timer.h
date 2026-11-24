@@ -25,7 +25,7 @@ extern "C" {
 
 struct timer *create_timer(void (*callback)(void *), void *args);
 struct timer *create_timer_owned(void (*callback)(void *),
-				 void *conn,
+				 void *args,
 				 void (*retain)(void *),
 				 void (*release)(void *));
 

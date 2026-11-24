@@ -55,7 +55,6 @@ int main()
 	struct static_route static_routes[] = {{.prefix = {0}, .mask = {0}}};
 	memcpy(&static_routes[0].gateway, &tap_ip_addr, IPV4_ADDR_LEN);
 	size_t static_routes_count = 1;
-
 	if ((tap_fd = tap_setup("tap0", tap_ip_addr, subnet_mask, STACK_MTU)) < 0)
 		return 1;
 	struct nw_interface *nw_if = calloc(2, sizeof(struct nw_interface));
@@ -68,6 +67,8 @@ int main()
 			 STACK_MTU,
 			 tap_transmit,
 			 0);
+			 	printf("THE\n");
+
 	set_nw_if_struct(&nw_if[1],
 			 -1,
 			 "loopback",
@@ -82,9 +83,8 @@ int main()
 	struct stack *stack = construct_stack(nw_if, if_count, static_routes, static_routes_count);
 	if (!stack)
 		return 2;
-
 	init_buffer_pool();
-
+		printf("STACK CONSTRUCTED \n");
 	struct nw_layer *tap = stack->if_layer;
 	pthread_t interface_reader_tid;
 	pthread_t timer_tid;

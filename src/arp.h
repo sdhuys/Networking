@@ -1,12 +1,17 @@
 #pragma once
 #include "address_types.h"
 #include "pkt_result.h"
+#include "timer.h"
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <time.h>
 
 #define ARP_REQUEST 1
 #define ARP_REPLY 2
+
+#define ARP_RETRY_MS 1000
+#define ARP_MAX_RETRIES 3
 
 #define ETHERNET 1
 
@@ -24,16 +29,23 @@ struct arp_table {
 	struct arp_table_node *head;
 	pthread_mutex_t lock;
 	size_t node_pending_pkt_cap;
+	struct nw_layer *arp_layer;
+	struct timer_manager *timer_mngr;
 };
 
 struct arp_table_node {
 	ipv4_address_t ipv4_addr;
 	mac_address_t mac_addr;
 	arp_node_status status;
+	size_t if_index; // interface the requests go out on
+	uint8_t retries;
+	atomic_uint ref_count; // table + armed timer
 	time_t last_updated;
 	struct pkt **pending_pkts;
 	size_t pending_packets_count;
 	struct arp_table_node *next;
+	struct timer *retry_timer;
+	struct arp_table *table;
 };
 
 struct arp_context {
@@ -69,12 +81,19 @@ void complete_arp_table_node(struct arp_table_node *entry, mac_address_t src_mac
 struct arp_table_node *query_arp_table(struct arp_table *table, ipv4_address_t ip);
 struct pkt *create_arp_request_for(struct nw_layer *self,
 				   ipv4_address_t target_ip,
-				   struct route *route);
+				   uint32_t if_index);
 struct arp_table_node *insert_incomplete_for_ip(struct arp_table *table, ipv4_address_t dest_ip);
+void destroy_arp_tbl_node(struct arp_table_node *n);
+void remove_arp_tbl_node(struct arp_table_node *n);
 pkt_result add_pkt_to_q(struct arp_table *table, struct arp_table_node *node, struct pkt *p);
 void flush_q(struct nw_layer *self, struct arp_table_node *arp_entry);
-struct arp_table *create_arp_table(size_t pending_packets_max);
-struct arp_table_node *create_arp_node(size_t pending_pkt_cap);
+struct arp_table *create_arp_table(struct nw_layer *arp, size_t pending_pkt_cap);
+struct arp_table_node *create_arp_node(struct arp_table *table, size_t pending_pkt_cap);
+void retain_arp_tbl_node(struct arp_table_node *n);
+void release_arp_tbl_node(struct arp_table_node *n);
+void retain_arp_tbl_node_void(void *n);
+void release_arp_tbl_node_void(void *n);
+void arp_retry_cb(void *arg);
 
 #ifdef __cplusplus
 }

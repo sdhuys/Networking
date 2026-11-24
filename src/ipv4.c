@@ -100,28 +100,35 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 				      ? (unsigned char *)&packet->route->gateway
 				      : packet->dest_ip;
 
-	struct arp_table_node *dest_ip_node = query_arp_table(arp_tbl, next_hop);
-
-	if (dest_ip_node == NULL) {
-		dest_ip_node = insert_incomplete_for_ip(arp_tbl, next_hop);
-		if (!dest_ip_node)
-			return ARP_TABLE_FULL; // currently actually means malloc failed, later add
-					       // ARP table size cap
-
-		struct pkt *arp_request =
-		    create_arp_request_for(arp_layer, next_hop, packet->route);
-		// if no arp request pkt returned, arp entry will stay incomplete until retry
-		if (arp_request) {
-			send_arp_down(arp_layer, arp_request);
-			release_pkt(arp_request);
-		}
+	pthread_mutex_lock(&arp_tbl->lock);
+	struct arp_table_node *n = query_arp_table(arp_tbl, next_hop);
+	bool send_request = false;
+	if (!n) {
+		n = insert_incomplete_for_ip(arp_tbl, next_hop);
+		send_request = n != NULL; // if insertion failed, don't send request
 	}
-	if (dest_ip_node->status == ARP_INCOMPLETE) {
-		printf("IPV4 ARP Q RETAINING \n");
-		return add_pkt_to_q(arp_tbl, dest_ip_node, packet);
+	pkt_result r;
+	bool send_now = false;
+	if (!n)
+		r = ARP_TABLE_FULL; // at the moment arp table unbounded, reached on malloc failure
+	else if (n->status == ARP_REACHABLE) {
+		memcpy(packet->dest_mac, n->mac_addr, MAC_ADDR_LEN); // copy while protected
+		send_now = true;
+	} else {
+		r = add_pkt_to_q(arp_tbl, n, packet);
 	}
-	memcpy(packet->dest_mac, dest_ip_node->mac_addr, MAC_ADDR_LEN);
-	return self->downs[0]->send_down(self->downs[0], packet);
+	pthread_mutex_unlock(&arp_tbl->lock);
+
+	if (send_request) {
+		struct pkt *arp_req_pkt =
+		    create_arp_request_for(self, next_hop, packet->route->nw_if_id);
+		if (arp_req_pkt)
+			send_arp_down(self->downs[0], arp_req_pkt);
+		start_timer(arp_cntxt->timer_mgr, n->retry_timer, ARP_RETRY_MS);
+	}
+	if (send_now)
+		r = self->downs[0]->send_down(self->downs[0], packet);
+	return r;
 }
 
 void write_ipv4_header(struct ipv4_header *header, struct pkt *packet)

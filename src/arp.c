@@ -11,13 +11,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct arp_table *create_arp_table(size_t pending_pkt_cap)
+struct arp_table *create_arp_table(struct nw_layer *arp, size_t pending_pkt_cap)
 {
 	struct arp_table *table = malloc(sizeof(*table));
+	struct arp_context *arp_cntx = (struct arp_context *)arp->context;
 	if (!table)
 		return NULL;
 	table->head = NULL;
+	table->arp_layer = arp;
 	table->node_pending_pkt_cap = pending_pkt_cap;
+	table->timer_mngr = arp_cntx->timer_mgr;
 	if (pthread_mutex_init(&table->lock, NULL) != 0) {
 		free(table);
 		return NULL;
@@ -25,7 +28,7 @@ struct arp_table *create_arp_table(size_t pending_pkt_cap)
 	return table;
 }
 
-struct arp_table_node *create_arp_node(size_t pending_pkt_cap)
+struct arp_table_node *create_arp_node(struct arp_table *table, size_t pending_pkt_cap)
 {
 	struct arp_table_node *node = calloc(1, sizeof(*node));
 	if (!node)
@@ -35,8 +38,75 @@ struct arp_table_node *create_arp_node(size_t pending_pkt_cap)
 		free(node);
 		return NULL;
 	}
+	node->table = table;
 	node->pending_packets_count = 0;
+	node->retries = 0;
+	node->retry_timer =
+	    create_timer_owned(arp_retry_cb, node, retain_arp_tbl_node_void, release_arp_tbl_node_void);
+	if (!node->retry_timer) {
+		free(node->pending_pkts);
+		free(node);
+	}
 	return node;
+}
+
+void destroy_arp_tbl_node(struct arp_table_node *n)
+{
+	for (int i = n->pending_packets_count; i > 0; i--) {
+		release_pkt(n->pending_pkts[i - 1]);
+	}
+	free(n->pending_pkts);
+	free(n->retry_timer);
+	free(n);
+}
+
+void retain_arp_tbl_node_void(void *n)
+{
+	struct arp_table_node *node = (struct arp_table_node *)n;
+	retain_arp_tbl_node(node);
+}
+
+void retain_arp_tbl_node(struct arp_table_node *n)
+{
+	atomic_fetch_add(&n->ref_count, 1);
+}
+
+void release_arp_tbl_node_void(void *n)
+{
+	struct arp_table_node *node = (struct arp_table_node *)n;
+	release_arp_tbl_node(node);
+}
+
+void release_arp_tbl_node(struct arp_table_node *n)
+{
+	uint prev = atomic_fetch_sub(&n->ref_count, 1);
+	if (prev == 1)
+		destroy_arp_tbl_node(n);
+}
+
+void arp_retry_cb(void *arg)
+{
+	struct arp_table_node *n = (struct arp_table_node *)arg;
+	struct arp_table *table = n->table;
+
+	pthread_mutex_lock(&n->table->lock);
+
+	if (n->status != ARP_INCOMPLETE) {
+		pthread_mutex_unlock(&n->table->lock);
+		return;
+	}
+
+	if (n->retries > ARP_MAX_RETRIES) {
+		remove_arp_tbl_node(n);
+		return;
+	}
+
+	struct pkt *p = create_arp_request_for(table->arp_layer, n->ipv4_addr, n->if_index);
+	if (p) {
+		send_arp_down(table->arp_layer, p);
+		n->retries++;
+	}
+	start_timer(table->timer_mngr, n->retry_timer, ARP_RETRY_MS);
 }
 
 pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet)
@@ -83,14 +153,19 @@ pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet)
 	}
 
 	else if (op == ARP_REPLY) {
+		pthread_mutex_lock(&cntx->arp_table->lock);
 		struct arp_table_node *arp_entry =
 		    query_arp_table(cntx->arp_table, arp_data->src_ip);
 
 		// Unsolicited ARP responses dropped
-		if (arp_entry == NULL || arp_entry->status == ARP_REACHABLE)
+		if (arp_entry == NULL || arp_entry->status == ARP_REACHABLE) {
+			pthread_mutex_unlock(&cntx->arp_table->lock);
 			return ARP_REPLY_NOT_RQSTD;
+		}
 
 		complete_arp_table_node(arp_entry, arp_data->src_mac);
+		pthread_mutex_unlock(&cntx->arp_table->lock);
+
 		flush_q(self, arp_entry);
 		return ARP_TABLE_UPDATED_Q_FLUSHED;
 	}
@@ -112,9 +187,10 @@ void flush_q(struct nw_layer *self, struct arp_table_node *arp_entry)
 	arp_entry->pending_packets_count = 0;
 }
 
+// caller holds table->lock
 struct arp_table_node *insert_incomplete_for_ip(struct arp_table *table, ipv4_address_t dest_ip)
 {
-	struct arp_table_node *new = create_arp_node(table->node_pending_pkt_cap);
+	struct arp_table_node *new = create_arp_node(table, table->node_pending_pkt_cap);
 	if (new == NULL)
 		return NULL;
 
@@ -123,18 +199,40 @@ struct arp_table_node *insert_incomplete_for_ip(struct arp_table *table, ipv4_ad
 	new->last_updated = time(NULL);
 	new->next = table->head;
 	table->head = new;
+	retain_arp_tbl_node(new);
 	return new;
 }
 
+// caller holds table->lock
+void remove_arp_tbl_node(struct arp_table_node *n)
+{
+	struct arp_table *table = n->table;
+	struct arp_table_node *c = table->head;
+	struct arp_table_node *prev = NULL;
+	for (; c != NULL; c = c->next) {
+		if (c == n) {
+			if (prev)
+				prev->next = n->next;
+			else
+				table->head = n->next;
+			release_arp_tbl_node(n);
+			return;
+		}
+		prev = c;
+	}
+}
+
+// caller holds table->lock
 pkt_result add_pkt_to_q(struct arp_table *table, struct arp_table_node *node, struct pkt *p)
 {
 	if (node->pending_packets_count == table->node_pending_pkt_cap)
 		return ARP_TABLE_NODE_PKT_Q_FULL;
 	retain_pkt(p);
 	node->pending_pkts[node->pending_packets_count++] = p;
-	return PACKET_QUEUED;
+	return PACKET_QUEUED_AWAITING_ARP;
 }
 
+// caller holds table->lock
 struct arp_table_node *query_arp_table(struct arp_table *table, ipv4_address_t ip)
 {
 	struct arp_table_node *node = table->head;
@@ -145,11 +243,15 @@ struct arp_table_node *query_arp_table(struct arp_table *table, ipv4_address_t i
 	return NULL;
 }
 
+// caller holds table->lock
 void complete_arp_table_node(struct arp_table_node *entry, mac_address_t src_mac)
 {
 	memcpy(entry->mac_addr, src_mac, MAC_ADDR_LEN);
 	entry->last_updated = time(NULL);
 	entry->status = ARP_REACHABLE;
+	entry->retries = 0;
+	struct timer_manager *tm = entry->table->timer_mngr;
+	cancel_timer(tm, entry->retry_timer);
 }
 
 void inc_arp_request_to_reply(struct pkt *packet,
@@ -208,7 +310,7 @@ void print_arp_header(struct arp_data *arp_header)
 // creates a new pkt ref, caller must release
 struct pkt *create_arp_request_for(struct nw_layer *self,
 				   ipv4_address_t target_ip,
-				   struct route *route)
+				   uint32_t if_index)
 {
 	printf("CREATE ARP REQUEST ALLOCATING \n");
 	struct pkt *pkt = allocate_pkt();
@@ -219,6 +321,7 @@ struct pkt *create_arp_request_for(struct nw_layer *self,
 	size_t arp_sz = sizeof(struct arp_data);
 	pkt->offset = eth_sz;
 	pkt->len = eth_sz + arp_sz;
+	pkt->if_index = if_index;
 
 	memcpy(pkt->dest_mac, IPV4_BROADCAST_MAC, MAC_ADDR_LEN);
 
@@ -232,7 +335,6 @@ struct pkt *create_arp_request_for(struct nw_layer *self,
 	arp->operation = htons(ARP_REQUEST);
 
 	struct nw_interface *interfaces = arp_context->nw_ifs;
-	uint32_t if_index = route->nw_if_id;
 
 	memcpy(arp->src_mac, &interfaces[if_index].mac_addr, MAC_ADDR_LEN);
 	memcpy(arp->src_ip, &interfaces[if_index].ipv4_addr, IPV4_ADDR_LEN);
@@ -250,6 +352,6 @@ pkt_result send_arp_down(struct nw_layer *self, struct pkt *packet)
 	packet->ethertype = htons(ARP);
 	packet->offset -= sizeof(struct ethernet_header);
 	packet->len += sizeof(struct ethernet_header);
-	pkt_result r = self->downs[0]->send_down(self->downs[0], packet);
+	pkt_result r = self->send_down(self, packet);
 	return r;
 }

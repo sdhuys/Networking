@@ -101,12 +101,12 @@ struct stack *construct_stack(struct nw_interface *interfaces,
 	arp->downs = malloc(arp->downs_count * sizeof(struct nw_layer *));
 	arp->downs[0] = eth;
 	struct arp_context *arp_ctx = malloc(sizeof(struct arp_context));
-	struct arp_table *arp_table = create_arp_table(ARP_NODE_PENDING_PKT_CAP);
-	arp_ctx->arp_table = arp_table;
 	arp_ctx->timer_mgr = timer_mgr;
 	arp_ctx->nw_ifs = interfaces;
 	arp_ctx->if_count = if_count;
 	arp->context = arp_ctx;
+	struct arp_table *arp_table = create_arp_table(arp, ARP_NODE_PENDING_PKT_CAP);
+	arp_ctx->arp_table = arp_table;
 
 	ip->name = IPV4_NAME;
 	ip->send_down = &send_ipv4_down;
