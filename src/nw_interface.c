@@ -126,7 +126,7 @@ void set_nw_if_struct(struct nw_interface *nw_if,
 		      uint32_t flags)
 {
 	nw_if->fd = fd;
-	strcpy(nw_if->name, if_name);
+	snprintf(nw_if->name, MAX_IF_NAME_LEN, "%s", if_name);
 	memcpy(&nw_if->ipv4_addr, ip_addr, IPV4_ADDR_LEN);
 	memcpy(nw_if->mac_addr, mac_addr, MAC_ADDR_LEN);
 	nw_if->mtu = mtu;

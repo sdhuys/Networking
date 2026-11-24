@@ -44,6 +44,15 @@ struct stack *construct_stack(struct nw_interface *interfaces,
 	if (if_count < 1)
 		return NULL;
 
+	// routes, packets and lookups refer to interfaces by their position in this array
+	for (size_t i = 0; i < if_count; i++)
+		interfaces[i].index = i;
+
+	struct routing_table *routing_table =
+	    create_routing_table(interfaces, if_count, statics, static_count);
+	if (!routing_table)
+		return NULL;
+
 	struct nw_layer *interface = malloc(sizeof(struct nw_layer));
 	struct nw_layer *eth = malloc(sizeof(struct nw_layer));
 	struct nw_layer *arp = malloc(sizeof(struct nw_layer));
@@ -53,15 +62,6 @@ struct stack *construct_stack(struct nw_interface *interfaces,
 	struct nw_layer *tcp = malloc(sizeof(struct nw_layer));
 
 	struct timer_manager *timer_mgr = create_timer_manager();
-
-	// routes, packets and lookups refer to interfaces by their position in this array
-	for (size_t i = 0; i < if_count; i++)
-		interfaces[i].index = i;
-
-	struct routing_table *routing_table =
-	    create_routing_table(interfaces, if_count, statics, static_count);
-	if (!routing_table)
-		return NULL;
 
 	interface->name = IF_NAME;
 	interface->send_down = &gen_interface_transmit;

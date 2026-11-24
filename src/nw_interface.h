@@ -1,12 +1,13 @@
 #pragma once
 #include "address_types.h"
 #include "pkt_result.h"
-#include <net/if.h>
 #include <stdbool.h>
 #include <stdint.h>
 
 #define IF_NOARP 0x1
 #define IF_LOOPBACK 0x2
+
+#define MAX_IF_NAME_LEN 16
 
 struct pkt;
 struct nw_layer;
@@ -22,7 +23,7 @@ typedef pkt_result (*nw_if_transmit_fn)(struct interface_context *if_cntx,
 					struct pkt *p);
 
 struct nw_interface {
-	char name[IFNAMSIZ];
+	char name[MAX_IF_NAME_LEN];
 	size_t index;	// index in interface_context->interfaces
 	int fd;		// -1 for loopback
 	uint32_t flags; // IF_NOARP, IF_LOOPBACK

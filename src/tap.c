@@ -120,17 +120,24 @@ int config_tap(char *name, const ipv4_address_t address, const ipv4_address_t ne
 	if (ioctl(sock, SIOCSIFADDR, &ifr) < 0) {
 		perror("ioctl SIOCSIFADDR");
 		close(sock);
+		return -1;
 	}
 
 	memcpy(&addr->sin_addr, netmask, IPV4_ADDR_LEN);
 	if (ioctl(sock, SIOCSIFNETMASK, &ifr) < 0) {
-		perror("ioctl SIOCSIFADDR");
+		perror("ioctl SIOCSIFNETMASK");
 		close(sock);
+		return -1;
 	}
 
 	ifr.ifr_mtu = mtu;
-	if (ioctl(sock, SIOCSIFMTU, &ifr) < 0)
+	if (ioctl(sock, SIOCSIFMTU, &ifr) < 0) {
 		perror("SIOCSIFMTU");
+		close (sock);
+		return -1;
+	}
+
+	close(sock);
 	return 0;
 }
 
