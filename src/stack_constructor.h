@@ -8,8 +8,12 @@ struct nw_interface;
 extern "C" {
 #endif
 
-struct stack *construct_stack(struct nw_interface *interface_array, size_t if_count);
+struct static_route;
 
+struct stack *construct_stack(struct nw_interface *interfaces,
+			      size_t if_count,
+			      struct static_route *statics,
+			      size_t static_count);
 #ifdef __cplusplus
 }
 #endif

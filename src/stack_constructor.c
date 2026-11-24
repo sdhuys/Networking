@@ -34,6 +34,8 @@
 
 #define INGRESS_QUEUE_CAP 512
 
+#define ARP_NODE_PENDING_PKT_CAP 32
+
 struct stack *construct_stack(struct nw_interface *interfaces,
 			      size_t if_count,
 			      struct static_route *statics,
@@ -99,7 +101,7 @@ struct stack *construct_stack(struct nw_interface *interfaces,
 	arp->downs = malloc(arp->downs_count * sizeof(struct nw_layer *));
 	arp->downs[0] = eth;
 	struct arp_context *arp_ctx = malloc(sizeof(struct arp_context));
-	struct arp_table *arp_table = malloc(sizeof(struct arp_table));
+	struct arp_table *arp_table = create_arp_table(ARP_NODE_PENDING_PKT_CAP);
 	arp_table->head = NULL;
 	arp_ctx->arp_table = arp_table;
 	arp_ctx->timer_mgr = timer_mgr;
@@ -162,7 +164,7 @@ struct stack *construct_stack(struct nw_interface *interfaces,
 	udp_context->sock_manager = socket_manager;
 	udp_context->nw_ifs = interfaces;
 	udp_context->if_count = if_count;
-	udp_context->routing_table;
+	udp_context->routing_table = routing_table;
 	udp->context = udp_context;
 
 	tcp->name = TCP_NAME;

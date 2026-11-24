@@ -1,6 +1,7 @@
 #pragma once
 #include "address_types.h"
 #include "pkt_result.h"
+#include <pthread.h>
 #include <stdint.h>
 #include <time.h>
 
@@ -21,6 +22,8 @@ struct route;
 
 struct arp_table {
 	struct arp_table_node *head;
+	pthread_mutex_t lock;
+	size_t node_pending_pkt_cap;
 };
 
 struct arp_table_node {
@@ -28,14 +31,9 @@ struct arp_table_node {
 	mac_address_t mac_addr;
 	arp_node_status status;
 	time_t last_updated;
-	struct queue_entry *pending_packets;
-	struct queue_entry *pending_tail;
+	struct pkt **pending_pkts;
+	size_t pending_packets_count;
 	struct arp_table_node *next;
-};
-
-struct queue_entry {
-	struct pkt *packet;
-	struct queue_entry *next;
 };
 
 struct arp_context {
@@ -75,6 +73,8 @@ struct pkt *create_arp_request_for(struct nw_layer *self,
 struct arp_table_node *insert_incomplete_for_ip(struct arp_table *table, ipv4_address_t dest_ip);
 pkt_result add_pkt_to_q(struct arp_table_node *node, struct pkt *packet);
 void flush_q(struct nw_layer *self, struct arp_table_node *arp_entry);
+struct arp_table *create_arp_table(size_t pending_packets_max);
+struct arp_table_node *create_arp_node(size_t pending_pkt_cap);
 
 #ifdef __cplusplus
 }

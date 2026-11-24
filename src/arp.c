@@ -11,6 +11,31 @@
 #include <stdlib.h>
 #include <string.h>
 
+struct arp_table *create_arp_table(size_t pending_pkt_cap)
+{
+	struct arp_table *table = malloc(sizeof(*table));
+	table->node_pending_pkt_cap = pending_pkt_cap;
+	if (pthread_mutex_init(&table->lock, NULL) != 0) {
+		free(table);
+		return NULL;
+	}
+	return table;
+}
+
+struct arp_table_node *create_arp_node(size_t pending_pkt_cap)
+{
+	struct arp_table_node *node = calloc(1, sizeof(*node));
+	if (!node)
+		return NULL;
+	node->pending_pkts = calloc(pending_pkt_cap, sizeof(struct pkt *));
+	if (!node->pending_pkts) {
+		free(node);
+		return NULL;
+	}
+	node->pending_packets_count = 0;
+	return node;
+}
+
 pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet)
 {
 	if (packet->len < sizeof(struct arp_data))
@@ -73,54 +98,31 @@ pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet)
 
 void flush_q(struct nw_layer *self, struct arp_table_node *arp_entry)
 {
-	struct queue_entry *current = arp_entry->pending_packets;
-	struct queue_entry *next;
-	while (current != NULL) {
-		next = current->next;
-		memcpy(current->packet->dest_mac, arp_entry->mac_addr, MAC_ADDR_LEN);
-		// current->packet->ethertype = htons(IPV4);
-		self->downs[0]->send_down(self->downs[0], current->packet);
-		release_pkt(current->packet);
-		free(current);
-		current = next;
+	struct pkt **pendings = arp_entry->pending_pkts;
+	for (size_t c = 0; c < arp_entry->pending_packets_count; c++) {
+		self->send_down(self, pendings[0]);
 	}
-	arp_entry->pending_packets = NULL;
-	arp_entry->pending_tail = NULL;
+	arp_entry->pending_packets_count = 0;
 }
 
 struct arp_table_node *insert_incomplete_for_ip(struct arp_table *table, ipv4_address_t dest_ip)
 {
-	struct arp_table_node *new = malloc(sizeof(struct arp_table_node));
+	struct arp_table_node *new = create_arp_node(table->node_pending_pkt_cap);
 	if (new == NULL)
 		return NULL;
 
 	memcpy(new->ipv4_addr, dest_ip, IPV4_ADDR_LEN);
 	new->status = ARP_INCOMPLETE;
-	new->pending_packets = NULL;
-	new->pending_tail = NULL;
 	new->last_updated = time(NULL);
 	new->next = table->head;
 	table->head = new;
 	return new;
 }
 
-pkt_result add_pkt_to_q(struct arp_table_node *node, struct pkt *packet)
+pkt_result add_pkt_to_q(struct arp_table_node *node, struct pkt *p)
 {
-	// freed after flushing
-	struct queue_entry *new = malloc(sizeof(struct queue_entry));
-	if (!new)
-		return ARP_TABLE_NODE_PKT_Q_FULL;
-
-	retain_pkt(packet);
-	new->next = NULL;
-	new->packet = packet;
-
-	struct queue_entry *curr = node->pending_packets;
-	if (curr == NULL)
-		node->pending_packets = new;
-	else
-		node->pending_tail->next = new;
-	node->pending_tail = new;
+	retain_pkt(p);
+	node->pending_pkts[node->pending_packets_count] = p;
 	return PACKET_QUEUED;
 }
 

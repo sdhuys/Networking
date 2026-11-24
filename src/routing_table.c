@@ -1,6 +1,7 @@
 #include "routing_table.h"
 #include "nw_interface.h"
 #include <arpa/inet.h>
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -116,10 +117,9 @@ struct routing_table *create_routing_table(struct nw_interface *interfaces,
 			  gw,
 			  out,
 			  table->gen_id);
-
-		assert(n == routes_count);
-		return table;
 	}
+	assert(n == routes_count);
+	return table;
 }
 
 bool get_route(struct routing_table *table, ipv4_address_t dest_ip, struct route **route_out)
