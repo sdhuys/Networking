@@ -34,6 +34,9 @@ struct arp_table {
 	struct timer_manager *timer_mngr;
 };
 
+// atm only unanswered retries can remove node from table
+// => nothing tries to access node after removal
+// add UNLINKED flag if removal due to expiry/eviction become features
 struct arp_table_node {
 	ipv4_address_t ipv4_addr;
 	mac_address_t mac_addr;
@@ -82,7 +85,7 @@ void complete_arp_table_node(struct arp_table_node *entry, mac_address_t src_mac
 struct arp_table_node *query_arp_table(struct arp_table *table, ipv4_address_t ip);
 struct pkt *create_arp_request_for(struct nw_layer *self,
 				   ipv4_address_t target_ip,
-				   uint32_t if_index);
+				   size_t if_index);
 struct arp_table_node *insert_incomplete_for_ip(struct arp_table *table,
 						ipv4_address_t dest_ip,
 						size_t nw_if_indx);

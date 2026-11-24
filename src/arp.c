@@ -7,16 +7,20 @@
 #include "pkt.h"
 #include "routing_table.h"
 #include <arpa/inet.h>
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 struct arp_table *create_arp_table(struct nw_layer *arp, size_t pending_pkt_cap)
 {
+	assert(pending_pkt_cap <= ARP_NODE_PENDING_PKT_CAP);
 	struct arp_table *table = malloc(sizeof(*table));
-	struct arp_context *arp_cntx = (struct arp_context *)arp->context;
 	if (!table)
 		return NULL;
+
+	struct arp_context *arp_cntx = (struct arp_context *)arp->context;
+
 	table->head = NULL;
 	table->arp_layer = arp;
 	table->node_pending_pkt_cap = pending_pkt_cap;
@@ -103,6 +107,7 @@ void arp_retry_callback(void *arg)
 		return;
 	}
 	n->retries++;
+	start_timer(table->timer_mngr, n->retry_timer, ARP_RETRY_MS);
 	pthread_mutex_unlock(&n->table->lock);
 
 	struct pkt *p = create_arp_request_for(table->arp_layer, n->ipv4_addr, n->if_index);
@@ -110,7 +115,6 @@ void arp_retry_callback(void *arg)
 		send_arp_down(table->arp_layer, p);
 		release_pkt(p);
 	}
-	start_timer(table->timer_mngr, n->retry_timer, ARP_RETRY_MS);
 }
 
 pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet)
@@ -187,12 +191,10 @@ pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet)
 // flush after unlocking, provide copies so arp nodes aren't touched after the unlock
 void flush_q(struct nw_layer *self, struct pkt **pkts, size_t count, mac_address_t mac)
 {
-	printf("FLUSHING \n");
 	struct nw_layer *eth = self->downs[0];
 	for (size_t i = 0; i < count; i++) {
-		struct pkt *p = pkts[i];	
+		struct pkt *p = pkts[i];
 		memcpy(&p->dest_mac, mac, MAC_ADDR_LEN);
-		printf("MAC COPIED \n");
 		eth->send_down(eth, p);
 		release_pkt(p); // the queue's reference
 	}
@@ -321,9 +323,7 @@ void print_arp_header(struct arp_data *arp_header)
 }
 
 // creates a new pkt ref, caller must release
-struct pkt *create_arp_request_for(struct nw_layer *self,
-				   ipv4_address_t target_ip,
-				   uint32_t if_index)
+struct pkt *create_arp_request_for(struct nw_layer *self, ipv4_address_t target_ip, size_t if_index)
 {
 	printf("CREATE ARP REQUEST ALLOCATING \n");
 	struct pkt *pkt = allocate_pkt();
