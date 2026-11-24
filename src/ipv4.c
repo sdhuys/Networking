@@ -117,6 +117,9 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 	} else {
 		r = add_pkt_to_q(arp_tbl, n, packet);
 	}
+	if (send_request)
+		start_timer(arp_cntxt->timer_mgr, n->retry_timer, ARP_RETRY_MS); // start timer under lock!
+
 	pthread_mutex_unlock(&arp_tbl->lock);
 
 	if (send_request) {
@@ -124,7 +127,6 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 		    create_arp_request_for(arp_layer, next_hop, packet->route->nw_if_id);
 		if (arp_req_pkt)
 			send_arp_down(arp_layer, arp_req_pkt);
-		start_timer(arp_cntxt->timer_mgr, n->retry_timer, ARP_RETRY_MS);
 	}
 	if (send_now)
 		r = self->downs[0]->send_down(self->downs[0], packet);

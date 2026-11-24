@@ -845,14 +845,17 @@ void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
 
 	// our FIN is acked, nothing left to retransmit or probe, but the peer
 	// may still send data that we must ACK => keep the delayed-ACK timer
-	if (state == FIN_WAIT_2)
+	if (state == FIN_WAIT_2) {
 		d->cancel_snd_timers = true;
+				conn->is_wndw_probing = false;
+	}
 
 	// TIME_WAIT / CLOSED: no more data either way
 	if ((state == CLOSED || state == TIME_WAIT) && !conn->data_timers_cancelled) {
 		conn->data_timers_cancelled = true;
 		d->cancel_snd_timers = true;
 		d->cancel_del_ack = true;
+		conn->is_wndw_probing = false;
 	}
 
 	if (state == ESTABLISHED) {
@@ -1015,7 +1018,8 @@ void destroy_tcp_conn(struct tcp_ipv4_conn *conn)
 	free(conn);
 }
 
-// caller must hold send buffer lock
+
+// caller must hold conn lock
 struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq_len)
 {
 	// printf("\nCREATING PACKET\n");
@@ -1075,7 +1079,9 @@ struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq
 		sb->snd_nxt += seq_len;
 		sb->snd_nxt_i = (sb->snd_nxt_i + payload_len) & (sb->capacity - 1);
 	}
-
+	conn->ack_pending = false;
+	struct tcp_context *cntx = (struct tcp_context *)conn->tcp_layer->context;
+	cancel_timer(cntx->timer_mgr, conn->del_ack_timer);
 	arm_tcp_data_timer_if_idle(conn, conn->rto_timer, conn->rto_interval);
 
 	///////////////////////////////////////////////////////
