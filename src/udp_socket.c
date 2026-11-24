@@ -160,8 +160,18 @@ ssize_t udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_reques
 		release_pkt(packet);
 		return -5; // UNROUTABLE
 	}
-	size_t nw_if_indx = packet->route->nw_if_id;
-	memcpy(packet->src_ip, &cntxt->nw_ifs[nw_if_indx].ipv4_addr, IPV4_ADDR_LEN);
+
+	struct interface_context *cntx = (struct interface_context *)stack->if_layer->context;
+	struct nw_interface *interfaces = cntx->interfaces;
+	size_t if_count = cntx->if_amount;
+	if (packet->route->type == ROUTE_LOCAL &&
+	    is_local_ipv4_addr(interfaces, if_count, req->dest_ip))
+		memcpy(
+		    packet->src_ip, req->dest_ip, IPV4_ADDR_LEN); // talking to ourselves: src = dst
+	else
+		memcpy(
+		    packet->src_ip, interfaces[packet->route->nw_if_id].ipv4_addr, IPV4_ADDR_LEN);
+
 	memcpy(packet->dest_ip, req->dest_ip, IPV4_ADDR_LEN);
 	packet->dest_port = req->dest_port;
 	packet->src_port = socket->local_port;

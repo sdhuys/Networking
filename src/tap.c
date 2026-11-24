@@ -28,10 +28,16 @@
 
 int get_tap(char *name, int flags);
 int activate_tap(char *if_name);
-int config_tap(char *name, const ipv4_address_t address, uint32_t mtu);
+int config_tap(char *name,
+	       const ipv4_address_t address,
+	       const ipv4_address_t netmask,
+	       uint32_t mtu);
 int disable_ipv6(char *ifname);
 
-int tap_setup(char *name, const ipv4_address_t tap_ip, const uint32_t mtu)
+int tap_setup(char *name,
+	      const ipv4_address_t tap_ip,
+	      const ipv4_address_t mask,
+	      const uint32_t mtu)
 {
 	if (name == NULL)
 		return -1;
@@ -58,7 +64,7 @@ int tap_setup(char *name, const ipv4_address_t tap_ip, const uint32_t mtu)
 		return -1;
 	}
 
-	if (config_tap(if_name, tap_ip, mtu) < 0) {
+	if (config_tap(if_name, tap_ip, mask, mtu) < 0) {
 		perror("Setting IPv4 address");
 		close(tap_fd);
 		return -1;
@@ -94,7 +100,7 @@ int disable_ipv6(char *ifname)
 // Sets ipv4 address to 192.168.100.1
 // Subnet mask defaults to 255.255.255.0 => ok for now
 // Set MTU to stack MTU
-int config_tap(char *name, const ipv4_address_t address, uint32_t mtu)
+int config_tap(char *name, const ipv4_address_t address, const ipv4_address_t netmask, uint32_t mtu)
 {
 	int sock;
 	struct ifreq ifr;
@@ -109,9 +115,15 @@ int config_tap(char *name, const ipv4_address_t address, uint32_t mtu)
 
 	addr = (struct sockaddr_in *)&ifr.ifr_addr;
 	addr->sin_family = AF_INET;
-	memcpy(&addr->sin_addr, address, IPV4_ADDR_LEN);
 
+	memcpy(&addr->sin_addr, address, IPV4_ADDR_LEN);
 	if (ioctl(sock, SIOCSIFADDR, &ifr) < 0) {
+		perror("ioctl SIOCSIFADDR");
+		close(sock);
+	}
+
+	memcpy(&addr->sin_addr, netmask, IPV4_ADDR_LEN);
+	if (ioctl(sock, SIOCSIFNETMASK, &ifr) < 0) {
 		perror("ioctl SIOCSIFADDR");
 		close(sock);
 	}

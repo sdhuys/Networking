@@ -12,6 +12,12 @@ typedef enum {
 
 struct nw_interface;
 
+struct static_route {
+	ipv4_address_t prefix;	// 0.0.0.0 for the default route
+	ipv4_address_t mask;	// 0.0.0.0 for the default route
+	ipv4_address_t gateway; // must be on one of our connected subnets
+};
+
 struct route {
 	uint32_t prefix;      // network byte order
 	uint32_t subnet_mask; // network byte order
@@ -35,7 +41,10 @@ struct routing_table {
 extern "C" {
 #endif
 
-struct routing_table *create_routing_table(struct nw_interface *nw_if, size_t count);
+struct routing_table *create_routing_table(struct nw_interface *interfaces,
+					   size_t if_count,
+					   const struct static_route *statics,
+					   size_t static_count);
 bool get_route(struct routing_table *table, ipv4_address_t dest_ip, struct route **route_out);
 
 #ifdef __cplusplus

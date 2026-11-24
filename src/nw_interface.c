@@ -107,9 +107,17 @@ pkt_result gen_interface_transmit(struct nw_layer *if_layer, struct pkt *packet)
 	return nw_if->transmit(if_cntx, nw_if, packet);
 }
 
+bool is_local_ipv4_addr(const struct nw_interface *nw_ifs, size_t count, const ipv4_address_t addr)
+{
+	for (size_t i = 0; i < count; i++)
+		if (memcmp(nw_ifs[i].ipv4_addr, addr, IPV4_ADDR_LEN) == 0)
+			return true;
+	return false;
+}
+
 void set_nw_if_struct(struct nw_interface *nw_if,
-		      int tap_fd,
-		      char *if_name,
+		      int fd,
+		      const char *if_name,
 		      const mac_address_t mac_addr,
 		      const ipv4_address_t ip_addr,
 		      const ipv4_address_t subnet_mask,
@@ -117,7 +125,7 @@ void set_nw_if_struct(struct nw_interface *nw_if,
 		      nw_if_transmit_fn tx_function,
 		      uint32_t flags)
 {
-	nw_if->fd = tap_fd;
+	nw_if->fd = fd;
 	strcpy(nw_if->name, if_name);
 	memcpy(&nw_if->ipv4_addr, ip_addr, IPV4_ADDR_LEN);
 	memcpy(nw_if->mac_addr, mac_addr, MAC_ADDR_LEN);

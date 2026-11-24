@@ -5,7 +5,10 @@
 extern "C" {
 #endif
 
-int tap_setup(char *name, const ipv4_address_t tap_ip, const uint32_t mtu);
+int tap_setup(char *name,
+	      const ipv4_address_t tap_ip,
+	      const ipv4_address_t mask,
+	      const uint32_t mtu);
 
 #ifdef __cplusplus
 }

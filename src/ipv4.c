@@ -148,5 +148,16 @@ bool relevant_destination_ip(ipv4_address_t dest_ip, struct nw_layer *self, size
 	if (memcmp(dest_ip, IPV4_BROADCAST_IP, IPV4_ADDR_LEN) == 0 ||
 	    memcmp(dest_ip, &nw_if->ipv4_addr, IPV4_ADDR_LEN) == 0)
 		return true;
+
+	if (nw_if->flags & IF_LOOPBACK) {
+		uint32_t dst, net, mask;
+		memcpy(&dst, dest_ip, IPV4_ADDR_LEN);
+		memcpy(&net, nw_if->ipv4_addr, IPV4_ADDR_LEN);
+		memcpy(&mask, nw_if->subnet_mask, IPV4_ADDR_LEN);
+		// accept the whole loopback range and any interface's address
+		return (dst & mask) == (net & mask) ||
+		       is_local_ipv4_addr(cntx->nw_ifs, cntx->if_count, dest_ip);
+	}
+
 	return false;
 }

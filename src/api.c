@@ -156,10 +156,14 @@ int tcp_connect(struct stack *stack,
 		sockfd_free(sockfd_mgr, fd);
 		return -5; // UNROUTABLE CONN
 	}
-	uint32_t if_id = route->nw_if_id;
-	struct nw_interface *interfaces =
-	    ((struct interface_context *)(stack->if_layer->context))->interfaces;
-	memcpy(id.loc_addr, &interfaces[if_id].ipv4_addr, IPV4_ADDR_LEN);
+	struct interface_context *cntx = stack->if_layer->context;
+	struct nw_interface *interfaces = cntx->interfaces;
+	size_t if_count = cntx->if_amount;
+
+	if (route->type == ROUTE_LOCAL && is_local_ipv4_addr(interfaces, if_count, extern_addr))
+		memcpy(id.loc_addr, extern_addr, IPV4_ADDR_LEN); // talking to ourselves: src = dst
+	else
+		memcpy(id.loc_addr, interfaces[route->nw_if_id].ipv4_addr, IPV4_ADDR_LEN);
 
 	struct tcp_ipv4_conn *conn;
 	if ((conn = query_tcp_conn_hashtable(htable, &id)) ||

@@ -4,6 +4,7 @@
 #include "nw_interface.h"
 #include "ping_test.h"
 #include "pkt.h"
+#include "routing_table.h"
 #include "stack.h"
 #include "stack_constructor.h"
 #include "stack_tx_worker.h"
@@ -47,12 +48,16 @@ int main()
 	const ipv4_address_t stack_ip_addr = {192, 168, 100, 2};
 	const ipv4_address_t subnet_mask = {0xFF, 0xFF, 0xFF, 0};
 	const ipv4_address_t loopback_addr = {127, 0, 0, 1};
+	const ipv4_address_t loopback_mask = {0xFF, 0, 0, 0};
 	const mac_address_t loopback_mac = {0};
 	const mac_address_t stack_mac_addr = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
 
-	if ((tap_fd = tap_setup("tap0", tap_ip_addr, STACK_MTU)) < 0)
+	const struct static_route static_routes[] = {{.prefix = {0}, .mask = {0}}};
+	memcpy(static_routes[0].gateway, tap_ip_addr, IPV4_ADDR_LEN);
+
+	if ((tap_fd = tap_setup("tap0", tap_ip_addr, subnet_mask, STACK_MTU)) < 0)
 		return 1;
-	struct nw_interface *nw_if = malloc(2 * sizeof(struct nw_interface));
+	struct nw_interface *nw_if = calloc(sizeof(struct nw_interface), 2);
 	set_nw_if_struct(&nw_if[0],
 			 tap_fd,
 			 "tap0",
@@ -67,11 +72,14 @@ int main()
 			 "loopback",
 			 loopback_mac,
 			 loopback_addr,
-			 subnet_mask,
+			 loopback_mask,
 			 STACK_MTU,
 			 loopback_transmit,
 			 IF_NOARP | IF_LOOPBACK);
 	struct stack *stack = construct_stack(nw_if, 2);
+	if (!stack)
+		return;
+
 	init_buffer_pool();
 
 	struct nw_layer *tap = stack->if_layer;
@@ -80,9 +88,9 @@ int main()
 	pthread_t client_app_tid;
 	pthread_t server_app_tid;
 	pthread_t stack_tx_tid;
-	//pthread_t ping_testid;
+	// pthread_t ping_testid;
 
-	//pthread_create(&ping_testid, NULL, ping_test, (void *)stack);
+	// pthread_create(&ping_testid, NULL, ping_test, (void *)stack);
 	pthread_create(&interface_reader_tid, NULL, read_from_interface_wrapper, (void *)tap);
 	pthread_create(&timer_tid, NULL, start_timers_loop, (void *)stack);
 	pthread_create(&client_app_tid, NULL, start_client_app_wrapper, (void *)stack);

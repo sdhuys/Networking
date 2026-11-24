@@ -34,7 +34,10 @@
 
 #define INGRESS_QUEUE_CAP 512
 
-struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
+struct stack *construct_stack(struct nw_interface *interfaces,
+			      size_t if_count,
+			      struct static_route *statics,
+			      size_t static_count)
 {
 	if (if_count < 1)
 		return NULL;
@@ -48,6 +51,15 @@ struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 	struct nw_layer *tcp = malloc(sizeof(struct nw_layer));
 
 	struct timer_manager *timer_mgr = create_timer_manager();
+
+	// routes, packets and lookups refer to interfaces by their position in this array
+	for (size_t i = 0; i < if_count; i++)
+		interfaces[i].index = i;
+
+	struct routing_table *routing_table =
+	    create_routing_table(interfaces, if_count, statics, static_count);
+	if (!routing_table)
+		return NULL;
 
 	interface->name = IF_NAME;
 	interface->send_down = &gen_interface_transmit;
@@ -108,7 +120,7 @@ struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 	ip->downs[0] = eth;
 	struct ipv4_context *ipv4_context = malloc(sizeof(struct ipv4_context));
 	ipv4_context->arp_layer = arp;
-	ipv4_context->routing_table = create_routing_table(interfaces, if_count);
+	ipv4_context->routing_table = routing_table;
 	ipv4_context->nw_ifs = interfaces;
 	ipv4_context->if_count = if_count;
 	ip->context = ipv4_context;
@@ -150,6 +162,7 @@ struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 	udp_context->sock_manager = socket_manager;
 	udp_context->nw_ifs = interfaces;
 	udp_context->if_count = if_count;
+	udp_context->routing_table;
 	udp->context = udp_context;
 
 	tcp->name = TCP_NAME;
@@ -163,7 +176,7 @@ struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 	struct tcp_context *tcp_context = malloc(sizeof(struct tcp_context));
 	tcp_context->timer_mgr = timer_mgr;
 	tcp_context->socket_manager = socket_manager;
-	tcp_context->routing_tbl = ipv4_context->routing_table;
+	tcp_context->routing_tbl = routing_table;
 	tcp_context->nw_ifs = interfaces;
 	tcp_context->if_count = if_count;
 	tcp->context = tcp_context;
@@ -175,6 +188,6 @@ struct stack *construct_stack(struct nw_interface *interfaces, size_t if_count)
 	stack->tcp_layer = tcp;
 	stack->udp_layer = udp;
 	stack->timer_mgr = timer_mgr;
-	stack->routing_table = ipv4_context->routing_table;
+	stack->routing_table = routing_table;
 	return stack;
 }

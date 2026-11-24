@@ -2,6 +2,7 @@
 #include "address_types.h"
 #include "pkt_result.h"
 #include <net/if.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #define IF_NOARP 0x1
@@ -45,9 +46,10 @@ pkt_result loopback_transmit(struct interface_context *ctx,
 			     struct nw_interface *nif,
 			     struct pkt *p);
 
+bool is_local_ipv4_addr(const struct nw_interface *nw_ifs, size_t count, const ipv4_address_t addr);
 void set_nw_if_struct(struct nw_interface *nw_if,
-		      int tap_fd,
-		      char *if_name,
+		      int fd,
+		      const char *if_name,
 		      const mac_address_t mac_addr,
 		      const ipv4_address_t ip_addr,
 		      const ipv4_address_t subnet_mask,
