@@ -104,7 +104,7 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 	struct arp_table_node *n = query_arp_table(arp_tbl, next_hop);
 	bool send_request = false;
 	if (!n) {
-		n = insert_incomplete_for_ip(arp_tbl, next_hop);
+		n = insert_incomplete_for_ip(arp_tbl, next_hop, packet->if_index);
 		send_request = n != NULL; // if insertion failed, don't send request
 	}
 	pkt_result r;
@@ -121,9 +121,9 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 
 	if (send_request) {
 		struct pkt *arp_req_pkt =
-		    create_arp_request_for(self, next_hop, packet->route->nw_if_id);
+		    create_arp_request_for(arp_layer, next_hop, packet->route->nw_if_id);
 		if (arp_req_pkt)
-			send_arp_down(self->downs[0], arp_req_pkt);
+			send_arp_down(arp_layer, arp_req_pkt);
 		start_timer(arp_cntxt->timer_mgr, n->retry_timer, ARP_RETRY_MS);
 	}
 	if (send_now)

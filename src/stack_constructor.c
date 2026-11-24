@@ -34,8 +34,6 @@
 
 #define INGRESS_QUEUE_CAP 512
 
-#define ARP_NODE_PENDING_PKT_CAP 32
-
 struct stack *construct_stack(struct nw_interface *interfaces,
 			      size_t if_count,
 			      struct static_route *statics,

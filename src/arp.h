@@ -12,6 +12,7 @@
 
 #define ARP_RETRY_MS 1000
 #define ARP_MAX_RETRIES 3
+#define ARP_NODE_PENDING_PKT_CAP 32
 
 #define ETHERNET 1
 
@@ -82,18 +83,20 @@ struct arp_table_node *query_arp_table(struct arp_table *table, ipv4_address_t i
 struct pkt *create_arp_request_for(struct nw_layer *self,
 				   ipv4_address_t target_ip,
 				   uint32_t if_index);
-struct arp_table_node *insert_incomplete_for_ip(struct arp_table *table, ipv4_address_t dest_ip);
+struct arp_table_node *insert_incomplete_for_ip(struct arp_table *table,
+						ipv4_address_t dest_ip,
+						size_t nw_if_indx);
 void destroy_arp_tbl_node(struct arp_table_node *n);
 void remove_arp_tbl_node(struct arp_table_node *n);
 pkt_result add_pkt_to_q(struct arp_table *table, struct arp_table_node *node, struct pkt *p);
-void flush_q(struct nw_layer *self, struct arp_table_node *arp_entry);
+void flush_q(struct nw_layer *self, struct pkt **pkts, size_t count, mac_address_t mac);
 struct arp_table *create_arp_table(struct nw_layer *arp, size_t pending_pkt_cap);
 struct arp_table_node *create_arp_node(struct arp_table *table, size_t pending_pkt_cap);
 void retain_arp_tbl_node(struct arp_table_node *n);
 void release_arp_tbl_node(struct arp_table_node *n);
 void retain_arp_tbl_node_void(void *n);
 void release_arp_tbl_node_void(void *n);
-void arp_retry_cb(void *arg);
+void arp_retry_callback(void *arg);
 
 #ifdef __cplusplus
 }

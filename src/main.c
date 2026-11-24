@@ -67,7 +67,6 @@ int main()
 			 STACK_MTU,
 			 tap_transmit,
 			 0);
-			 	printf("THE\n");
 
 	set_nw_if_struct(&nw_if[1],
 			 -1,
@@ -84,20 +83,20 @@ int main()
 	if (!stack)
 		return 2;
 	init_buffer_pool();
-		printf("STACK CONSTRUCTED \n");
+
 	struct nw_layer *tap = stack->if_layer;
 	pthread_t interface_reader_tid;
 	pthread_t timer_tid;
 	pthread_t client_app_tid;
 	pthread_t server_app_tid;
 	pthread_t stack_tx_tid;
-	// pthread_t ping_testid;
+	pthread_t ping_testid;
 
-	// pthread_create(&ping_testid, NULL, ping_test, (void *)stack);
+	pthread_create(&ping_testid, NULL, ping_test, (void *)stack);
 	pthread_create(&interface_reader_tid, NULL, read_from_interface_wrapper, (void *)tap);
 	pthread_create(&timer_tid, NULL, start_timers_loop, (void *)stack);
-	pthread_create(&client_app_tid, NULL, start_client_app_wrapper, (void *)stack);
-	pthread_create(&server_app_tid, NULL, start_server_app_wrapper, (void *)stack);
+	// pthread_create(&client_app_tid, NULL, start_client_app_wrapper, (void *)stack);
+	// pthread_create(&server_app_tid, NULL, start_server_app_wrapper, (void *)stack);
 	pthread_create(&stack_tx_tid, NULL, stack_transmission_loop, (void *)stack);
 
 	process_ingress_q_packets(tap);

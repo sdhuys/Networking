@@ -51,27 +51,24 @@ int tap_setup(char *name,
 		perror("Getting TAP interace");
 		return -1;
 	}
-	printf("GOT TAP\n");
+
 	if (activate_tap(if_name) < 0) {
 		perror("Activating TAP interface");
 		close(tap_fd);
 		return -1;
 	}
-	printf("ACTIVATED TAP\n");
 
 	if (disable_ipv6(if_name) < 0) {
 		perror("Disabling IPv6");
 		close(tap_fd);
 		return -1;
 	}
-	printf("DISABLED IPV6 TAP\n");
 
 	if (config_tap(if_name, tap_ip, mask, mtu) < 0) {
 		perror("Setting IPv4 address");
 		close(tap_fd);
 		return -1;
 	}
-		printf("CONFIGGED\n");
 
 	return tap_fd;
 }
