@@ -118,7 +118,7 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 	}
 	if (dest_ip_node->status == ARP_INCOMPLETE) {
 		printf("IPV4 ARP Q RETAINING \n");
-		return add_pkt_to_q(dest_ip_node, packet);
+		return add_pkt_to_q(arp_tbl, dest_ip_node, packet);
 	}
 	memcpy(packet->dest_mac, dest_ip_node->mac_addr, MAC_ADDR_LEN);
 	return self->downs[0]->send_down(self->downs[0], packet);

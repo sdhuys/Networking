@@ -98,9 +98,13 @@ pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet)
 
 void flush_q(struct nw_layer *self, struct arp_table_node *arp_entry)
 {
-	struct pkt **pendings = arp_entry->pending_pkts;
+	struct nw_layer *eth = self->downs[0];
 	for (size_t c = 0; c < arp_entry->pending_packets_count; c++) {
-		self->send_down(self, pendings[0]);
+		struct pkt *p = arp_entry->pending_pkts[c];
+		memcpy(p->dest_mac, arp_entry->mac_addr, MAC_ADDR_LEN);
+		eth->send_down(eth, p);
+		release_pkt(p); // the queue's reference
+		arp_entry->pending_pkts[c] = NULL;
 	}
 	arp_entry->pending_packets_count = 0;
 }
@@ -119,10 +123,12 @@ struct arp_table_node *insert_incomplete_for_ip(struct arp_table *table, ipv4_ad
 	return new;
 }
 
-pkt_result add_pkt_to_q(struct arp_table_node *node, struct pkt *p)
+pkt_result add_pkt_to_q(struct arp_table *table, struct arp_table_node *node, struct pkt *p)
 {
+	if (node->pending_packets_count == table->node_pending_pkt_cap)
+		return ARP_TABLE_NODE_PKT_Q_FULL;
 	retain_pkt(p);
-	node->pending_pkts[node->pending_packets_count] = p;
+	node->pending_pkts[node->pending_packets_count++] = p;
 	return PACKET_QUEUED;
 }
 

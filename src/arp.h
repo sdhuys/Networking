@@ -71,7 +71,7 @@ struct pkt *create_arp_request_for(struct nw_layer *self,
 				   ipv4_address_t target_ip,
 				   struct route *route);
 struct arp_table_node *insert_incomplete_for_ip(struct arp_table *table, ipv4_address_t dest_ip);
-pkt_result add_pkt_to_q(struct arp_table_node *node, struct pkt *packet);
+pkt_result add_pkt_to_q(struct arp_table *table, struct arp_table_node *node, struct pkt *p);
 void flush_q(struct nw_layer *self, struct arp_table_node *arp_entry);
 struct arp_table *create_arp_table(size_t pending_packets_max);
 struct arp_table_node *create_arp_node(size_t pending_pkt_cap);
