@@ -50,14 +50,7 @@ cmake --build build --target unit_tests system_tests
 ```
 
 The stack prints a lot. The test report goes to stderr; the stack's stdout goes to `/dev/null`,
-or to a file with `STACK_LOG=stack.log ./build/unit_tests ...`.
-
-### Known failures on current main
-
-- `Cookies.CookieAckCreatesAWorkingConnection` and `Cookies.DataOnTheCookieAckIsDelivered`:
-  `syn_cookie_check_ack` stores the new connection under the listener's address, which is 0.0.0.0
-  for a wildcard listener, so later segments never find it. Take the local address from
-  `p->dest_ip` instead.
+or to a file with `STACK_LOG=stack.log ./build/unit_tests ...`. 
 
 ### Sanitizers
 
