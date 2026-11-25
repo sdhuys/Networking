@@ -1,4 +1,5 @@
 #include "checksum.h"
+#include <arpa/inet.h>
 
 // checksum over non-contiguous blocks of data
 uint16_t calc_checksum(const struct checksum_chunk *chunks, size_t amount)
