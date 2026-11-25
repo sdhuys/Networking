@@ -67,6 +67,7 @@ void th_global_init(void)
 
 int th_pool_free_count(void)
 {
+	th_global_init(); // the pool must exist even if no stack has been created yet
 	static struct pkt *taken[PKT_BUFF_POOL_SIZE];
 	int n = 0;
 	while (n < PKT_BUFF_POOL_SIZE) {
