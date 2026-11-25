@@ -199,7 +199,7 @@ static inline bool tcp_conn_alive(struct tcp_ipv4_conn *conn)
 // app checks this flag, should still be able to read data in buffer when connection closed
 static inline bool tcp_conn_is_aborted(struct tcp_ipv4_conn *conn)
 {
-	return atomic_load(&conn->aborted);
+	return conn->aborted;
 }
 
 ssize_t tcp_write_to_snd_buff(struct stack *stack, void *sock, struct send_request *req);

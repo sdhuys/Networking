@@ -770,6 +770,8 @@ void delayed_ack_callback(void *c)
 
 	struct pkt *p = allocate_pkt();
 	if (!p) {
+		// ack still owed: try again shortly, keep ack_pending set
+		tcp_arm_data_timer(conn, conn->del_ack_timer, TCP_DEL_ACK_MS);
 		pthread_mutex_unlock(&conn->lock);
 		return;
 	}
