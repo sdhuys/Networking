@@ -116,7 +116,7 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	struct tcp_conn_id id = {.loc_port = listener->local_port,
 				 .extern_port = ntohs(seg->header->src_port)};
 	memcpy(id.extern_addr, p->src_ip, IPV4_ADDR_LEN);
-	memcpy(id.loc_addr, listener->local_addr, IPV4_ADDR_LEN);
+	memcpy(id.loc_addr, p->dest_ip, IPV4_ADDR_LEN);
 	struct tcp_context *ctx = (struct tcp_context *)listener->tcp_layer->context;
 	struct route *route;
 	get_route(ctx->routing_tbl, id.extern_addr, &route); // set to NULL if no route
