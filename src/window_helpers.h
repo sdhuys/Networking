@@ -1,6 +1,6 @@
 #pragma once
-#include "tcp_segment.h"
 #include "tcp_common_types.h"
+#include "tcp_segment.h"
 #include <netinet/in.h>
 #include <stddef.h>
 #include <stdint.h>

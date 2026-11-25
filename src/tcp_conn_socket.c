@@ -124,7 +124,7 @@ void tcp_init_snd_wnd(struct tcp_ipv4_conn *conn, struct tcp_segment *seg, uint3
 
 // only a segment at least as new as the last update may change the window.
 // caller has checked snd_una <= ack <= snd_nxt
-void tcp_update_snd_wnd(struct tcp_ipv4_conn *conn, struct tcp_segment *seg)
+static void tcp_update_snd_wnd(struct tcp_ipv4_conn *conn, struct tcp_segment *seg)
 {
 	struct byte_snd_buffer *sb = &conn->snd_buffer;
 	uint32_t seq = ntohl(seg->header->seq_num);
@@ -442,7 +442,12 @@ pkt_result process_tcp_segment(struct pkt *p,
 							      conn->ts_enabled);
 			conn->snd_buffer.cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
 			tcp_negotiate_wscale(conn, seg->options);
-			tcp_init_snd_wnd(conn, seg, (flags & TCP_ACK) ? seg_ack : conn->iss); // in case of simultaneous open (no ACK), use ISS to init
+			tcp_init_snd_wnd(conn,
+					 seg,
+					 (flags & TCP_ACK)
+					     ? seg_ack
+					     : conn->iss); // in case of simultaneous open (no ACK),
+							   // use ISS to init
 			conn->rcv_buffer.rcv_wnd = calc_rcv_wnd_sws(conn);
 
 			if (!(flags & TCP_ACK)) {

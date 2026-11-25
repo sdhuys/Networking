@@ -157,7 +157,9 @@ uint32_t tcp_effective_snd_mss(bool peer_mss_present,
 			       uint32_t rcv_mss,
 			       bool ts_enabled);
 uint32_t tcp_calc_rcv_mss(const struct route *route);
-void tcp_init_snd_wnd(struct tcp_ipv4_conn *conn, struct tcp_segment *seg, uint32_t snd_wnd_upd_ack);
+void tcp_init_snd_wnd(struct tcp_ipv4_conn *conn,
+		      struct tcp_segment *seg,
+		      uint32_t snd_wnd_upd_ack);
 
 pkt_result process_tcp_segment(struct pkt *p,
 			       struct tcp_segment *seg,
