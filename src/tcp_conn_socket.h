@@ -14,6 +14,7 @@ extern const struct socket_ops tcp_conn_ops;
 
 #define TCP_INIT_RTO_MS 1000
 #define TCP_DEL_ACK_MS 200
+#define TCP_OOW_ACK_RATELIMIT_MS 500 // min gap between ACKs to unacceptable segments
 #define TCP_INIT_CWND_MSS_MULT 10
 #define TCP_WND_FIELD_MAX 0xFFFF
 #define TCP_MAX_WND_SCALE 14		// per RFC 7323
@@ -91,6 +92,7 @@ struct tcp_ipv4_conn {
 	bool ack_pending; // signifies timer is running
 	struct timer *del_ack_timer;
 	int8_t in_order_full_seg_count;
+	uint64_t last_oow_ack_ms; // when we last ACKed an unacceptable segment
 
 	// route
 	struct route *route;

@@ -14,6 +14,7 @@
 #include "tcp_listener_socket.h"
 #include "tcp_options.h"
 #include "tcp_segment.h"
+#include "time_now.h"
 #include "timer.h"
 #include "window_helpers.h"
 #include <arpa/inet.h>
@@ -120,201 +121,193 @@ static pkt_result tcp_process_ack(struct pkt *p,
 				  struct tcp_deferred_work *out_d,
 				  bool count_dupacks)
 {
-		uint32_t seg_ack = ntohl(seg->header->ack_num);
+	uint32_t seg_ack = ntohl(seg->header->ack_num);
 	uint16_t flags = seg->header->flags;
 	uint32_t snd_next = conn->snd_buffer.snd_nxt;
 	uint32_t snd_una = conn->snd_buffer.snd_una;
 	size_t s_len = seg_seq_len(seg);
 	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
 	struct timer_manager *tmgr = ctx->timer_mgr;
-	
-		bool valid_new_ack =
-		    tcp_seq_after(seg_ack, snd_una) && tcp_seq_before_eq(seg_ack, snd_next);
-		bool dupe_ack = (seg_ack == snd_una);
 
-		if (valid_new_ack || dupe_ack) {
-			struct byte_snd_buffer *sb = &conn->snd_buffer;
-			uint16_t prev_peer_wndw = sb->snd_wndw;
-			sb->snd_wndw = ntohs(seg->header->window);
+	bool valid_new_ack =
+	    tcp_seq_after(seg_ack, snd_una) && tcp_seq_before_eq(seg_ack, snd_next);
+	bool dupe_ack = (seg_ack == snd_una);
 
-			// peer is alive: any ACK answers our window probes
-			// new data acked means our retransmissions got through
-			conn->zwp_unanswered = 0;
-			if (valid_new_ack)
-				conn->rto_timeouts = 0;
+	if (valid_new_ack || dupe_ack) {
+		struct byte_snd_buffer *sb = &conn->snd_buffer;
+		uint16_t prev_peer_wndw = sb->snd_wndw;
+		sb->snd_wndw = ntohs(seg->header->window);
 
-			bool window_update = conn->is_wndw_probing && sb->snd_wndw > prev_peer_wndw;
+		// peer is alive: any ACK answers our window probes
+		// new data acked means our retransmissions got through
+		conn->zwp_unanswered = 0;
+		if (valid_new_ack)
+			conn->rto_timeouts = 0;
 
-			switch (conn->state) {
-			case SYN_SENT:
-				if (valid_new_ack && (seg_ack == conn->iss + 1)) {
-					conn->snd_buffer.snd_una = seg_ack;
-					conn->snd_buffer.ctrl_count--;
-					if (flags & TCP_SYN)
-						tcp_set_state_locked(conn, ESTABLISHED, out_d);
-				}
-				break;
+		bool window_update = conn->is_wndw_probing && sb->snd_wndw > prev_peer_wndw;
 
-			case SYN_RECEIVED:
-				if (valid_new_ack) {
-					// if ready q full drop whole segment and stay in
-					// SYN_RECEIVED try again after SYN-ACK retransmission's new
-					// ACK reply
-					if (conn->lstnr && q_full(conn->lstnr->ready_q))
-						return TCP_LSTNR_READY_Q_FULL;
+		switch (conn->state) {
+		case SYN_SENT:
+			if (valid_new_ack && (seg_ack == conn->iss + 1)) {
+				conn->snd_buffer.snd_una = seg_ack;
+				conn->snd_buffer.ctrl_count--;
+				if (flags & TCP_SYN)
 					tcp_set_state_locked(conn, ESTABLISHED, out_d);
-					conn->snd_buffer.snd_una = seg_ack;
-					conn->snd_buffer.ctrl_count--;
-				}
-				break;
-
-			default:
-				if (valid_new_ack) {
-					uint32_t old_una = sb->snd_una;
-					uint32_t data_ackd = seg_ack - old_una;
-
-					// is our FIN acked? Decided from the FIN entry itself,
-					// never from the state, so the byte accounting is right in
-					// any state
-					bool fin_acked = false;
-					for (uint8_t i = 0; i < sb->ctrl_count; i++) {
-						if (sb->ctrl[i].flags == TCP_FIN &&
-						    tcp_seq_after(seg_ack, sb->ctrl[i].seq)) {
-							fin_acked = true;
-							data_ackd--;
-							assert(i == sb->ctrl_count - 1);
-							sb->ctrl_count--;
-							break;
-						}
-					}
-					// update snd_una and head
-					update_snd_nxt_head(sb, seg_ack, data_ackd);
-
-					if (fin_acked) {
-						switch (conn->state) {
-						case FIN_WAIT_1: // waiting for the peer's FIN
-							tcp_set_state_locked(
-							    conn, FIN_WAIT_2, out_d);
-							break;
-						case CLOSING: // both FINs sent and acked
-							tcp_set_state_locked(
-							    conn, TIME_WAIT, out_d);
-							break;
-						case LAST_ACK: // peer's FIN came first, we're done
-							tcp_set_state_locked(conn, CLOSED, out_d);
-							break;
-						default: // unreachable: tcp_end_snd changes state
-							 // before sending out FIN
-							break;
-						}
-					}
-
-					// cwnd growth
-					uint32_t mss = conn->snd_mss;
-					uint32_t growth = data_ackd > 2 * mss ? 2 * mss : data_ackd;
-					switch (sb->c_state) {
-					case CONG_AVOIDANCE:
-						sb->cwnd += growth * growth / sb->cwnd;
-						break;
-					case SLOW_START:
-						sb->cwnd += growth;
-						if (sb->cwnd >= sb->ssthresh)
-							sb->c_state = CONG_AVOIDANCE;
-						break;
-					case FAST_RECOVERY:
-						sb->c_state = CONG_AVOIDANCE;
-						sb->cwnd = sb->ssthresh;
-					}
-					conn->dup_ack_cnt = 0;
-
-					// remove SACK blocks that are overtaken by
-					// progressed snd_una
-					if (sb->sack_blocks_count > 0) {
-						size_t overtaken_sacks =
-						    bin_search_seq_after_eq_indx(
-							sb->snd_una,
-							sb->sack_blocks,
-							sb->sack_blocks_count);
-
-						if (overtaken_sacks < sb->sack_blocks_count &&
-						    sb->sack_blocks[overtaken_sacks].start_seq ==
-							sb->snd_una)
-							overtaken_sacks++;
-
-						if (overtaken_sacks > 0) {
-							memmove(&sb->sack_blocks,
-								&sb->sack_blocks[overtaken_sacks],
-								(sb->sack_blocks_count -
-								 overtaken_sacks) *
-								    sizeof(struct ooo_seg));
-							sb->sack_blocks_count -= overtaken_sacks;
-						}
-					}
-
-					// pure dupe ack, no data, disregard window probe replies
-				} else if (count_dupacks && s_len == 0 && !conn->is_wndw_probing &&
-					   sb->snd_una != sb->snd_nxt && // data outstanding
-					   sb->snd_wndw ==
-					       prev_peer_wndw) { // window unchanged (RFC 5681, 2)
-					switch (sb->c_state) {
-					case FAST_RECOVERY:
-						sb->cwnd += conn->snd_mss;
-						break;
-					default:
-						conn->dup_ack_cnt++;
-						if (conn->dup_ack_cnt == 3)
-							fast_recovery(conn, out_d);
-						break;
-					}
-				}
-
-				// process new sack blocks
-				size_t sack_count = seg->options->sack_block_count;
-				struct ooo_seg *sacks = seg->options->sacks;
-				for (size_t i = 0; i < sack_count; i++) {
-					uint32_t s_start = sacks[i].start_seq;
-					uint32_t s_end = sacks[i].end_seq;
-
-					if (should_store_sack_block(
-						sb, s_start, s_end, sb->snd_una)) {
-						size_t idx = bin_search_seq_after_eq_indx(
-						    sacks[i].start_seq,
-						    sb->sack_blocks,
-						    sb->sack_blocks_count);
-
-						insert_ooo_segment(sb->sack_blocks,
-								   &(sb->sack_blocks_count),
-								   sb->sack_capacity,
-								   sacks[i],
-								   idx);
-					}
-				}
-				break;
 			}
+			break;
 
+		case SYN_RECEIVED:
 			if (valid_new_ack) {
-				// retransmission timer
-				cancel_timer(tmgr, conn->rto_timer);
-				conn->rto_interval = TCP_INIT_RTO_MS;
-				if (sb->snd_nxt != sb->snd_una) {
-					tcp_arm_data_timer(
-					    conn, conn->rto_timer, conn->rto_interval);
+				// if ready q full drop whole segment and stay in
+				// SYN_RECEIVED try again after SYN-ACK retransmission's new
+				// ACK reply
+				if (conn->lstnr && q_full(conn->lstnr->ready_q))
+					return TCP_LSTNR_READY_Q_FULL;
+				tcp_set_state_locked(conn, ESTABLISHED, out_d);
+				conn->snd_buffer.snd_una = seg_ack;
+				conn->snd_buffer.ctrl_count--;
+			}
+			break;
+
+		default:
+			if (valid_new_ack) {
+				uint32_t old_una = sb->snd_una;
+				uint32_t data_ackd = seg_ack - old_una;
+
+				// is our FIN acked? Decided from the FIN entry itself,
+				// never from the state, so the byte accounting is right in
+				// any state
+				bool fin_acked = false;
+				for (uint8_t i = 0; i < sb->ctrl_count; i++) {
+					if (sb->ctrl[i].flags == TCP_FIN &&
+					    tcp_seq_after(seg_ack, sb->ctrl[i].seq)) {
+						fin_acked = true;
+						data_ackd--;
+						assert(i == sb->ctrl_count - 1);
+						sb->ctrl_count--;
+						break;
+					}
 				}
-				// notify send buffer we can overwrite acked data
-				pthread_cond_broadcast(&sb->cond);
-				// add socket to tx queue to send out potential new packets
-				out_d->notify_TX_snd = true;
-			} else if (conn->is_wndw_probing &&
-				   window_update) { // don't stop window probing yet, sender might
-						    // suffer from silly-window syndrome
-				out_d->notify_TX_snd = true;
+				// update snd_una and head
+				update_snd_nxt_head(sb, seg_ack, data_ackd);
+
+				if (fin_acked) {
+					switch (conn->state) {
+					case FIN_WAIT_1: // waiting for the peer's FIN
+						tcp_set_state_locked(conn, FIN_WAIT_2, out_d);
+						break;
+					case CLOSING: // both FINs sent and acked
+						tcp_set_state_locked(conn, TIME_WAIT, out_d);
+						break;
+					case LAST_ACK: // peer's FIN came first, we're done
+						tcp_set_state_locked(conn, CLOSED, out_d);
+						break;
+					default: // unreachable: tcp_end_snd changes state
+						 // before sending out FIN
+						break;
+					}
+				}
+
+				// cwnd growth
+				uint32_t mss = conn->snd_mss;
+				uint32_t growth = data_ackd > 2 * mss ? 2 * mss : data_ackd;
+				switch (sb->c_state) {
+				case CONG_AVOIDANCE:
+					sb->cwnd += growth * growth / sb->cwnd;
+					break;
+				case SLOW_START:
+					sb->cwnd += growth;
+					if (sb->cwnd >= sb->ssthresh)
+						sb->c_state = CONG_AVOIDANCE;
+					break;
+				case FAST_RECOVERY:
+					sb->c_state = CONG_AVOIDANCE;
+					sb->cwnd = sb->ssthresh;
+				}
+				conn->dup_ack_cnt = 0;
+
+				// remove SACK blocks that are overtaken by
+				// progressed snd_una
+				if (sb->sack_blocks_count > 0) {
+					size_t overtaken_sacks = bin_search_seq_after_eq_indx(
+					    sb->snd_una, sb->sack_blocks, sb->sack_blocks_count);
+
+					if (overtaken_sacks < sb->sack_blocks_count &&
+					    sb->sack_blocks[overtaken_sacks].start_seq ==
+						sb->snd_una)
+						overtaken_sacks++;
+
+					if (overtaken_sacks > 0) {
+						memmove(&sb->sack_blocks,
+							&sb->sack_blocks[overtaken_sacks],
+							(sb->sack_blocks_count - overtaken_sacks) *
+							    sizeof(struct ooo_seg));
+						sb->sack_blocks_count -= overtaken_sacks;
+					}
+				}
+
+				// pure dupe ack, no data, disregard window probe replies
+			} else if (count_dupacks && s_len == 0 && !conn->is_wndw_probing &&
+				   sb->snd_una != sb->snd_nxt && // data outstanding
+				   sb->snd_wndw ==
+				       prev_peer_wndw) { // window unchanged (RFC 5681, 2)
+				switch (sb->c_state) {
+				case FAST_RECOVERY:
+					sb->cwnd += conn->snd_mss;
+					break;
+				default:
+					conn->dup_ack_cnt++;
+					if (conn->dup_ack_cnt == 3)
+						fast_recovery(conn, out_d);
+					break;
+				}
 			}
 
-		} else if (tcp_seq_after(seg_ack, snd_next)) {
-			// ACK out of sync, send challenge ACK
-			tcp_create_ack_reply(p, conn, out_d);
-			return TCP_ACK_OUT_OF_SYNC;
+			// process new sack blocks
+			size_t sack_count = seg->options->sack_block_count;
+			struct ooo_seg *sacks = seg->options->sacks;
+			for (size_t i = 0; i < sack_count; i++) {
+				uint32_t s_start = sacks[i].start_seq;
+				uint32_t s_end = sacks[i].end_seq;
+
+				if (should_store_sack_block(sb, s_start, s_end, sb->snd_una)) {
+					size_t idx =
+					    bin_search_seq_after_eq_indx(sacks[i].start_seq,
+									 sb->sack_blocks,
+									 sb->sack_blocks_count);
+
+					insert_ooo_segment(sb->sack_blocks,
+							   &(sb->sack_blocks_count),
+							   sb->sack_capacity,
+							   sacks[i],
+							   idx);
+				}
+			}
+			break;
 		}
+
+		if (valid_new_ack) {
+			// retransmission timer
+			cancel_timer(tmgr, conn->rto_timer);
+			conn->rto_interval = TCP_INIT_RTO_MS;
+			if (sb->snd_nxt != sb->snd_una) {
+				tcp_arm_data_timer(conn, conn->rto_timer, conn->rto_interval);
+			}
+			// notify send buffer we can overwrite acked data
+			pthread_cond_broadcast(&sb->cond);
+			// add socket to tx queue to send out potential new packets
+			out_d->notify_TX_snd = true;
+		} else if (conn->is_wndw_probing &&
+			   window_update) { // don't stop window probing yet, sender might
+					    // suffer from silly-window syndrome
+			out_d->notify_TX_snd = true;
+		}
+
+	} else if (tcp_seq_after(seg_ack, snd_next)) {
+		// ACK out of sync, send challenge ACK
+		tcp_create_ack_reply(p, conn, out_d);
+		return TCP_ACK_OUT_OF_SYNC;
+	}
 	return TCP_ACK_PROCESSED;
 }
 
@@ -329,7 +322,6 @@ pkt_result process_tcp_segment(struct pkt *p,
 	uint16_t flags = seg->header->flags;
 
 	uint32_t snd_next = conn->snd_buffer.snd_nxt;
-	uint32_t snd_una = conn->snd_buffer.snd_una;
 	uint32_t rcv_next = conn->rcv_buffer.rcv_nxt;
 	uint32_t scaled_rcv_wnd = conn->rcv_buffer.rcv_wnd << conn->rcv_buffer.rcv_wscale;
 
@@ -351,7 +343,11 @@ pkt_result process_tcp_segment(struct pkt *p,
 		}
 
 		if (scaled_rcv_wnd == 0 && (flags & TCP_ACK)) {
-			pkt_result ack_r = tcp_process_ack(p, seg, conn, out_d, false); // process the ACK, drop the data, don't count as dupe acks
+			bool count_dupacks = tcp_seq_after_eq(
+			    seg_seq,
+			    rcv_next); // don't count window probes or keepalives as dupeacks
+			pkt_result ack_r = tcp_process_ack(
+			    p, seg, conn, out_d, count_dupacks); // process the ACK, drop the data
 			if (ack_r != TCP_ACK_PROCESSED)
 				return ack_r;
 		}
@@ -360,7 +356,24 @@ pkt_result process_tcp_segment(struct pkt *p,
 		if (conn->state == TIME_WAIT && flags & TCP_FIN)
 			start_timer(tmgr, conn->time_wait_timer, TCP_TIMEWAIT_MS);
 
-		tcp_create_ack_reply(p, conn, out_d); // ACK every rejected segment (except RST), needs RATE LIMITING!!
+		// rare case where final ACK to close connection arrived while we had zero window
+		// OR connection was already marked closed but deferred unhashing didn't happen yet
+		// => no ACK should go out
+		if (!tcp_conn_alive(conn))
+			return TCP_SEG_OUT_OF_WNDW_RANGE;
+
+		// rate limit ACKS sent on unacceptable segments, prevents attacker spam resulting
+		// in high traffic & ACK loops on desyncd peers exemptions: zero-window probe
+		// replies and TIME_WAIT FIN replies, the peer relies on them
+		bool exempt =
+		    scaled_rcv_wnd == 0 || (conn->state == TIME_WAIT && (flags & TCP_FIN));
+		uint64_t now = now_ms();
+		if (exempt || now - conn->last_oow_ack_ms >= TCP_OOW_ACK_RATELIMIT_MS) {
+			tcp_create_ack_reply(p, conn, out_d); // ACK every rejected segment (except
+							      // RST)
+			conn->last_oow_ack_ms = now;
+			return TCP_SEG_OUT_WNDW_RNG_ACK_SNT;
+		}
 		return TCP_SEG_OUT_OF_WNDW_RANGE;
 	}
 
@@ -565,6 +578,7 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id,
 	conn->rto_timeouts = 0;
 	conn->zwp_unanswered = 0;
 	conn->ack_pending = false;
+	conn->last_oow_ack_ms = 0;
 	conn->in_order_full_seg_count = 0;
 	conn->tcp_layer = tcp;
 	conn->lstnr = NULL;
