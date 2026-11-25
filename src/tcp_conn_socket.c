@@ -578,12 +578,16 @@ err_free_conn:
 void zwp_callback(void *c)
 {
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)c;
+	struct tcp_context *cntx = conn->tcp_layer->context;
+	struct timer_manager *mngr = cntx->timer_mgr;
+
 	struct byte_snd_buffer *sb = &conn->snd_buffer;
 
 	struct tcp_deferred_work d = {0};
 	pthread_mutex_lock(&conn->lock);
 
-	if (conn->data_timers_cancelled || !conn->is_wndw_probing) {
+	if (!timer_should_execute(mngr, conn->zwp_timer) || conn->data_timers_cancelled ||
+	    !conn->is_wndw_probing) {
 		pthread_mutex_unlock(&conn->lock);
 		return;
 	}
@@ -639,7 +643,7 @@ void rto_callback(void *c)
 
 	// cancel_timer can't stop a callback that was already popped + an ACK may have
 	// acknowledged everything between the pop and now => no data outstanding = stale RTO.
-	if (conn->data_timers_cancelled || !timer_should_execute(mngr, conn->rto_timer)) {
+	if (!timer_should_execute(mngr, conn->rto_timer) || conn->data_timers_cancelled) {
 		pthread_mutex_unlock(&conn->lock);
 		return;
 	}
@@ -677,8 +681,17 @@ void rto_callback(void *c)
 
 void time_wait_callback(void *c)
 {
-	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)c;
-	tcp_transition_to_state(conn, CLOSED);
+	struct tcp_ipv4_conn *conn = c;
+	struct tcp_context *cntx = conn->tcp_layer->context;
+	struct timer_manager *mgr = cntx->timer_mgr;
+	struct tcp_deferred_work d = {0};
+	pthread_mutex_lock(&conn->lock);
+	bool current = timer_should_execute(mgr, conn->time_wait_timer) && conn->state == TIME_WAIT;
+	if (current)
+		tcp_set_state_locked(conn, CLOSED, &d);
+	pthread_mutex_unlock(&conn->lock);
+	if (current)
+		tcp_execute_deffered_work(conn, &d);
 }
 
 void fast_recovery(struct tcp_ipv4_conn *conn, struct tcp_deferred_work *d)
@@ -748,12 +761,12 @@ void delayed_ack_callback(void *c)
 	struct tcp_deferred_work d = {0};
 	pthread_mutex_lock(&conn->lock);
 
-	if (conn->data_timers_cancelled || !timer_should_execute(mngr, conn->del_ack_timer)) {
+	if (!timer_should_execute(mngr, conn->del_ack_timer) || conn->data_timers_cancelled) {
 		pthread_mutex_unlock(&conn->lock);
 		return;
 	}
 
-	assert(conn->ack_pending = true);
+	assert(conn->ack_pending);
 
 	struct pkt *p = allocate_pkt();
 	if (!p) {

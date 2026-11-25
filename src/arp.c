@@ -100,6 +100,7 @@ void arp_retry_callback(void *arg)
 		pthread_mutex_unlock(&n->table->lock);
 		return;
 	}
+	assert(n->status == ARP_INCOMPLETE);
 
 	if (n->retries >= ARP_MAX_RETRIES) {
 		remove_arp_tbl_node(n);

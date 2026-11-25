@@ -31,7 +31,7 @@ pkt_result receive_ipv4_up(struct nw_layer *self, struct pkt *packet)
 	    total_len < header_len)
 		return IP_HEADER_MALFORMED;
 
-	if (calc_ipv4_checksum(header, header_len) != 0)
+	if (calc_ipv4_checksum(header, header_len / 4) != 0)
 		return IP_CHECKSUM_ERROR;
 
 	// dscp_ecn ignored
@@ -129,9 +129,10 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 	if (send_request) {
 		struct pkt *arp_req_pkt =
 		    create_arp_request_for(arp_layer, next_hop, packet->route->nw_if_id);
-		if (arp_req_pkt)
+		if (arp_req_pkt) {
 			send_arp_down(arp_layer, arp_req_pkt);
-		release_pkt(arp_req_pkt);
+			release_pkt(arp_req_pkt);
+		}
 	}
 	if (send_now)
 		r = self->downs[0]->send_down(self->downs[0], packet);

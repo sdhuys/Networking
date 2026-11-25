@@ -186,6 +186,8 @@ void cancel_timer(struct timer_manager *mgr, struct timer *timer)
 	if (!timer)
 		return;
 	pthread_mutex_lock(&mgr->lock);
+	timer->expiry_time = 0; // don't let this depend on succesful heap_removal or it won't
+				// properly cancel if timer has already been popped!
 	bool should_release = false;
 
 	struct min_heap *h = mgr->timer_heap;
@@ -198,14 +200,15 @@ void cancel_timer(struct timer_manager *mgr, struct timer *timer)
 		timer->release(timer->args);
 }
 
-// protects against execution when cancelled (and potentially rearmed) in the small window between timer popped and execution start
-// execute checks for 0 or expiry time still in the future (means rearmed for later, not now)
+// protects against execution when cancelled (and potentially rearmed) in the small window between
+// timer popped and execution start execute checks for 0 or expiry time still in the future (means
+// rearmed for later, not now)
 bool timer_should_execute(struct timer_manager *mgr, struct timer *timer)
 {
 	pthread_mutex_lock(&mgr->lock);
 	bool execute = timer->expiry_time != 0 && now_ms() >= timer->expiry_time;
 	if (execute)
 		timer->expiry_time = 0;
-	pthread_mutex_lock(&mgr->lock);
+	pthread_mutex_unlock(&mgr->lock);
 	return execute;
 }
