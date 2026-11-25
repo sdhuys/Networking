@@ -84,15 +84,15 @@ uint8_t tcp_calc_wndw_scale(size_t buff_capacity)
 uint32_t usable_window(struct tcp_ipv4_conn *conn, uint32_t *peer_wnd_out)
 {
 	struct byte_snd_buffer *sb = &conn->snd_buffer;
+	uint32_t peer_wnd = sb->snd_wnd;
+	*peer_wnd_out = peer_wnd;
+
 	// ignore potential zero window for retransmissions
 	if (sb->retransmit)
 		return conn->snd_mss;
-
-	uint32_t peer_wnd = (uint32_t)sb->snd_wndw << sb->snd_wscale;
-	*peer_wnd_out = peer_wnd;
 	uint32_t total_allowed = (peer_wnd < sb->cwnd) ? peer_wnd : sb->cwnd;
 	printf("USABLE WINDOW: peer window: %u vs cong window: %u \n",
-	       (uint32_t)sb->snd_wndw << sb->snd_wscale,
+	       peer_wnd,
 	       sb->cwnd);
 	uint32_t sent_unacked = sb->snd_nxt - sb->snd_una;
 	uint32_t sacked = sb->sacked_bytes;

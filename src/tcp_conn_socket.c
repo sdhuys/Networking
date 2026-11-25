@@ -135,8 +135,8 @@ static pkt_result tcp_process_ack(struct pkt *p,
 
 	if (valid_new_ack || dupe_ack) {
 		struct byte_snd_buffer *sb = &conn->snd_buffer;
-		uint16_t prev_peer_wndw = sb->snd_wndw;
-		sb->snd_wndw = ntohs(seg->header->window);
+		uint16_t prev_peer_wnd = sb->snd_wnd;
+		sb->snd_wnd = tcp_seg_wnd_bytes(seg, sb->snd_wscale);
 
 		// peer is alive: any ACK answers our window probes
 		// new data acked means our retransmissions got through
@@ -144,7 +144,7 @@ static pkt_result tcp_process_ack(struct pkt *p,
 		if (valid_new_ack)
 			conn->rto_timeouts = 0;
 
-		bool window_update = conn->is_wndw_probing && sb->snd_wndw > prev_peer_wndw;
+		bool window_update = conn->is_wndw_probing && sb->snd_wnd > prev_peer_wnd;
 
 		switch (conn->state) {
 		case SYN_SENT:
@@ -249,8 +249,8 @@ static pkt_result tcp_process_ack(struct pkt *p,
 				// pure dupe ack, no data, disregard window probe replies
 			} else if (count_dupacks && s_len == 0 && !conn->is_wndw_probing
 				   && sb->snd_una != sb->snd_nxt && // data outstanding
-				   sb->snd_wndw
-				       == prev_peer_wndw) { // window unchanged (RFC 5681, 2)
+				   sb->snd_wnd
+				       == prev_peer_wnd) { // window unchanged (RFC 5681, 2)
 				switch (sb->c_state) {
 				case FAST_RECOVERY:
 					sb->cwnd += conn->snd_mss;
@@ -407,6 +407,8 @@ pkt_result process_tcp_segment(struct pkt *p,
 							      conn->rcv_mss,
 							      conn->ts_enabled);
 			conn->snd_buffer.cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
+			tcp_negotiate_wscale(conn, seg->options);
+			conn->rcv_buffer.rcv_wnd = calc_rcv_wnd_sws(conn);
 
 			if (!(flags & TCP_ACK)) {
 				// simultaneous open: received SYN while expecting SYN-ACK
@@ -583,6 +585,7 @@ struct tcp_ipv4_conn *create_init_tcp_connection(struct tcp_conn_id *id,
 	conn->tcp_layer = tcp;
 	conn->lstnr = NULL;
 	conn->snd_buffer.snd_wscale = 0;
+	conn->snd_buffer.snd_wnd = 0;
 	conn->queued_for_snd = false;
 
 	conn->q_node.nxt = Q_NODE_UNLINKED;
@@ -768,18 +771,15 @@ void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *
 	conn->rcv_buffer.rcv_nxt = conn->irs + seg_seq_len(seg);
 	conn->snd_buffer.snd_nxt = iss;
 	conn->snd_buffer.snd_una = iss;
-	conn->snd_buffer.snd_wndw = ntohs(seg->header->window);
+	conn->snd_buffer.snd_wnd = tcp_seg_wnd_bytes(seg, 0); // don't apply scale for a SYN
 
 	struct tcp_options *opt = seg->options;
 	conn->sack_enabled = opt->sack_permitted;
 	conn->ts_enabled = opt->ts_present;
-	conn->wscale_enabled = opt->wscale_present;
 	conn->snd_mss = tcp_effective_snd_mss(
 	    opt->mss_present, opt->mss, conn->rcv_mss, conn->ts_enabled);
 	conn->snd_buffer.cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
-
-	if (opt->wscale_present)
-		conn->snd_buffer.snd_wscale = opt->wscale;
+	tcp_negotiate_wscale(conn, seg->options);
 
 	if (opt->ts_present)
 		conn->ts_recent = opt->tsval;
@@ -1093,6 +1093,12 @@ struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq
 
 	if (conn->state != SYN_SENT)
 		p->tcp_flags |= TCP_ACK;
+	
+	// never send window value scaled in a SYN
+	if (p->tcp_flags & TCP_SYN) {
+		uint32_t bytes = (uint32_t)conn->rcv_buffer.rcv_wnd << conn->rcv_buffer.rcv_wscale;
+		p->rcv_window = bytes > TCP_WND_FIELD_MAX ? TCP_WND_FIELD_MAX : bytes;
+	}
 
 	// add handshake options
 	if (conn->state == SYN_SENT || conn->state == SYN_RECEIVED) {

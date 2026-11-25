@@ -16,6 +16,7 @@
 #include "time_now.h"
 #include "window_helpers.h"
 #include <arpa/inet.h>
+#include <assert.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -147,7 +148,8 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	conn->rcv_buffer.rcv_wnd = calc_rcv_wnd_sws(conn);
 	conn->snd_buffer.snd_nxt = cookie + 1;
 	conn->snd_buffer.snd_una = cookie + 1;
-	conn->snd_buffer.snd_wndw = ntohs(seg->header->window);
+	assert(conn->snd_buffer.snd_wscale == 0); // window scaling disabled on cookie connections
+	conn->snd_buffer.snd_wnd = tcp_seg_wnd_bytes(seg, conn->snd_buffer.snd_wscale);
 	conn->state = ESTABLISHED;
 
 	if (!add_to_tcp_conn_hashtable(cntx->socket_manager->tcp_ipv4_conn_htable, conn)) {
