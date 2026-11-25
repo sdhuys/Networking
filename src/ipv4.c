@@ -23,9 +23,16 @@ pkt_result receive_ipv4_up(struct nw_layer *self, struct pkt *packet)
 	if (header->version_ihl >> 4 != IPV4_V)
 		return IP_VERSION_MISMATCH;
 
-	size_t header_len = (header->version_ihl & 0x0F);
-	if (header_len != IPV4_HEADER_NO_OPTIONS_LEN)
-		return IP_OPTIONS_NOT_SUPPORTED;
+	size_t header_len = (header->version_ihl & 0x0F) * 4;
+	size_t frame_len = packet->len;
+	uint16_t total_len = ntohs(header->total_length);
+
+	if (header_len < sizeof(struct ipv4_header) || total_len > frame_len ||
+	    total_len < header_len)
+		return IP_HEADER_MALFORMED;
+
+	if (calc_ipv4_checksum(header, header_len) != 0)
+		return IP_CHECKSUM_ERROR;
 
 	// dscp_ecn ignored
 
@@ -35,17 +42,13 @@ pkt_result receive_ipv4_up(struct nw_layer *self, struct pkt *packet)
 	if (more_fragments || (offset != 0))
 		return IP_FRAGMENTATION_NOT_SUPPORTED;
 
-	if (calc_ipv4_checksum(header, header_len) != 0)
-		return IP_CHECKSUM_ERROR;
-
 	if (!relevant_destination_ip(header->dest_ip, self, packet->if_index))
 		return IP_DEST_NOT_RELEVANT;
 
 	memcpy(packet->src_ip, header->src_ip, IPV4_ADDR_LEN);
 	memcpy(packet->dest_ip, header->dest_ip, IPV4_ADDR_LEN);
-	packet->offset += header_len * 4; // == sizeof(struct ipv4_header) since we
-					  // enforece NO OPTIONS in header
-	packet->len -= header_len * 4;
+	packet->offset += header_len;
+	packet->len = total_len - header_len;
 	packet->protocol = header->protocol;
 	switch (header->protocol) {
 	case P_ICMP:
@@ -118,7 +121,8 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 		r = add_pkt_to_q(arp_tbl, n, packet);
 	}
 	if (send_request)
-		start_timer(arp_cntxt->timer_mgr, n->retry_timer, ARP_RETRY_MS); // start timer under lock!
+		start_timer(
+		    arp_cntxt->timer_mgr, n->retry_timer, ARP_RETRY_MS); // start timer under lock!
 
 	pthread_mutex_unlock(&arp_tbl->lock);
 
@@ -127,6 +131,7 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 		    create_arp_request_for(arp_layer, next_hop, packet->route->nw_if_id);
 		if (arp_req_pkt)
 			send_arp_down(arp_layer, arp_req_pkt);
+		release_pkt(arp_req_pkt);
 	}
 	if (send_now)
 		r = self->downs[0]->send_down(self->downs[0], packet);

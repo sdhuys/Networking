@@ -681,9 +681,6 @@ void fast_recovery(struct tcp_ipv4_conn *conn, struct tcp_deferred_work *d)
 {
 	printf("\n\n            FAST RETRANSMIT! \n \n");
 
-	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
-	cancel_timer(ctx->timer_mgr, conn->rto_timer);
-
 	struct byte_snd_buffer *sb = &conn->snd_buffer;
 	sb->c_state = FAST_RECOVERY;
 	sb->ssthresh = sb->cwnd / 2 > 2 * conn->snd_mss ? sb->cwnd / 2 : 2 * conn->snd_mss;
@@ -847,7 +844,7 @@ void tcp_set_state_locked(struct tcp_ipv4_conn *conn,
 	// may still send data that we must ACK => keep the delayed-ACK timer
 	if (state == FIN_WAIT_2) {
 		d->cancel_snd_timers = true;
-				conn->is_wndw_probing = false;
+		conn->is_wndw_probing = false;
 	}
 
 	// TIME_WAIT / CLOSED: no more data either way
@@ -1018,7 +1015,6 @@ void destroy_tcp_conn(struct tcp_ipv4_conn *conn)
 	free(conn);
 }
 
-
 // caller must hold conn lock
 struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq_len)
 {
@@ -1079,9 +1075,11 @@ struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq
 		sb->snd_nxt += seq_len;
 		sb->snd_nxt_i = (sb->snd_nxt_i + payload_len) & (sb->capacity - 1);
 	}
-	conn->ack_pending = false;
 	struct tcp_context *cntx = (struct tcp_context *)conn->tcp_layer->context;
-	cancel_timer(cntx->timer_mgr, conn->del_ack_timer);
+	if ((p->tcp_flags & TCP_ACK) && conn->ack_pending) {
+		conn->ack_pending = false;
+		cancel_timer(cntx->timer_mgr, conn->del_ack_timer);
+	}
 	arm_tcp_data_timer_if_idle(conn, conn->rto_timer, conn->rto_interval);
 
 	///////////////////////////////////////////////////////

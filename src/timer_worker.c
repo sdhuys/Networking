@@ -16,7 +16,7 @@ void *start_timers_loop(void *arg)
 			continue;
 		}
 		int poll_r = poll(&pfd, 1, timeout_ms);
-		if (poll_r > 0 && pfd.events & POLLIN) {
+		if (poll_r > 0 && pfd.revents & POLLIN) {
 			uint64_t x;
 			read(pfd.fd, &x, sizeof(x)); // drain eventfd
 		}

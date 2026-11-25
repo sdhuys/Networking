@@ -23,7 +23,9 @@ pkt_result send_udp_down(struct nw_layer *self, struct pkt *packet)
 	header->src_port = htons(packet->src_port);
 	header->length = htons(packet->len);
 	header->checksum = 0;
-	header->checksum = calc_udp_checksum(header, packet);
+	uint16_t checksum = calc_udp_checksum(header, packet);
+	checksum = checksum == 0 ? 1 : checksum;
+	header->checksum = htons(checksum);
 
 	packet->offset -= sizeof(struct ipv4_header);
 	packet->len += sizeof(struct ipv4_header);

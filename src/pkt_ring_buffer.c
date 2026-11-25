@@ -59,7 +59,7 @@ struct pkt_ring_buffer *create_init_pkt_ring_buffer(size_t capacity)
 	struct pkt_ring_buffer *buff = malloc(sizeof(struct pkt_ring_buffer));
 	if (buff == NULL)
 		return NULL;
-	buff->packets = calloc(capacity, sizeof(struct pkt));
+	buff->packets = calloc(capacity, sizeof(struct pkt *));
 	buff->length = capacity;
 	pthread_mutex_init(&buff->lock, NULL);
 	pthread_cond_init(&buff->cond, NULL);
