@@ -101,116 +101,33 @@ static bool arm_tcp_data_timer_if_idle(struct tcp_ipv4_conn *conn,
 	return start_timer_if_idle(t_mgr, t, delay_ms);
 }
 
-// caller must hold conn->lock execute deferred work after unlocking
-pkt_result process_tcp_segment(struct pkt *p,
-			       struct tcp_segment *seg,
-			       struct tcp_ipv4_conn *conn,
-			       struct tcp_deferred_work *out_d)
+static bool tcp_seg_acceptable(uint32_t seq, uint32_t len, uint32_t rcv_nxt, uint32_t wnd)
 {
-	uint32_t seg_seq = ntohl(seg->header->seq_num);
-	uint32_t seg_ack = ntohl(seg->header->ack_num);
-	uint16_t flags = seg->header->flags;
+	if (len == 0)
+		return wnd == 0
+			   ? seq == rcv_nxt
+			   : tcp_seq_after_eq(seq, rcv_nxt) && tcp_seq_before(seq, rcv_nxt + wnd);
+	if (wnd == 0)
+		return false;
+	uint32_t end = seq + len - 1;
+	return (tcp_seq_after_eq(seq, rcv_nxt) && tcp_seq_before(seq, rcv_nxt + wnd)) ||
+	       (tcp_seq_after_eq(end, rcv_nxt) && tcp_seq_before(end, rcv_nxt + wnd));
+}
 
+static pkt_result tcp_process_ack(struct pkt *p,
+				  struct tcp_segment *seg,
+				  struct tcp_ipv4_conn *conn,
+				  struct tcp_deferred_work *out_d,
+				  bool count_dupacks)
+{
+		uint32_t seg_ack = ntohl(seg->header->ack_num);
+	uint16_t flags = seg->header->flags;
 	uint32_t snd_next = conn->snd_buffer.snd_nxt;
 	uint32_t snd_una = conn->snd_buffer.snd_una;
-	uint32_t rcv_next = conn->rcv_buffer.rcv_nxt;
-	uint32_t scaled_rcv_wnd = conn->rcv_buffer.rcv_wnd << conn->rcv_buffer.rcv_wscale;
-
 	size_t s_len = seg_seq_len(seg);
-
 	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
 	struct timer_manager *tmgr = ctx->timer_mgr;
-
-	// window Validation
-	bool in_window = false;
-	if (conn->state == SYN_SENT)
-		in_window = true;
-	else if (s_len == 0) {
-		// accepting pure acks if they aren't "from the future"
-		in_window =
-		    tcp_seq_before(seg_seq, rcv_next + scaled_rcv_wnd + (scaled_rcv_wnd == 0));
-	} else {
-		if (scaled_rcv_wnd > 0) {
-			uint32_t seg_end = seg_seq + s_len - 1;
-			in_window = tcp_seq_before(seg_seq, rcv_next + scaled_rcv_wnd) &&
-				    tcp_seq_after_eq(seg_end, rcv_next);
-		} else {
-			// zero window, trigger pure ack responses (window probe replies)
-			in_window = false;
-		}
-	}
-
-	if (!in_window) {
-		// challenge ack or window probe reply
-		if (s_len > 0 && (flags & TCP_SYN) && !(flags & TCP_ACK) &&
-		    conn->state == SYN_RECEIVED &&
-		    seg_seq == conn->irs) { // duplicate SYN: retrigger SYN-ACK sending
-			tcp_resend_syn_deferred(conn, out_d);
-			return RCOV_SYN_ACK_TO_SND_BUFFER;
-		}
-		if (s_len > 0) {
-			printf("\nTCP SEG NOT IN WINDOW, Sending challenge ACK/Replying to window "
-			       "probe! \n");
-			tcp_create_ack_reply(p, conn, out_d);
-			// our previous ACK lost, restart timer
-			if (conn->state == TIME_WAIT && flags & TCP_FIN)
-				start_timer(tmgr, conn->time_wait_timer, TCP_TIMEWAIT_MS);
-			return TCP_SEG_OUT_WNDW_RNG_ACK_SNT;
-		}
-		return TCP_SEG_OUT_OF_WNDW_RANGE;
-	}
-	// RST processing
-	if (flags & TCP_RST) {
-		if (seg_seq == rcv_next) {
-			out_d->abort = true;
-			return INC_RST_CONN_DEAD;
-		}
-		// per RFC 5961
-		if (conn->state != SYN_SENT && in_window) {
-			tcp_create_ack_reply(p, conn, out_d);
-			return INC_RST_CHALL_ACK_SENT;
-		}
-		return INVALID_RST_DROPPED;
-	}
-
-	bool immediate_ack = false;
-	// SYN handling
-	if (flags & TCP_SYN) {
-		immediate_ack = true;
-		if (conn->state == SYN_SENT) {
-			// init connection
-			conn->irs = seg_seq;
-			conn->rcv_buffer.rcv_nxt = seg_seq + 1;
-			conn->ts_enabled = seg->options->ts_present;
-			conn->sack_enabled = seg->options->sack_permitted;
-			conn->snd_mss = tcp_effective_snd_mss(seg->options->mss_present,
-							      seg->options->mss,
-							      conn->rcv_mss,
-							      conn->ts_enabled);
-			conn->snd_buffer.cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
-
-			if (!(flags & TCP_ACK)) {
-				// simultaneous open: received SYN while expecting SYN-ACK
-				// trigger SYN-retransmission, SYN_RECEIVED state will
-				// append ACK
-				tcp_set_state_locked(conn, SYN_RECEIVED, out_d);
-				tcp_resend_syn_deferred(conn, out_d);
-				return TCP_SIMULTANEOUS_OPEN;
-			}
-			// else (SYN-ACK) => fallthrough to ACK processing below to finalise
-			// handshake
-
-		} else if (conn->state >= ESTABLISHED) {
-			// unexpected SYN in established session
-			tcp_build_rst_reply(p, seg);
-			out_d->pkt_snd_now = p;
-			out_d->abort = true;
-			return RST_UNEXPECTED_SYN;
-		}
-	}
-
-	// ACK processing
-	if (flags & TCP_ACK) {
+	
 		bool valid_new_ack =
 		    tcp_seq_after(seg_ack, snd_una) && tcp_seq_before_eq(seg_ack, snd_next);
 		bool dupe_ack = (seg_ack == snd_una);
@@ -335,7 +252,7 @@ pkt_result process_tcp_segment(struct pkt *p,
 					}
 
 					// pure dupe ack, no data, disregard window probe replies
-				} else if (s_len == 0 && !conn->is_wndw_probing &&
+				} else if (count_dupacks && s_len == 0 && !conn->is_wndw_probing &&
 					   sb->snd_una != sb->snd_nxt && // data outstanding
 					   sb->snd_wndw ==
 					       prev_peer_wndw) { // window unchanged (RFC 5681, 2)
@@ -398,6 +315,109 @@ pkt_result process_tcp_segment(struct pkt *p,
 			tcp_create_ack_reply(p, conn, out_d);
 			return TCP_ACK_OUT_OF_SYNC;
 		}
+	return TCP_ACK_PROCESSED;
+}
+
+// caller must hold conn->lock execute deferred work after unlocking
+pkt_result process_tcp_segment(struct pkt *p,
+			       struct tcp_segment *seg,
+			       struct tcp_ipv4_conn *conn,
+			       struct tcp_deferred_work *out_d)
+{
+	uint32_t seg_seq = ntohl(seg->header->seq_num);
+	uint32_t seg_ack = ntohl(seg->header->ack_num);
+	uint16_t flags = seg->header->flags;
+
+	uint32_t snd_next = conn->snd_buffer.snd_nxt;
+	uint32_t snd_una = conn->snd_buffer.snd_una;
+	uint32_t rcv_next = conn->rcv_buffer.rcv_nxt;
+	uint32_t scaled_rcv_wnd = conn->rcv_buffer.rcv_wnd << conn->rcv_buffer.rcv_wscale;
+
+	size_t s_len = seg_seq_len(seg);
+
+	struct tcp_context *ctx = (struct tcp_context *)conn->tcp_layer->context;
+	struct timer_manager *tmgr = ctx->timer_mgr;
+
+	if (conn->state != SYN_SENT &&
+	    !tcp_seg_acceptable(seg_seq, s_len, rcv_next, scaled_rcv_wnd)) {
+		if (flags & TCP_RST)
+			return TCP_SEG_OUT_OF_WNDW_RANGE; // drop, never reply to an RST
+
+		if (s_len > 0 && (flags & TCP_SYN) && !(flags & TCP_ACK) &&
+		    conn->state == SYN_RECEIVED &&
+		    seg_seq == conn->irs) { // duplicate SYN: retrigger SYN-ACK sending
+			tcp_resend_syn_deferred(conn, out_d);
+			return RCOV_SYN_ACK_TO_SND_BUFFER;
+		}
+
+		if (scaled_rcv_wnd == 0 && (flags & TCP_ACK)) {
+			pkt_result ack_r = tcp_process_ack(p, seg, conn, out_d, false); // process the ACK, drop the data, don't count as dupe acks
+			if (ack_r != TCP_ACK_PROCESSED)
+				return ack_r;
+		}
+
+		// our previous ACK lost, restart timer
+		if (conn->state == TIME_WAIT && flags & TCP_FIN)
+			start_timer(tmgr, conn->time_wait_timer, TCP_TIMEWAIT_MS);
+
+		tcp_create_ack_reply(p, conn, out_d); // ACK every rejected segment (except RST), needs RATE LIMITING!!
+		return TCP_SEG_OUT_OF_WNDW_RANGE;
+	}
+
+	// RST processing
+	if (flags & TCP_RST) {
+		if (seg_seq == rcv_next) {
+			out_d->abort = true;
+			return INC_RST_CONN_DEAD;
+		}
+		// per RFC 5961
+		if (conn->state != SYN_SENT) {
+			tcp_create_ack_reply(p, conn, out_d);
+			return INC_RST_CHALL_ACK_SENT;
+		}
+		return INVALID_RST_DROPPED;
+	}
+
+	bool immediate_ack = false;
+	// SYN handling
+	if (flags & TCP_SYN) {
+		immediate_ack = true;
+		if (conn->state == SYN_SENT) {
+			// init connection
+			conn->irs = seg_seq;
+			conn->rcv_buffer.rcv_nxt = seg_seq + 1;
+			conn->ts_enabled = seg->options->ts_present;
+			conn->sack_enabled = seg->options->sack_permitted;
+			conn->snd_mss = tcp_effective_snd_mss(seg->options->mss_present,
+							      seg->options->mss,
+							      conn->rcv_mss,
+							      conn->ts_enabled);
+			conn->snd_buffer.cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
+
+			if (!(flags & TCP_ACK)) {
+				// simultaneous open: received SYN while expecting SYN-ACK
+				// trigger SYN-retransmission, SYN_RECEIVED state will
+				// append ACK
+				tcp_set_state_locked(conn, SYN_RECEIVED, out_d);
+				tcp_resend_syn_deferred(conn, out_d);
+				return TCP_SIMULTANEOUS_OPEN;
+			}
+			// else (SYN-ACK) => fallthrough to ACK processing below to finalise
+			// handshake
+
+		} else if (conn->state >= ESTABLISHED) {
+			// unexpected SYN in established session
+			tcp_build_rst_reply(p, seg);
+			out_d->pkt_snd_now = p;
+			out_d->abort = true;
+			return RST_UNEXPECTED_SYN;
+		}
+	}
+
+	if (flags & TCP_ACK) {
+		pkt_result ack_r = tcp_process_ack(p, seg, conn, out_d, true);
+		if (ack_r != TCP_ACK_PROCESSED)
+			return ack_r;
 	}
 
 	// data handling: trimming is done by rcv_buffer_write_tcp_segment
