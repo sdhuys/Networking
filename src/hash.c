@@ -25,9 +25,9 @@ static inline uint64_t rotl64(uint64_t x, int b)
 /* Endian-safe, alignment-safe */
 static inline uint64_t load_le64(const unsigned char *p)
 {
-	return ((uint64_t)p[0]) | ((uint64_t)p[1] << 8) | ((uint64_t)p[2] << 16) |
-	       ((uint64_t)p[3] << 24) | ((uint64_t)p[4] << 32) | ((uint64_t)p[5] << 40) |
-	       ((uint64_t)p[6] << 48) | ((uint64_t)p[7] << 56);
+	return ((uint64_t)p[0]) | ((uint64_t)p[1] << 8) | ((uint64_t)p[2] << 16)
+	       | ((uint64_t)p[3] << 24) | ((uint64_t)p[4] << 32) | ((uint64_t)p[5] << 40)
+	       | ((uint64_t)p[6] << 48) | ((uint64_t)p[7] << 56);
 }
 
 #define SIPROUND()                                                                                 \

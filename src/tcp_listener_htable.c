@@ -135,6 +135,6 @@ struct tcp_ipv4_listener_htable *create_tcp_ipv4_listener_htable(size_t size)
 
 bool is_tcp_lstnr_match(struct tcp_ipv4_listener *lstnr, uint16_t loc_port, ipv4_address_t loc_addr)
 {
-	return lstnr->local_port == loc_port &&
-	       (memcmp(lstnr->local_addr, loc_addr, IPV4_ADDR_LEN) == 0 || lstnr->wildcard);
+	return lstnr->local_port == loc_port
+	       && (memcmp(lstnr->local_addr, loc_addr, IPV4_ADDR_LEN) == 0 || lstnr->wildcard);
 }

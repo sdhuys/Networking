@@ -16,6 +16,8 @@ DerivePointerAlignment: false
 PointerAlignment: Right
 SpaceAfterCStyleCast: false
 SpaceBeforeParens: ControlStatements
+PenaltyBreakAssignment: 100
+BreakBeforeBinaryOperators: NonAssignment
 
 PenaltyReturnTypeOnItsOwnLine: 1000
 AllowAllParametersOfDeclarationOnNextLine: true

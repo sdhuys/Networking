@@ -122,8 +122,8 @@ static inline void sndbuf_insert_ghost_byte(struct byte_snd_buffer *b, uint8_t f
 		return;
 	uint32_t tail_seq = b->snd_una + (uint32_t)b->used_bytes;
 	size_t unsent_bytes = tail_seq - b->snd_nxt;
-	b->ctrl[b->ctrl_count++] =
-	    (struct ctrl_seg){.seq = b->snd_nxt + unsent_bytes, .flags = flag};
+	b->ctrl[b->ctrl_count++] = (struct ctrl_seg){.seq = b->snd_nxt + unsent_bytes,
+						     .flags = flag};
 }
 
 // snd buff always only in order data
@@ -172,10 +172,10 @@ static inline bool should_store_sack_block(struct byte_snd_buffer *sb,
 					   uint32_t s_end,
 					   uint32_t seg_ack)
 {
-	return tcp_seq_before(s_start, s_end) && tcp_seq_after(s_end, seg_ack) &&
-	       tcp_seq_before_eq(s_end, sb->snd_nxt) &&
-	       (sb->sack_blocks_count < sb->sack_capacity ||
-		tcp_seq_before_eq(s_start, sb->sack_blocks[sb->sack_capacity - 1].start_seq));
+	return tcp_seq_before(s_start, s_end) && tcp_seq_after(s_end, seg_ack)
+	       && tcp_seq_before_eq(s_end, sb->snd_nxt)
+	       && (sb->sack_blocks_count < sb->sack_capacity
+		   || tcp_seq_before_eq(s_start, sb->sack_blocks[sb->sack_capacity - 1].start_seq));
 }
 
 #ifdef __cplusplus

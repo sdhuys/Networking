@@ -46,8 +46,8 @@ struct stack *construct_stack(struct nw_interface *interfaces,
 	for (size_t i = 0; i < if_count; i++)
 		interfaces[i].index = i;
 
-	struct routing_table *routing_table =
-	    create_routing_table(interfaces, if_count, statics, static_count);
+	struct routing_table *routing_table = create_routing_table(
+	    interfaces, if_count, statics, static_count);
 	if (!routing_table)
 		return NULL;
 
@@ -141,11 +141,11 @@ struct stack *construct_stack(struct nw_interface *interfaces,
 	pthread_cond_init(&socket_manager->send_down_sock_q->cond, NULL);
 	pthread_mutex_init(&socket_manager->send_down_sock_q->lock, NULL);
 	socket_manager->udp_ipv4_sckt_htable = create_udp_ipv4_sckt_htable(UDP_SCKT_HTBL_SIZE);
-	socket_manager->tcp_ipv4_listener_htable =
-	    create_tcp_ipv4_listener_htable(TCP_LISTNR_HTBL_SIZE);
+	socket_manager->tcp_ipv4_listener_htable = create_tcp_ipv4_listener_htable(
+	    TCP_LISTNR_HTBL_SIZE);
 	socket_manager->tcp_ipv4_conn_htable = create_tcp_ipv4_conn_htable(TCP_EST_CONN_HTBL_SIZE);
-	socket_manager->tcp_ipv4_conn_time_wait_htable =
-	    create_tcp_ipv4_conn_htable(TCP_WAIT_CONN_HTBLE_SIZE);
+	socket_manager->tcp_ipv4_conn_time_wait_htable = create_tcp_ipv4_conn_htable(
+	    TCP_WAIT_CONN_HTBLE_SIZE);
 	socket_manager->sockfd_manager = malloc(sizeof(struct sockfd_manager));
 	sockfd_manager_init(socket_manager->sockfd_manager);
 

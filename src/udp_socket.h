@@ -8,8 +8,8 @@
 
 #define UDP_RING_BUFF_SIZE 256
 #define UDP_MAX_PAYLOAD                                                                            \
-	(PKT_SIZE - sizeof(struct udp_header) - sizeof(struct ipv4_header) -                       \
-	 sizeof(struct ethernet_header))
+	(PKT_SIZE - sizeof(struct udp_header) - sizeof(struct ipv4_header)                         \
+	 - sizeof(struct ethernet_header))
 
 typedef enum { UDP_LISTEN, UDP_CLOSED } udp_socket_state;
 

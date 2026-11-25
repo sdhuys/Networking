@@ -97,8 +97,8 @@ struct routing_table *create_routing_table(struct nw_interface *interfaces,
 
 			// if this nw_if is not loopback, and the gateway and nw_if's ip are on the
 			// same subnet
-			if (!(nw_if->flags & IF_LOOPBACK) &&
-			    (gw & m) == (addr_u32(nw_if->ipv4_addr) & m))
+			if (!(nw_if->flags & IF_LOOPBACK)
+			    && (gw & m) == (addr_u32(nw_if->ipv4_addr) & m))
 				out = nw_if;
 		}
 		if (!out) {
@@ -133,8 +133,8 @@ bool get_route(struct routing_table *table, ipv4_address_t dest_ip, struct route
 		struct route *route = &table->routes[i];
 
 		// check if it matches AND if it's better than our current best
-		if (((int_ip & route->subnet_mask) == route->prefix) &&
-		    (route->prefix_len > longest_prefix)) {
+		if (((int_ip & route->subnet_mask) == route->prefix)
+		    && (route->prefix_len > longest_prefix)) {
 
 			longest_prefix = route->prefix_len;
 			best_match = route;

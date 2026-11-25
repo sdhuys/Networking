@@ -164,8 +164,8 @@ ssize_t udp_write_to_snd_buffer(struct stack *stack, void *s, struct send_reques
 	struct interface_context *cntx = (struct interface_context *)stack->if_layer->context;
 	struct nw_interface *interfaces = cntx->interfaces;
 	size_t if_count = cntx->if_amount;
-	if (packet->route->type == ROUTE_LOCAL &&
-	    is_local_ipv4_addr(interfaces, if_count, req->dest_ip))
+	if (packet->route->type == ROUTE_LOCAL
+	    && is_local_ipv4_addr(interfaces, if_count, req->dest_ip))
 		memcpy(
 		    packet->src_ip, req->dest_ip, IPV4_ADDR_LEN); // talking to ourselves: src = dst
 	else

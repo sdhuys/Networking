@@ -138,7 +138,7 @@ struct tcp_ipv4_conn_htable *create_tcp_ipv4_conn_htable(size_t size)
 
 bool is_tcp_conn_match(struct tcp_ipv4_conn *conn, struct tcp_conn_id *id)
 {
-	return conn->extern_port == id->extern_port && conn->local_port == id->loc_port &&
-	       memcmp(conn->local_addr, id->loc_addr, IPV4_ADDR_LEN) == 0 &&
-	       memcmp(conn->extern_addr, id->extern_addr, IPV4_ADDR_LEN) == 0;
+	return conn->extern_port == id->extern_port && conn->local_port == id->loc_port
+	       && memcmp(conn->local_addr, id->loc_addr, IPV4_ADDR_LEN) == 0
+	       && memcmp(conn->extern_addr, id->extern_addr, IPV4_ADDR_LEN) == 0;
 }

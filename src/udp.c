@@ -66,10 +66,10 @@ pkt_result receive_udp_up(struct nw_layer *self, struct pkt *packet)
 
 uint16_t calc_udp_checksum(struct udp_header *header, struct pkt *packet)
 {
-	struct ipv4_pseudo_header pseudo_h = {.len =
-						  header->length, // Already in network byte order
-					      .padding = 0,
-					      .protocol = P_UDP};
+	struct ipv4_pseudo_header pseudo_h = {
+	    .len = header->length, // Already in network byte order
+	    .padding = 0,
+	    .protocol = P_UDP};
 	memcpy(pseudo_h.dest_ip, packet->dest_ip, IPV4_ADDR_LEN);
 	memcpy(pseudo_h.src_ip, packet->src_ip, IPV4_ADDR_LEN);
 

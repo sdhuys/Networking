@@ -270,9 +270,9 @@ static void note_ooo_arrival(struct byte_reassembly_rcv_buffer *b, uint32_t seq)
 	out[n++] = seq; // newest first
 	for (size_t i = 0; i < b->sack_recent_count && n < TCP_HEADER_MAX_SACK; i++) {
 		uint32_t r = b->sack_recent[i];
-		if (!(tcp_seq_before_eq(s, r) &&
-		      tcp_seq_before(r, e))) // not in the new block, not merged earlier
-			out[n++] = r;	     // keep in array, after earlier ones
+		if (!(tcp_seq_before_eq(s, r)
+		      && tcp_seq_before(r, e))) // not in the new block, not merged earlier
+			out[n++] = r;		// keep in array, after earlier ones
 	}
 	memcpy(b->sack_recent, out, n * sizeof(out[0]));
 	b->sack_recent_count = n;
@@ -374,8 +374,8 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b,
 
 			// rcv_next now falls within an ooo seg
 			// this ooo seg now also contiguous, adjust rcv_next
-			if (tcp_seq_after(seg_end, b->rcv_nxt) &&
-			    tcp_seq_before_eq(seg_start, b->rcv_nxt)) {
+			if (tcp_seq_after(seg_end, b->rcv_nxt)
+			    && tcp_seq_before_eq(seg_start, b->rcv_nxt)) {
 				uint32_t delta = b->rcv_nxt - seg_start;
 				size_t seg_len = seg_end - seg_start;
 				update_rcv_nxt_tail(b, seg_len - delta);
@@ -397,11 +397,11 @@ size_t rcv_buffer_write_tcp_segment(struct byte_reassembly_rcv_buffer *b,
 		// only process if there's free space in ooo_segs, OR if current segment is not a
 		// separate ooo_seg after the last stored one. We
 		// prioritise storing earlier segs over later ones
-		if (b->ooo_count != b->ooo_capacity ||
-		    tcp_seq_before_eq(data_seq, b->ooo_segs[b->ooo_capacity - 1].end_seq)) {
+		if (b->ooo_count != b->ooo_capacity
+		    || tcp_seq_before_eq(data_seq, b->ooo_segs[b->ooo_capacity - 1].end_seq)) {
 			size_t ooo_i;
-			written +=
-			    write_unwritten_bytes(b, data_seq, data_seq + data_len, data, &ooo_i);
+			written += write_unwritten_bytes(
+			    b, data_seq, data_seq + data_len, data, &ooo_i);
 			struct ooo_seg seg = {.start_seq = data_seq,
 					      .end_seq = data_seq + data_len};
 			insert_ooo_segment(b->ooo_segs, &b->ooo_count, b->ooo_capacity, seg, ooo_i);
@@ -506,8 +506,8 @@ ssize_t blocking_write_to_snd_buff(struct byte_snd_buffer *b,
 	// wait for room, unless the connection is reset or our side already sent its FIN.
 	// All three are in the condition, so they're checked before every wait, not only after.
 	size_t available;
-	while ((available = sndbuff_available_space(b)) == 0 && !tcp_conn_is_aborted(conn) &&
-	       !b->shutdown)
+	while ((available = sndbuff_available_space(b)) == 0 && !tcp_conn_is_aborted(conn)
+	       && !b->shutdown)
 		pthread_cond_wait(&b->cond, &conn->lock);
 
 	if (tcp_conn_is_aborted(conn) || b->shutdown) {

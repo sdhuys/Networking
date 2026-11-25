@@ -166,8 +166,8 @@ int tcp_connect(struct stack *stack,
 		memcpy(id.loc_addr, interfaces[route->nw_if_id].ipv4_addr, IPV4_ADDR_LEN);
 
 	struct tcp_ipv4_conn *conn;
-	if ((conn = query_tcp_conn_hashtable(htable, &id)) ||
-	    (conn = query_tcp_conn_hashtable(tw_htable, &id))) {
+	if ((conn = query_tcp_conn_hashtable(htable, &id))
+	    || (conn = query_tcp_conn_hashtable(tw_htable, &id))) {
 		release_tcp_conn(conn);
 		sockfd_free(sockfd_mgr, fd);
 		return -1; // CONNECTION ALREADY IN USE

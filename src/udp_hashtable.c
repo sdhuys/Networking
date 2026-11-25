@@ -19,8 +19,8 @@ bool add_to_udp_hashtable(struct udp_ipv4_sckt_htable *htable, struct udp_ipv4_s
 		node = node->next;
 	}
 	retain_udp_socket(socket);
-	struct udp_ipv4_sckt_htable_node *new_node =
-	    malloc(sizeof(struct udp_ipv4_sckt_htable_node));
+	struct udp_ipv4_sckt_htable_node *new_node = malloc(
+	    sizeof(struct udp_ipv4_sckt_htable_node));
 	if (new_node == NULL) {
 		pthread_mutex_unlock(&htable->bucket_locks[hash]);
 		return false;
@@ -126,8 +126,8 @@ struct udp_ipv4_sckt_htable *create_udp_ipv4_sckt_htable(size_t size)
 
 	udp_htable->bucket_locks = bckt_locks;
 
-	struct udp_ipv4_sckt_htable_node **buckets =
-	    calloc(size, sizeof(struct udp_ipv4_sckt_htable_node *));
+	struct udp_ipv4_sckt_htable_node **buckets = calloc(
+	    size, sizeof(struct udp_ipv4_sckt_htable_node *));
 	if (!buckets) {
 		free(bckt_locks);
 		free(udp_htable);

@@ -27,8 +27,8 @@ pkt_result receive_ipv4_up(struct nw_layer *self, struct pkt *packet)
 	size_t frame_len = packet->len;
 	uint16_t total_len = ntohs(header->total_length);
 
-	if (header_len < sizeof(struct ipv4_header) || total_len > frame_len ||
-	    total_len < header_len)
+	if (header_len < sizeof(struct ipv4_header) || total_len > frame_len
+	    || total_len < header_len)
 		return IP_HEADER_MALFORMED;
 
 	if (calc_ipv4_checksum(header, header_len / 4) != 0)
@@ -127,8 +127,8 @@ pkt_result send_ipv4_down(struct nw_layer *self, struct pkt *packet)
 	pthread_mutex_unlock(&arp_tbl->lock);
 
 	if (send_request) {
-		struct pkt *arp_req_pkt =
-		    create_arp_request_for(arp_layer, next_hop, packet->route->nw_if_id);
+		struct pkt *arp_req_pkt = create_arp_request_for(
+		    arp_layer, next_hop, packet->route->nw_if_id);
 		if (arp_req_pkt) {
 			send_arp_down(arp_layer, arp_req_pkt);
 			release_pkt(arp_req_pkt);
@@ -160,8 +160,8 @@ bool relevant_destination_ip(ipv4_address_t dest_ip, struct nw_layer *self, size
 	struct ipv4_context *cntx = (struct ipv4_context *)self->context;
 	struct nw_interface *nw_if = &cntx->nw_ifs[nw_if_indx];
 
-	if (memcmp(dest_ip, IPV4_BROADCAST_IP, IPV4_ADDR_LEN) == 0 ||
-	    memcmp(dest_ip, &nw_if->ipv4_addr, IPV4_ADDR_LEN) == 0)
+	if (memcmp(dest_ip, IPV4_BROADCAST_IP, IPV4_ADDR_LEN) == 0
+	    || memcmp(dest_ip, &nw_if->ipv4_addr, IPV4_ADDR_LEN) == 0)
 		return true;
 
 	if (nw_if->flags & IF_LOOPBACK) {
@@ -170,8 +170,8 @@ bool relevant_destination_ip(ipv4_address_t dest_ip, struct nw_layer *self, size
 		memcpy(&net, nw_if->ipv4_addr, IPV4_ADDR_LEN);
 		memcpy(&mask, nw_if->subnet_mask, IPV4_ADDR_LEN);
 		// accept the whole loopback range and any interface's address
-		return (dst & mask) == (net & mask) ||
-		       is_local_ipv4_addr(cntx->nw_ifs, cntx->if_count, dest_ip);
+		return (dst & mask) == (net & mask)
+		       || is_local_ipv4_addr(cntx->nw_ifs, cntx->if_count, dest_ip);
 	}
 
 	return false;

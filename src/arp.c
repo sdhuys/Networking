@@ -163,8 +163,8 @@ pkt_result receive_arp_up(struct nw_layer *self, struct pkt *packet)
 
 	else if (op == ARP_REPLY) {
 		pthread_mutex_lock(&cntx->arp_table->lock);
-		struct arp_table_node *arp_entry =
-		    query_arp_table(cntx->arp_table, arp_data->src_ip);
+		struct arp_table_node *arp_entry = query_arp_table(cntx->arp_table,
+								   arp_data->src_ip);
 
 		// Unsolicited ARP responses dropped
 		if (arp_entry == NULL || arp_entry->status == ARP_REACHABLE) {

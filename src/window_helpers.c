@@ -42,8 +42,8 @@ uint16_t calc_rcv_wnd_sws(struct tcp_ipv4_conn *conn)
 	uint32_t last_adv_bytes = (uint32_t)rb->rcv_wnd << rb->rcv_wscale;
 
 	// if buffer is tiny, don't wait for mss
-	size_t threshold =
-	    (conn->rcv_mss < (rb->capacity / 2)) ? conn->rcv_mss : (rb->capacity / 2);
+	size_t threshold = (conn->rcv_mss < (rb->capacity / 2)) ? conn->rcv_mss
+								: (rb->capacity / 2);
 
 	// either no worthwhile increase OR decrease
 	if (current_free < last_adv_bytes + threshold) {

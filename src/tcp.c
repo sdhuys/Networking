@@ -30,8 +30,8 @@ pkt_result send_tcp_down(struct nw_layer *self, struct pkt *packet)
 		return SENT;
 	}
 
-	struct tcp_header_no_options *header =
-	    (struct tcp_header_no_options *)(packet->data + packet->offset);
+	struct tcp_header_no_options *header = (struct tcp_header_no_options *)(packet->data
+										+ packet->offset);
 
 	// write timestamp here so we don't include time packet was in TX queue
 	// still incorrectly times ARP resolution time (write value at ETH layer?)
@@ -65,8 +65,8 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 	if (packet->len < sizeof(struct tcp_header_no_options))
 		return TCP_HEADER_MALFORMED;
 
-	struct tcp_header_no_options *header =
-	    (struct tcp_header_no_options *)(packet->data + packet->offset);
+	struct tcp_header_no_options *header = (struct tcp_header_no_options *)(packet->data
+										+ packet->offset);
 
 	size_t tcp_header_len = (header->data_offset >> 4) * 4; // in bytes
 	if (tcp_header_len < sizeof(struct tcp_header_no_options) || tcp_header_len > packet->len)
@@ -79,8 +79,8 @@ pkt_result receive_tcp_up(struct nw_layer *self, struct pkt *packet)
 		return TCP_CHECKSUM_ERROR;
 
 	size_t options_len = tcp_header_len - sizeof(struct tcp_header_no_options);
-	unsigned char *options_start =
-	    packet->data + packet->offset + sizeof(struct tcp_header_no_options);
+	unsigned char *options_start = packet->data + packet->offset
+				       + sizeof(struct tcp_header_no_options);
 	struct tcp_options options;
 
 	bool valid_options = parse_tcp_options(options_start, options_len, &options);
