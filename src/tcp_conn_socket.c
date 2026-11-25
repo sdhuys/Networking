@@ -442,6 +442,7 @@ pkt_result process_tcp_segment(struct pkt *p,
 							      conn->ts_enabled);
 			conn->snd_buffer.cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
 			tcp_negotiate_wscale(conn, seg->options);
+			tcp_init_snd_wnd(conn, seg, (flags & TCP_ACK) ? seg_ack : conn->iss); // in case of simultaneous open (no ACK), use ISS to init
 			conn->rcv_buffer.rcv_wnd = calc_rcv_wnd_sws(conn);
 
 			if (!(flags & TCP_ACK)) {
