@@ -15,9 +15,24 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(BUILD_TESTING "Build tests" ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Sanitizer builds: cmake -DSTACK_SANITIZE=address (ASan + UBSan) or =thread (TSan).
+# Use a separate build directory for each.
+set(STACK_SANITIZE "" CACHE STRING "Sanitizer for all targets: '', 'address' or 'thread'")
+if(STACK_SANITIZE STREQUAL "address")
+  add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -g)
+  add_link_options(-fsanitize=address,undefined)
+elseif(STACK_SANITIZE STREQUAL "thread")
+  add_compile_options(-fsanitize=thread -g)
+  add_link_options(-fsanitize=thread)
+elseif(NOT STACK_SANITIZE STREQUAL "")
+  message(FATAL_ERROR "STACK_SANITIZE must be empty, 'address' or 'thread'")
+endif()
+
 # ---- Source files ----
-# Library source files (shared between main executable and tests)
-set(LIB_SOURCES
+# Stack source files shared by the main executable and the tests.
+# time_now.c and random.c are not in this list: the tests link replacements for them
+# (a controllable clock and drop rate), see tests/fakes.
+set(STACK_SOURCES
   src/api.c  
   src/app.c
   src/arp.c
@@ -35,7 +50,6 @@ set(LIB_SOURCES
   src/ping_test.c
   src/pkt_ring_buffer.c
   src/queue.c
-  src/random.c
   src/routing_table.c
   src/socket_manager.c
   src/sockfd_manager.c
@@ -52,11 +66,16 @@ set(LIB_SOURCES
   src/tcp_segment.c
   src/timer.c
   src/timer_worker.c
-  src/time_now.c
   src/udp.c
   src/udp_hashtable.c
   src/udp_socket.c
   src/window_helpers.c
+)
+
+set(LIB_SOURCES
+  ${STACK_SOURCES}
+  src/random.c
+  src/time_now.c
 )
 
 # Main executable source files
@@ -65,16 +84,14 @@ set(MAIN_SOURCES
   src/main.c
 )
 
-# Test source files (excludes main.c to avoid conflict with gtest_main)
-set(TEST_SOURCES
-  ${LIB_SOURCES}
-)
-
 # ---- Main executable ----
 add_executable(networking ${MAIN_SOURCES})
 target_compile_options(networking PRIVATE -Wall -Wextra -rdynamic)
 
 # ---- Tests ----
+# unit_tests:   one stack, no threads, fake clock; the test plays the remote peer
+# system_tests: two stacks on their real threads, connected by a simulated lossy link
+# interop_peer: the stack on tap0, driven by tests/interop/run_interop.sh against Linux
 if(BUILD_TESTING)
   include(CTest)
   include(FetchContent)
@@ -86,17 +103,52 @@ if(BUILD_TESTING)
 
   set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(googletest)
-  file(GLOB TEST_FILES "tests/*.cpp")
-  add_executable(networking_tests EXCLUDE_FROM_ALL ${TEST_FILES} ${TEST_SOURCES})
-  target_include_directories(networking_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
-  target_compile_options(networking_tests PRIVATE -Wall -Wextra)
 
-  target_link_libraries(networking_tests
-    PRIVATE GTest::gtest GTest::gtest_main
+  set(TEST_SUPPORT_SOURCES
+    tests/support/harness.c
+    tests/support/wire.cpp
+    tests/support/test_main.cpp
+    tests/fakes/fake_random.c
+  )
+  set(TEST_INCLUDE_DIRS
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/tests/support
+    ${CMAKE_SOURCE_DIR}/tests/fakes
+    ${CMAKE_SOURCE_DIR}/tests/unit
+    ${CMAKE_SOURCE_DIR}/tests/system
   )
 
+  file(GLOB UNIT_TEST_FILES CONFIGURE_DEPENDS tests/unit/*.cpp)
+  add_executable(unit_tests EXCLUDE_FROM_ALL
+    ${STACK_SOURCES} ${TEST_SUPPORT_SOURCES} tests/fakes/fake_time.c ${UNIT_TEST_FILES})
+
+  file(GLOB SYSTEM_TEST_FILES CONFIGURE_DEPENDS tests/system/*.cpp)
+  add_executable(system_tests EXCLUDE_FROM_ALL
+    ${STACK_SOURCES} ${TEST_SUPPORT_SOURCES} src/time_now.c ${SYSTEM_TEST_FILES})
+
+  foreach(t unit_tests system_tests)
+    target_include_directories(${t} PRIVATE ${TEST_INCLUDE_DIRS})
+    target_compile_options(${t} PRIVATE -Wall -Wextra)
+    target_link_libraries(${t} PRIVATE GTest::gtest pthread)
+  endforeach()
+
+  add_executable(interop_peer EXCLUDE_FROM_ALL
+    ${STACK_SOURCES} src/time_now.c tests/fakes/fake_random.c tests/interop/interop_peer.c)
+  target_include_directories(interop_peer PRIVATE ${TEST_INCLUDE_DIRS})
+  target_compile_options(interop_peer PRIVATE -Wall -Wextra)
+  target_link_libraries(interop_peer PRIVATE pthread)
+
+  # builds both suites and runs every test in its own process, so a hang or crash in
+  # one test can't take the others with it: cmake --build build --target check
+  add_custom_target(check
+    COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -j 4
+    DEPENDS unit_tests system_tests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    USES_TERMINAL)
+
   include(GoogleTest)
-  gtest_discover_tests(networking_tests)
+  gtest_discover_tests(unit_tests DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 60)
+  gtest_discover_tests(system_tests DISCOVERY_MODE PRE_TEST PROPERTIES TIMEOUT 600)
 endif()
 
 # ---- Formatting ----

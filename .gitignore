@@ -138,4 +138,6 @@ out.txt
 packetdrill.txt
 tools/
 build/
+build-*/
 testing_files/
+interop-logs/
