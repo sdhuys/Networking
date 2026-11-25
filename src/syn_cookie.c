@@ -75,7 +75,8 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	if (q_full(listener->ready_q))
 		return TCP_LSTNR_READY_Q_FULL;
 
-	uint32_t cookie = ntohl(seg->header->ack_num) - 1;
+	uint32_t seq_ack = ntohl(seg->header->ack_num);
+	uint32_t cookie = seq_ack - 1;
 	// top 5 bits: t
 	// middle 3 bits: 2 bits encoded MSS, 1 bit sack_permitted
 	// bottom 24 bits: hash
@@ -149,7 +150,7 @@ pkt_result syn_cookie_check_ack(struct tcp_ipv4_listener *listener,
 	conn->snd_buffer.snd_nxt = cookie + 1;
 	conn->snd_buffer.snd_una = cookie + 1;
 	assert(conn->snd_buffer.snd_wscale == 0); // window scaling disabled on cookie connections
-	conn->snd_buffer.snd_wnd = tcp_seg_wnd_bytes(seg, conn->snd_buffer.snd_wscale);
+	tcp_init_snd_wnd(conn, seg, seq_ack);
 	conn->state = ESTABLISHED;
 
 	if (!add_to_tcp_conn_hashtable(cntx->socket_manager->tcp_ipv4_conn_htable, conn)) {

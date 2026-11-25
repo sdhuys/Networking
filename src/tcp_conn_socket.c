@@ -113,6 +113,30 @@ static void tcp_negotiate_wscale(struct tcp_ipv4_conn *conn, const struct tcp_op
 	}
 }
 
+// handshake: first window, no earlier update to compare with
+void tcp_init_snd_wnd(struct tcp_ipv4_conn *conn, struct tcp_segment *seg, uint32_t snd_wnd_upd_ack)
+{
+	struct byte_snd_buffer *sb = &conn->snd_buffer;
+	sb->snd_wnd = tcp_seg_wnd_bytes(seg, sb->snd_wscale);
+	sb->snd_wnd_upd_seq = ntohl(seg->header->seq_num);
+	sb->snd_wnd_upd_ack = snd_wnd_upd_ack;
+}
+
+// only a segment at least as new as the last update may change the window.
+// caller has checked snd_una <= ack <= snd_nxt
+void tcp_update_snd_wnd(struct tcp_ipv4_conn *conn, struct tcp_segment *seg)
+{
+	struct byte_snd_buffer *sb = &conn->snd_buffer;
+	uint32_t seq = ntohl(seg->header->seq_num);
+	uint32_t ack = ntohl(seg->header->ack_num);
+	if (tcp_seq_before(sb->snd_wnd_upd_seq, seq)
+	    || (sb->snd_wnd_upd_seq == seq && tcp_seq_before_eq(sb->snd_wnd_upd_ack, ack))) {
+		sb->snd_wnd = tcp_seg_wnd_bytes(seg, sb->snd_wscale);
+		sb->snd_wnd_upd_seq = seq;
+		sb->snd_wnd_upd_ack = ack;
+	}
+}
+
 static bool tcp_seg_acceptable(uint32_t seq, uint32_t len, uint32_t rcv_nxt, uint32_t wnd)
 {
 	if (len == 0)
@@ -147,7 +171,7 @@ static pkt_result tcp_process_ack(struct pkt *p,
 	if (valid_new_ack || dupe_ack) {
 		struct byte_snd_buffer *sb = &conn->snd_buffer;
 		uint32_t prev_peer_wnd = sb->snd_wnd;
-		sb->snd_wnd = tcp_seg_wnd_bytes(seg, sb->snd_wscale);
+		tcp_update_snd_wnd(conn, seg);
 
 		// peer is alive: any ACK answers our window probes
 		// new data acked means our retransmissions got through
@@ -781,7 +805,7 @@ void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *
 	conn->rcv_buffer.rcv_nxt = conn->irs + seg_seq_len(seg);
 	conn->snd_buffer.snd_nxt = iss;
 	conn->snd_buffer.snd_una = iss;
-	conn->snd_buffer.snd_wnd = tcp_seg_wnd_bytes(seg, 0); // don't apply scale for a SYN
+	tcp_init_snd_wnd(conn, seg, iss);
 
 	struct tcp_options *opt = seg->options;
 	conn->sack_enabled = opt->sack_permitted;
