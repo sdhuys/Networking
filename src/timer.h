@@ -5,12 +5,15 @@
 
 struct timer {
 	void (*callback)(void *);
-	void (*retain)(void *); // to retain conn when timer needs a ref to it, can be null (for ARP
-				// sweep timer for instance)
-	void (*release)(void *); // to release conn when timer is done with ref, can be null (for
+	void (*retain)(void *); // to retain parent when timer needs a ref to it, can be null (for
+				// ARP sweep timer for instance)
+	void (*release)(void *); // to release parent when timer is done with ref, can be null (for
 				 // ARP sweep timer for instance)
 	void *args;
 	struct heap_node node; // expiry time is stored in node priority
+	uint64_t
+	    expiry_time; // used to double-check if callback should execute after timer's been
+			 // popped, since cancel_timer cannot remove already popped timer from heap
 };
 
 struct timer_manager {
@@ -35,6 +38,7 @@ bool start_timer(struct timer_manager *mgr, struct timer *timer, uint64_t delay_
 bool start_timer_if_idle(struct timer_manager *mgr, struct timer *timer, uint64_t delay_ms);
 void cancel_timer(struct timer_manager *mgr, struct timer *timer);
 int get_timeout(struct timer_manager *mgr);
+bool timer_should_execute(struct timer_manager *mgr, struct timer *timer);
 
 #ifdef __cplusplus
 }

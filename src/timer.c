@@ -98,6 +98,8 @@ static bool arm_timer(struct timer_manager *mgr,
 	} else
 		heap_update(h, &timer->node, expiry);
 
+	timer->expiry_time = expiry;
+
 	// newly added timer is first of the heap to time out => trigger polling return to update
 	if (wake) {
 		uint64_t x = 1;
@@ -133,6 +135,7 @@ static struct timer *create_timer_internal(void (*callback)(void *),
 	timer->release = release;
 	timer->args = args;
 	timer->node.index = NODE_NOT_IN_HEAP;
+	timer->expiry_time = 0;
 	return timer;
 }
 
@@ -193,4 +196,16 @@ void cancel_timer(struct timer_manager *mgr, struct timer *timer)
 
 	if (should_release)
 		timer->release(timer->args);
+}
+
+// protects against execution when cancelled (and potentially rearmed) in the small window between timer popped and execution start
+// execute checks for 0 or expiry time still in the future (means rearmed for later, not now)
+bool timer_should_execute(struct timer_manager *mgr, struct timer *timer)
+{
+	pthread_mutex_lock(&mgr->lock);
+	bool execute = timer->expiry_time != 0 && now_ms() >= timer->expiry_time;
+	if (execute)
+		timer->expiry_time = 0;
+	pthread_mutex_lock(&mgr->lock);
+	return execute;
 }

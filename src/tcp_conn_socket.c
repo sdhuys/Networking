@@ -631,16 +631,20 @@ void zwp_callback(void *c)
 void rto_callback(void *c)
 {
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)c;
+	struct tcp_context *cntx = (struct tcp_context *)conn->tcp_layer->context;
+	struct timer_manager *mngr = cntx->timer_mgr;
 	struct byte_snd_buffer *sb = &conn->snd_buffer;
 	struct tcp_deferred_work d = {0};
 	pthread_mutex_lock(&conn->lock);
 
 	// cancel_timer can't stop a callback that was already popped + an ACK may have
 	// acknowledged everything between the pop and now => no data outstanding = stale RTO.
-	if (conn->data_timers_cancelled || sb->snd_una == sb->snd_nxt) {
+	if (conn->data_timers_cancelled || !timer_should_execute(mngr, conn->rto_timer)) {
 		pthread_mutex_unlock(&conn->lock);
 		return;
 	}
+
+	assert(sb->snd_una != sb->snd_nxt);
 
 	conn->dup_ack_cnt = 0;
 	bool handshake = conn->state == SYN_SENT || conn->state == SYN_RECEIVED;
@@ -739,13 +743,17 @@ void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *
 void delayed_ack_callback(void *c)
 {
 	struct tcp_ipv4_conn *conn = (struct tcp_ipv4_conn *)c;
+	struct tcp_context *cntx = (struct tcp_context *)conn->tcp_layer->context;
+	struct timer_manager *mngr = cntx->timer_mgr;
 	struct tcp_deferred_work d = {0};
 	pthread_mutex_lock(&conn->lock);
 
-	if (conn->data_timers_cancelled) {
+	if (conn->data_timers_cancelled || !timer_should_execute(mngr, conn->del_ack_timer)) {
 		pthread_mutex_unlock(&conn->lock);
 		return;
 	}
+
+	assert(conn->ack_pending = true);
 
 	struct pkt *p = allocate_pkt();
 	if (!p) {

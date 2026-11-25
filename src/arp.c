@@ -96,7 +96,7 @@ void arp_retry_callback(void *arg)
 
 	pthread_mutex_lock(&n->table->lock);
 
-	if (n->status != ARP_INCOMPLETE) {
+	if (!timer_should_execute(table->timer_mngr, n->retry_timer)) {
 		pthread_mutex_unlock(&n->table->lock);
 		return;
 	}
