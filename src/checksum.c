@@ -46,15 +46,15 @@ uint16_t calc_ipv4_checksum(struct ipv4_header *header, size_t header_len)
 {
 	// calc sum of all 16 bit words in header
 	uint32_t sum = 0;
-	uint16_t *ptr = (uint16_t *)header;
+	uint8_t *ptr = (uint8_t *)header;
 
-	for (size_t i = 0; i < header_len * 2; i++)
-		sum += ptr[i];
+	for (size_t i = 0; i < header_len * 4; i = i + 2)
+		sum += ptr[i] << 8 | ptr[i + 1];
 
 	// calc 16bit one's complement of sum (adding carries beyond 16 bits back)
 	while (sum >> 16)
 		sum = (sum & 0xFFFF) + (sum >> 16);
 
 	// one's complement
-	return (uint16_t)~sum;
+	return htons((uint16_t)~sum);
 }
