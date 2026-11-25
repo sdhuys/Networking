@@ -268,6 +268,17 @@ TEST(PacketRing, IsFifoAndHoldsOneLessThanItsSize)
 
 // ------------------------------------------------------------------ socket fds
 
+namespace
+{
+// sockfd_manager has no destroy function: free what sockfd_manager_init allocated
+void free_sockfd_manager(struct sockfd_manager *m)
+{
+	free(m->fd_sockets);
+	free(m->free_stack);
+	pthread_mutex_destroy(&m->fds_lock);
+}
+} // namespace
+
 TEST(SockFds, AreUniqueAndReusedAfterFree)
 {
 	struct sockfd_manager m;
@@ -282,6 +293,7 @@ TEST(SockFds, AreUniqueAndReusedAfterFree)
 	int some = *fds.begin();
 	sockfd_free(&m, some);
 	EXPECT_EQ(get_sockfd(&m), some) << "a freed fd is reused";
+	free_sockfd_manager(&m);
 }
 
 TEST(SockFds, RunOutAfterMaxSockets)
@@ -293,6 +305,7 @@ TEST(SockFds, RunOutAfterMaxSockets)
 	EXPECT_EQ(get_sockfd(&m), -1);
 	sockfd_free(&m, 42);
 	EXPECT_EQ(get_sockfd(&m), 42);
+	free_sockfd_manager(&m);
 }
 
 // ------------------------------------------------------------------ checksums
@@ -360,6 +373,14 @@ class Routes : public ::testing::Test
       protected:
 	nw_interface ifs[3] = {};
 	routing_table *t = nullptr;
+
+	void TearDown() override
+	{
+		if (t) { // routing_table has no destroy function
+			free(t->routes);
+			free(t);
+		}
+	}
 
 	static void ip(const char *s, uint8_t out[4])
 	{

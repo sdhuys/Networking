@@ -4,9 +4,15 @@
 // popped (finding 19).
 
 #include "fake_env.h"
+extern "C" {
+#include "heap.h" // heap_destroy; has no extern "C" of its own
+}
 #include "timer.h"
 
 #include <gtest/gtest.h>
+
+#include <cstdlib>
+#include <unistd.h>
 
 namespace
 {
@@ -60,6 +66,12 @@ class Timer : public ::testing::Test
 	{
 		cancel_timer(mgr, t); // whatever the test left armed
 		EXPECT_EQ(c.retained, c.released) << "owned timer references don't balance";
+		free(t);
+		// timer_manager has no destroy function: free what create_timer_manager made
+		heap_destroy(mgr->timer_heap);
+		close(mgr->event_fd);
+		pthread_mutex_destroy(&mgr->lock);
+		free(mgr);
 	}
 	void run_at(uint64_t ms)
 	{
