@@ -74,7 +74,7 @@ struct byte_snd_buffer {
 
 	size_t used_bytes; // total bytes currently in buffer (unacked sent + unsent)
 
-	uint32_t snd_wnd;  // peer's advertised window, scaled!!
+	uint32_t snd_wnd;   // peer's advertised window, scaled!!
 	uint8_t snd_wscale; // peer's scale
 
 	congestion_ctrl_state c_state;

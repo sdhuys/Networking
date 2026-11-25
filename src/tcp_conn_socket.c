@@ -102,6 +102,17 @@ static bool arm_tcp_data_timer_if_idle(struct tcp_ipv4_conn *conn,
 	return start_timer_if_idle(t_mgr, t, delay_ms);
 }
 
+static void tcp_negotiate_wscale(struct tcp_ipv4_conn *conn, const struct tcp_options *opt)
+{
+	if (conn->wscale_enabled && opt->wscale_present) {
+		conn->snd_buffer.snd_wscale = opt->wscale; // already clamped to 14 by the parser
+	} else {
+		conn->wscale_enabled = false;
+		conn->snd_buffer.snd_wscale = 0;
+		conn->rcv_buffer.rcv_wscale = 0;
+	}
+}
+
 static bool tcp_seg_acceptable(uint32_t seq, uint32_t len, uint32_t rcv_nxt, uint32_t wnd)
 {
 	if (len == 0)
@@ -135,7 +146,7 @@ static pkt_result tcp_process_ack(struct pkt *p,
 
 	if (valid_new_ack || dupe_ack) {
 		struct byte_snd_buffer *sb = &conn->snd_buffer;
-		uint16_t prev_peer_wnd = sb->snd_wnd;
+		uint32_t prev_peer_wnd = sb->snd_wnd;
 		sb->snd_wnd = tcp_seg_wnd_bytes(seg, sb->snd_wscale);
 
 		// peer is alive: any ACK answers our window probes
@@ -249,8 +260,7 @@ static pkt_result tcp_process_ack(struct pkt *p,
 				// pure dupe ack, no data, disregard window probe replies
 			} else if (count_dupacks && s_len == 0 && !conn->is_wndw_probing
 				   && sb->snd_una != sb->snd_nxt && // data outstanding
-				   sb->snd_wnd
-				       == prev_peer_wnd) { // window unchanged (RFC 5681, 2)
+				   sb->snd_wnd == prev_peer_wnd) { // window unchanged (RFC 5681, 2)
 				switch (sb->c_state) {
 				case FAST_RECOVERY:
 					sb->cwnd += conn->snd_mss;
@@ -779,6 +789,7 @@ void server_init_tcp_connection(struct tcp_ipv4_conn *conn, struct tcp_segment *
 	conn->snd_mss = tcp_effective_snd_mss(
 	    opt->mss_present, opt->mss, conn->rcv_mss, conn->ts_enabled);
 	conn->snd_buffer.cwnd = TCP_INIT_CWND_MSS_MULT * conn->snd_mss;
+	conn->wscale_enabled = true; // enable scaling if peer allows it
 	tcp_negotiate_wscale(conn, seg->options);
 
 	if (opt->ts_present)
@@ -1093,7 +1104,7 @@ struct pkt *create_tcp_packet(struct tcp_ipv4_conn *conn, size_t seq, size_t seq
 
 	if (conn->state != SYN_SENT)
 		p->tcp_flags |= TCP_ACK;
-	
+
 	// never send window value scaled in a SYN
 	if (p->tcp_flags & TCP_SYN) {
 		uint32_t bytes = (uint32_t)conn->rcv_buffer.rcv_wnd << conn->rcv_buffer.rcv_wscale;
